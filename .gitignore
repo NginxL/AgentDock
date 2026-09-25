@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.env.*
+!.env.example
+config.local*.json
+node_modules/
+web/dist/
+coverage/
+*.sqlite*
+*.db
+*.token
+.DS_Store
+
+*.tsbuildinfo
+*.sqlite3.lock
