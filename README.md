@@ -6,15 +6,15 @@
 
 AgentDock is a local web workbench for Codex and Claude ACP adapters, project-scoped messaging, reviewed shared memory, and [AgentMeter](https://github.com/NginxL/AgentMeter) quota readings. The interface starts in Chinese and switches to English. A Python standard-library backend stores state in SQLite; a React interface provides the workspace.
 
-> **Review preview — not a production release.** The code is implemented and tested with simulated adapters. The application, real agents, and real quota probes have not been started for this review. Execution is disabled by default. Live interoperability remains an acceptance step after review.
+> **Developer preview.** Execution is disabled by default. Automated tests use simulated adapters; compatibility with live Codex and Claude adapters has not yet been verified.
 
-[Research](docs/RESEARCH.md) · [Architecture](docs/ARCHITECTURE.md) · [Review & validation](docs/REVIEW.md) · [API](docs/API.md)
+[Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Interface
 
 <p align="center"><img src="docs/images/interface.svg" alt="Illustrative AgentDock workbench with agents, a task conversation, shared memory, and quota cards" width="1100" /></p>
 
-*Annotated design illustration, using fictitious data; not a screenshot or evidence of a live agent run. The implemented UI is in [`web/src`](web/src).*
+*Annotated design illustration with fictitious data, not a runtime screenshot.*
 
 ## What is included
 
@@ -28,7 +28,7 @@ AgentDock is a local web workbench for Codex and Claude ACP adapters, project-sc
 
 This preview manages **sessions created in AgentDock**. It does not take over existing desktop windows, import every provider's sessions, implement A2A, provide semantic/vector search, or automatically install adapters. More providers require capability-tested adapters, not just a new name in a dropdown.
 
-## Build and inspect — no app startup
+## Build from source
 
 Requirements: macOS or Linux, Python 3.9+, Node.js 20.19+ and npm. No Python runtime dependencies are required when working from this checkout.
 
@@ -44,18 +44,18 @@ npm run build
 
 These commands run isolated tests and build static files. Tests use temporary databases and simulated ACP/probe subprocesses; they do not bind an application server or contact model/quota services. The frontend build is in `web/dist`.
 
-## After review: configuration and manual launch
+## Configuration and usage
 
-Launch is intentionally separate from build and test. Review [`config.example.json`](config.example.json) and the [acceptance checklist](docs/REVIEW.md) first.
+Adapter commands and the AgentMeter executable are configured in a local JSON file. See [`config.example.json`](config.example.json) for the supported fields.
 
 1. Install and pin the official project releases of [`codex-acp`](https://github.com/agentclientprotocol/codex-acp) and [`claude-agent-acp`](https://github.com/agentclientprotocol/claude-agent-acp) yourself. Paths and arguments are server configuration, not editable executable commands from the web UI. Their versions have not yet been live-validated here.
 2. Copy the example configuration to `config.local.json` (ignored by Git) and set the executable paths. To use quota refresh, point `agentmeter_command` at your existing AgentMeter executable.
-3. Start in review mode: `python3 -m agentdock --config /absolute/path/to/config.json`. This serves the UI but refuses agent and quota execution. Open the printed loopback address and enter the token from the printed local file path. The token is not placed in a URL or browser local storage.
-4. Only after approving live execution, restart with `--enable-execution`. Select a trusted project directory and start a task explicitly. Quota refresh is also an explicit action.
+3. Start the workbench: `python3 -m agentdock --config /absolute/path/to/config.local.json`. Agent and quota execution remain disabled by default. Open the printed loopback address and enter the token from the printed local file path. The token is not placed in a URL or browser local storage.
+4. To enable agent runs and quota refresh, restart with `--enable-execution`. Select a trusted project directory and start a task explicitly. Quota refresh is also an explicit action.
 
 The default address is `http://127.0.0.1:47831`. State lives in `~/.local/share/agentdock`; the directory is private to the current user. Only one instance may own a database. An interrupted run is recorded as interrupted and is never automatically replayed.
 
-**Claude execution and subscription monitoring are separate.** The Claude ACP adapter uses the Agent SDK; this preview requires `ANTHROPIC_API_KEY` in the server's environment for Claude execution. It does not offer claude.ai sign-in or claim that a Pro/Max subscription authorizes SDK inference. Model-provider charges still apply. See the [official SDK authentication guidance](https://code.claude.com/docs/en/agent-sdk/overview) and [research notes](docs/RESEARCH.md#claude-authentication-requires-a-separate-decision). AgentMeter remains a separate read-only source for the subscription quota display.
+**Claude execution and subscription monitoring are separate.** The Claude ACP adapter uses the Agent SDK; this preview requires `ANTHROPIC_API_KEY` in the server's environment for Claude execution. It does not offer claude.ai sign-in or claim that a Pro/Max subscription authorizes SDK inference. Model-provider charges still apply. See the [official SDK authentication guidance](https://code.claude.com/docs/en/agent-sdk/overview). AgentMeter remains a separate read-only source for the subscription quota display.
 
 ## Operating boundaries
 
@@ -73,10 +73,8 @@ AgentDock does not read provider OAuth credential stores. Agent authentication r
 
 ## Development
 
-See [architecture](docs/ARCHITECTURE.md) for protocol boundaries and [review](docs/REVIEW.md) for verified and unverified behavior. Submit issues with reproduction steps and sanitized fixtures; do not include credentials or private conversation logs. Keep the English and Chinese READMEs consistent.
+See [architecture](docs/ARCHITECTURE.md) for protocol boundaries and [validation](docs/REVIEW.md) for test coverage and compatibility limits. Submit issues with reproduction steps and sanitized fixtures; do not include credentials or private conversation logs. Keep the English and Chinese READMEs consistent.
 
-## Acknowledgments
+## License
 
-Design research references AionUi, Agent Orchestrator, Agor, Happy, OpenHands and the ACP/MCP specifications. This implementation is independently authored; it does not vendor their code. AgentMeter remains an external, independently usable dependency. See [NOTICE](NOTICE.md) and [research](docs/RESEARCH.md) for sources and licensing distinctions.
-
-[MIT License](LICENSE) · Not affiliated with OpenAI, Anthropic or the referenced projects.
+Released under the [MIT License](LICENSE).

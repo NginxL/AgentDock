@@ -6,15 +6,15 @@
 
 AgentDock 是本地 Web 工作台，接入 Codex、Claude 的 ACP 适配器，提供项目内通信、可审核的共享记忆，以及 [AgentMeter](https://github.com/NginxL/AgentMeter) 额度展示。界面默认中文，支持英语切换。后端使用 Python 标准库与 SQLite，前端使用 React。
 
-> **代码评审预览版，尚非生产发行版。** 已实现并使用模拟适配器测试；此次评审交付没有启动应用、真实 Agent 或额度探测。执行默认关闭，实机兼容性需在评审后单独验收。
+> **开发预览版。** 执行默认关闭。自动化测试使用模拟适配器，真实 Codex 和 Claude 适配器的兼容性尚未验证。
 
-[市场调研](docs/RESEARCH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.md) · [评审与验证](docs/REVIEW.md) · [接口说明](docs/API.md)
+[架构设计](docs/ARCHITECTURE.md) · [接口说明](docs/API.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
 ## 界面说明
 
 <p align="center"><img src="docs/images/interface.svg" alt="AgentDock 工作台示意：Agent 列表、任务对话、共享记忆与额度卡片" width="1100" /></p>
 
-*带标注的设计示意图，数据为虚构示例；不是运行截图，也不代表已经完成真实 Agent 验收。实际界面代码位于 [`web/src`](web/src)。*
+*带标注的设计示意图，使用虚构示例数据，并非运行截图。*
 
 ## 已实现范围
 
@@ -28,7 +28,7 @@ AgentDock 是本地 Web 工作台，接入 Codex、Claude 的 ACP 适配器，�
 
 本版管理的是 **AgentDock 内创建的会话**，不接管已有桌面窗口，不导入所有厂商的历史会话，不实现 A2A、向量语义检索或自动安装适配器。新增厂商需要实现并验证适配器能力，不能只增加一个名称。
 
-## 构建与检查，不启动应用
+## 从源码构建
 
 需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。从源码目录使用时，无额外 Python 运行时依赖。
 
@@ -44,18 +44,18 @@ npm run build
 
 以上只运行隔离测试并生成静态文件。测试使用临时数据库和模拟 ACP / 额度子进程，不监听应用端口，不请求模型或真实额度。前端产物位于 `web/dist`。
 
-## 评审通过后的配置与手动启动
+## 配置与使用
 
-启动与构建、测试分开。先检查 [`config.example.json`](config.example.json) 和[验收清单](docs/REVIEW.md)。
+适配器命令和 AgentMeter 可执行文件通过本地 JSON 文件配置，支持的字段见 [`config.example.json`](config.example.json)。
 
 1. 自行安装并固定 [`codex-acp`](https://github.com/agentclientprotocol/codex-acp)、[`claude-agent-acp`](https://github.com/agentclientprotocol/claude-agent-acp) 的上游发布版本。可执行路径与参数由服务端配置，Web 界面不能填写任意执行命令。本版尚未完成具体适配器版本的实机验收。
 2. 将示例配置复制到 `config.local.json`（已被 Git 忽略），填写可执行文件路径。需要额度刷新时，把 `agentmeter_command` 指向已有 AgentMeter 可执行文件。
-3. 先使用评审模式：`python3 -m agentdock --config /配置文件的绝对路径.json`。此命令会启动 UI 服务，但拒绝 Agent 与额度执行。手动打开终端显示的本机地址，从终端提示的本地文件读取访问令牌，填入界面；令牌不放进 URL 或浏览器本地存储。
-4. 只有同意真实执行后，才使用 `--enable-execution` 重新启动。选择可信的项目目录，显式开始任务；额度刷新同样需要点击触发。
+3. 启动工作台：`python3 -m agentdock --config /绝对路径/config.local.json`。Agent 与额度执行默认关闭。手动打开终端显示的本机地址，从终端提示的本地文件读取访问令牌，填入界面；令牌不放进 URL 或浏览器本地存储。
+4. 需要启用 Agent 运行与额度刷新时，使用 `--enable-execution` 重新启动。选择可信的项目目录，显式开始任务；额度刷新同样需要点击触发。
 
 默认地址为 `http://127.0.0.1:47831`，数据位于当前用户私有的 `~/.local/share/agentdock`。同一数据库只允许一个实例占用；中断的任务会记录为中断，不会自动重放。
 
-**Claude 执行认证与订阅额度监控分开。** Claude ACP 适配器使用 Agent SDK，本版要求服务端环境中存在 `ANTHROPIC_API_KEY` 才允许 Claude 执行；不提供 claude.ai 登录，也不承诺 Pro / Max 订阅可用于 SDK 推理。实际模型调用仍按提供商规则计费。依据见[官方 SDK 认证说明](https://code.claude.com/docs/en/agent-sdk/overview)及[调研认证边界](docs/RESEARCH.zh-CN.md#claude-接入必须单独审查)。AgentMeter 仍是独立的只读订阅额度来源。
+**Claude 执行认证与订阅额度监控分开。** Claude ACP 适配器使用 Agent SDK，本版要求服务端环境中存在 `ANTHROPIC_API_KEY` 才允许 Claude 执行；不提供 claude.ai 登录，也不承诺 Pro / Max 订阅可用于 SDK 推理。实际模型调用仍按提供商规则计费，详见[官方 SDK 认证说明](https://code.claude.com/docs/en/agent-sdk/overview)。AgentMeter 仍是独立的只读订阅额度来源。
 
 ## 行为边界
 
@@ -73,10 +73,8 @@ AgentDock 不读取提供商 OAuth 凭据库；执行认证由配置的适配器
 
 ## 开发与贡献
 
-协议分层见[架构](docs/ARCHITECTURE.md)，已验证与待验证范围见[评审说明](docs/REVIEW.md)。反馈请使用可复现步骤和去除敏感数据的测试样本，不上传凭据或私人会话日志。文档修改应保持中英文 README 一致。
+协议分层见[架构](docs/ARCHITECTURE.md)，测试覆盖与兼容性限制见[验证说明](docs/REVIEW.md)。反馈请使用可复现步骤和去除敏感数据的测试样本，不上传凭据或私人会话日志。文档修改应保持中英文 README 一致。
 
-## 致谢
+## 许可证
 
-设计调研参考 AionUi、Agent Orchestrator、Agor、Happy、OpenHands 和 ACP / MCP 规范；代码独立实现，没有内嵌这些项目的源码。AgentMeter 保持独立，通过其只读出口连接。来源与许可证区别见 [NOTICE](NOTICE.md) 和[调研](docs/RESEARCH.zh-CN.md)。
-
-[MIT 许可证](LICENSE) · 与 OpenAI、Anthropic 及参考项目无隶属关系。
+项目采用 [MIT 许可证](LICENSE)。
