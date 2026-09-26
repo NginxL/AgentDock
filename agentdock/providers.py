@@ -1,0 +1,525 @@
+"""Bounded native CLI transports. Importing this module does not start a process.
+
+Codex uses app-server's public JSON-RPC protocol. Claude uses its native CLI's
+stream-json control protocol; no agent SDK, credential export, or API client is
+used. Callers must only pass session IDs previously bound by this application.
+"""
+from __future__ import annotations
+
+from collections import deque
+import json
+import math
+import os
+import re
+import selectors
+import subprocess
+import threading
+import time
+import uuid
+
+from .processes import stop_group as _stop_group
+
+
+class ProviderError(Exception):
+    """A safe, stable diagnostic; never contains raw provider stderr or errors."""
+
+
+class ProviderCancelled(Exception):
+    pass
+
+
+_MAX_LINE = 524288
+_MAX_OUTPUT = 8388608
+_MAX_EVENTS = 10000
+_MAX_RESULT = 262144
+_MAX_APPROVALS = 64
+
+
+def _identifier(value):
+    return isinstance(value, str) and bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}", value))
+
+
+def _validate_mcp(config):
+    if (not isinstance(config, dict) or not isinstance(config.get("command"), str)
+            or not config["command"] or "\x00" in config["command"]):
+        raise ProviderError("The configured AgentDock MCP command is invalid.")
+    args, env = config.get("args", []), config.get("env", {})
+    if (not isinstance(args, list) or any(not isinstance(v, str) or "\x00" in v for v in args)
+            or not isinstance(env, dict) or any(not isinstance(k, str) or not k
+                or "=" in k or "\x00" in k or not isinstance(v, str) or "\x00" in v
+                for k, v in env.items())):
+        raise ProviderError("The configured AgentDock MCP arguments are invalid.")
+    return {"command": config["command"], "args": list(args)}, dict(env)
+
+
+class _Pipe:
+    """One worker owns pipe IO. Stderr is bounded and drained, never recorded."""
+    def __init__(self, command, cwd, env, stop, timeout):
+        self.stop = stop
+        self.deadline = time.monotonic() + timeout
+        self.process = None
+        self.selector = selectors.DefaultSelector()
+        self.buffer, self.writes = bytearray(), bytearray()
+        self.messages = deque()
+        self.total = self.count = 0
+        self.stdout_open = True
+        self.check()
+        try:
+            self.process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            start_new_session=True, bufsize=0)
+            for stream, name in ((self.process.stdout, "stdout"), (self.process.stderr, "stderr")):
+                os.set_blocking(stream.fileno(), False)
+                self.selector.register(stream, selectors.EVENT_READ, name)
+            os.set_blocking(self.process.stdin.fileno(), False)
+        except Exception:
+            self.close()
+            raise ProviderError("Could not start the configured native CLI. Check its installation and configuration.") from None
+
+    def check(self):
+        if self.stop.is_set():
+            raise ProviderCancelled()
+        if time.monotonic() >= self.deadline:
+            raise ProviderError("Agent run timed out and its processes were stopped.")
+
+    def send(self, message):
+        encoded = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode() + b"\n"
+        if len(encoded) > _MAX_LINE or len(self.writes) + len(encoded) > _MAX_LINE * 2:
+            raise ProviderError("Native CLI request exceeded the size limit.")
+        self.writes.extend(encoded)
+        try:
+            self.selector.get_key(self.process.stdin)
+        except KeyError:
+            self.selector.register(self.process.stdin, selectors.EVENT_WRITE, "stdin")
+
+    def next(self):
+        while True:
+            self.check()
+            if self.messages:
+                return self.messages.popleft()
+            if not self.stdout_open:
+                raise ProviderError("Native CLI exited before the turn completed. Check CLI login and compatibility.")
+            for key, _ in self.selector.select(timeout=0.05):
+                if key.data == "stdin":
+                    try:
+                        count = os.write(key.fd, self.writes)
+                    except BlockingIOError:
+                        continue
+                    except (BrokenPipeError, OSError):
+                        raise ProviderError("Native CLI closed its input unexpectedly.") from None
+                    del self.writes[:count]
+                    if not self.writes:
+                        self.selector.unregister(key.fileobj)
+                    continue
+                try:
+                    data = os.read(key.fd, 65536)
+                except BlockingIOError:
+                    continue
+                if not data:
+                    self.selector.unregister(key.fileobj)
+                    if key.data == "stdout":
+                        self.stdout_open = False
+                        if self.buffer:
+                            raise ProviderError("Native CLI ended with an incomplete protocol message.")
+                    continue
+                self.total += len(data)
+                if self.total > _MAX_OUTPUT:
+                    raise ProviderError("Native CLI exceeded the bounded output limit.")
+                if key.data == "stderr":
+                    continue
+                self.buffer.extend(data)
+                while b"\n" in self.buffer:
+                    line, _, tail = self.buffer.partition(b"\n")
+                    self.buffer = bytearray(tail)
+                    if len(line) > _MAX_LINE:
+                        raise ProviderError("Native CLI message exceeded the line limit.")
+                    try:
+                        message = json.loads(line)
+                    except (ValueError, UnicodeError):
+                        raise ProviderError("Native CLI emitted invalid JSON.") from None
+                    if not isinstance(message, dict):
+                        raise ProviderError("Native CLI emitted an invalid protocol message.")
+                    self.count += 1
+                    if self.count > _MAX_EVENTS:
+                        raise ProviderError("Native CLI exceeded the event limit.")
+                    self.messages.append(message)
+                if len(self.buffer) > _MAX_LINE:
+                    raise ProviderError("Native CLI message exceeded the line limit.")
+
+    def cancel_notice(self, message):
+        """Best effort only; process-group termination is always authoritative."""
+        try:
+            self.writes.clear()
+            data = json.dumps(message, separators=(",", ":")).encode() + b"\n"
+            os.write(self.process.stdin.fileno(), data)
+        except (OSError, ValueError):
+            pass
+
+    def close(self):
+        self.selector.close()
+        if self.process:
+            _stop_group(self.process)
+            for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
+                if stream:
+                    stream.close()
+
+
+class _Callbacks:
+    def __init__(self, pipe, emit, bind_session, approve, secrets):
+        self.pipe, self.emit_callback = pipe, emit
+        self.bind_session, self.approve_callback = bind_session, approve
+        self.secrets = [v for k, v in secrets.items() if v and re.search(r"TOKEN|KEY|SECRET|CAPABILITY", k, re.I)]
+        self.approvals = 0
+
+    def clean(self, value):
+        encoded = json.dumps(value, ensure_ascii=False)
+        for secret in self.secrets:
+            # JSON quoting handles secrets with quotes/newlines correctly.
+            encoded = encoded.replace(json.dumps(secret, ensure_ascii=False)[1:-1], "[redacted]")
+        if len(encoded.encode()) > _MAX_RESULT:
+            raise ProviderError("Native CLI event exceeded the size limit.")
+        return json.loads(encoded)
+
+    def emit(self, kind, payload):
+        self.emit_callback(kind, self.clean(payload))
+
+    def text(self, text):
+        if not isinstance(text, str):
+            raise ProviderError("Native CLI returned an invalid text event.")
+        if text:
+            self.emit("agent_message_chunk", {"content": {"type": "text", "text": text}})
+
+    def approve(self, request, allow="accept", deny="decline"):
+        self.approvals += 1
+        if self.approvals > _MAX_APPROVALS:
+            raise ProviderError("Native CLI exceeded the permission request limit.")
+        request = self.clean(request)
+        done, answer = threading.Event(), []
+        options = [{"optionId": allow, "name": "Allow once", "kind": "allow_once"},
+                   {"optionId": deny, "name": "Deny", "kind": "reject_once"}]
+
+        def decide():
+            try:
+                answer.append(self.approve_callback(request, options))
+            except Exception:
+                answer.append(None)
+            finally:
+                done.set()
+
+        # A slow UI callback must not bypass the run deadline or cancellation.
+        threading.Thread(target=decide, daemon=True, name="agentdock-permission").start()
+        while not done.wait(0.05):
+            self.pipe.check()
+        self.pipe.check()
+        if not answer or answer[0] not in (allow, deny):
+            raise ProviderError("Permission request was not resolved; the agent run was stopped.")
+        return answer[0]
+
+
+class _Codex:
+    def __init__(self, pipe, callbacks):
+        self.pipe, self.cb = pipe, callbacks
+        self.thread_id = self.turn_id = None
+        self.request_id = 0
+        self.permission_ids = set()
+        self.finished = None
+        self.final_messages = {}
+        self.deltas = {}
+
+    def request(self, method, params):
+        self.request_id += 1
+        request_id = self.request_id
+        self.pipe.send({"id": request_id, "method": method, "params": params})
+        while True:
+            message = self.pipe.next()
+            if "method" not in message:
+                if message.get("id") != request_id:
+                    raise ProviderError("Codex returned an unexpected response.")
+                if "error" in message:
+                    raise ProviderError("Codex rejected a protocol request. Check CLI login and compatibility.")
+                if not isinstance(message.get("result"), dict):
+                    raise ProviderError("Codex returned an invalid response.")
+                return message["result"]
+            self.handle(message)
+
+    def handle(self, message):
+        method, params = message.get("method"), message.get("params", {})
+        if not isinstance(method, str) or not isinstance(params, dict):
+            raise ProviderError("Codex emitted invalid method parameters.")
+        if self.thread_id and params.get("threadId", self.thread_id) != self.thread_id:
+            raise ProviderError("Codex emitted an event for a different session.")
+        if self.turn_id and params.get("turnId", self.turn_id) != self.turn_id:
+            raise ProviderError("Codex emitted an event for a different turn.")
+        if "id" in message:
+            identifier = message["id"]
+            if (not isinstance(identifier, (str, int)) or isinstance(identifier, bool)
+                    or identifier in self.permission_ids):
+                raise ProviderError("Codex reused an invalid permission request ID.")
+            self.permission_ids.add(identifier)
+            if len(self.permission_ids) > _MAX_APPROVALS:
+                raise ProviderError("Codex exceeded the server request limit.")
+            if method in ("item/commandExecution/requestApproval", "item/fileChange/requestApproval"):
+                decision = self.cb.approve({"provider": "codex", "method": method, **params})
+                self.pipe.send({"id": identifier, "result": {"decision": decision}})
+            elif method == "item/permissions/requestApproval":
+                permissions = params.get("permissions")
+                if not isinstance(permissions, dict):
+                    raise ProviderError("Codex requested invalid permissions.")
+                decision = self.cb.approve({"provider": "codex", "method": method, **params})
+                self.pipe.send({"id": identifier, "result": {
+                    "permissions": permissions if decision == "accept" else {}, "scope": "turn"}})
+            elif method == "mcpServer/elicitation/request":
+                # Arbitrary schemas and URL flows need a dedicated form UI.
+                self.pipe.send({"id": identifier, "result": {"action": "decline", "content": None}})
+                self.cb.emit("agent_update", {"type": "unsupported_input", "provider": "codex"})
+            else:
+                self.pipe.send({"id": identifier, "error": {
+                    "code": -32601, "message": "This client does not support that request."}})
+            return
+        if method == "item/agentMessage/delta":
+            item = params.get("itemId")
+            if not _identifier(item) or not isinstance(params.get("delta"), str):
+                raise ProviderError("Codex returned an invalid message delta.")
+            self.deltas[item] = self.deltas.get(item, "") + params["delta"]
+            if sum(len(v.encode()) for v in self.deltas.values()) > _MAX_RESULT:
+                raise ProviderError("Codex response exceeded the text limit.")
+            self.cb.text(params["delta"])
+        elif method in ("item/started", "item/completed"):
+            item = params.get("item")
+            if not isinstance(item, dict):
+                raise ProviderError("Codex returned an invalid item event.")
+            if item.get("type") == "agentMessage" and method == "item/completed":
+                identifier, text = item.get("id"), item.get("text")
+                if not _identifier(identifier) or not isinstance(text, str):
+                    raise ProviderError("Codex returned an invalid assistant message.")
+                self.final_messages[identifier] = text
+                if identifier not in self.deltas:
+                    self.cb.text(text)
+            elif item.get("type") not in ("agentMessage", "reasoning", "userMessage"):
+                self.cb.emit("tool_call" if method == "item/started" else "tool_result", {"provider": "codex", "item": item})
+        elif method == "turn/completed":
+            turn = params.get("turn")
+            if not isinstance(turn, dict) or not _identifier(turn.get("id")):
+                raise ProviderError("Codex returned an invalid turn completion.")
+            if self.turn_id and turn["id"] != self.turn_id:
+                raise ProviderError("Codex completed a different turn.")
+            self.finished = turn
+        elif method == "error" and not params.get("willRetry", False):
+            raise ProviderError("Codex reported a run failure; private error details were omitted.")
+
+    def run(self, cwd, prompt, native_session_id, mcp, env):
+        self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.2.0"},
+                                    "capabilities": {"experimentalApi": False}})
+        self.pipe.send({"method": "initialized", "params": {}})
+        params = {"cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "workspace-write",
+                  "approvalsReviewer": "user", "config": {
+                      "mcp_servers": {"agentdock": {**mcp, "env_vars": list(env), "required": True}}}}
+        if native_session_id:
+            params["threadId"] = native_session_id
+            # Restore state without returning potentially unbounded turn history.
+            params["excludeTurns"] = True
+        response = self.request("thread/resume" if native_session_id else "thread/start", params)
+        thread = response.get("thread")
+        if not isinstance(thread, dict) or not _identifier(thread.get("id")):
+            raise ProviderError("Codex did not return a valid native session.")
+        self.thread_id = thread["id"]
+        if native_session_id and self.thread_id != native_session_id:
+            raise ProviderError("Codex resumed a different native session.")
+        self.cb.bind_session(self.thread_id)
+        response = self.request("turn/start", {"threadId": self.thread_id,
+            "input": [{"type": "text", "text": prompt}], "approvalPolicy": "untrusted",
+            "approvalsReviewer": "user"})
+        turn = response.get("turn")
+        if not isinstance(turn, dict) or not _identifier(turn.get("id")):
+            raise ProviderError("Codex did not return a valid turn.")
+        self.turn_id = turn["id"]
+        while self.finished is None:
+            self.handle(self.pipe.next())
+        if self.finished["id"] != self.turn_id:
+            raise ProviderError("Codex completed a different turn.")
+        status = self.finished.get("status")
+        if status == "interrupted":
+            raise ProviderCancelled()
+        if status != "completed":
+            raise ProviderError("Codex stopped before completing the turn.")
+        result = "\n".join(self.final_messages.values() or self.deltas.values())
+        if len(result.encode()) > _MAX_RESULT:
+            raise ProviderError("Codex response exceeded the text limit.")
+        return self.cb.clean(result)
+
+    def cancel(self):
+        if self.thread_id and self.turn_id:
+            self.pipe.cancel_notice({"id": self.request_id + 1, "method": "turn/interrupt",
+                                     "params": {"threadId": self.thread_id, "turnId": self.turn_id}})
+
+
+class _Claude:
+    def __init__(self, pipe, callbacks, native_id):
+        self.pipe, self.cb, self.native_id = pipe, callbacks, native_id
+        self.permission_ids = set()
+        self.bound = False
+        self.saw_delta = False
+        self.message_id = None
+        self.messages = []
+
+    def handle_permission(self, message):
+        identifier, request = message.get("request_id"), message.get("request")
+        if not _identifier(identifier) or identifier in self.permission_ids or not isinstance(request, dict):
+            raise ProviderError("Claude returned an invalid control request.")
+        self.permission_ids.add(identifier)
+        if len(self.permission_ids) > _MAX_APPROVALS:
+            raise ProviderError("Claude exceeded the control request limit.")
+        if request.get("subtype") != "can_use_tool":
+            self.pipe.send({"type": "control_response", "response": {"subtype": "error",
+                "request_id": identifier, "error": "This client does not support that control request."}})
+            return
+        name, tool_input = request.get("tool_name"), request.get("input")
+        if not isinstance(name, str) or not name or not isinstance(tool_input, dict):
+            raise ProviderError("Claude requested invalid tool permissions.")
+        decision = self.cb.approve({"provider": "claude", **request}, "allow", "deny")
+        response = ({"behavior": "allow", "updatedInput": tool_input} if decision == "allow" else
+                    {"behavior": "deny", "message": "The user did not approve this action."})
+        self.pipe.send({"type": "control_response", "response": {
+            "subtype": "success", "request_id": identifier, "response": response}})
+
+    def validate_session(self, message):
+        native_id = message.get("session_id")
+        if native_id is not None and native_id != self.native_id:
+            raise ProviderError("Claude emitted an event for a different native session.")
+        if native_id and not self.bound:
+            self.cb.bind_session(native_id)
+            self.bound = True
+
+    def run(self, prompt):
+        self.pipe.send({"type": "control_request", "request_id": "agentdock_initialize",
+                        "request": {"subtype": "initialize", "hooks": None}})
+        while True:
+            message = self.pipe.next()
+            self.validate_session(message)
+            if message.get("type") == "control_response":
+                response = message.get("response")
+                if (not isinstance(response, dict) or response.get("request_id") != "agentdock_initialize"
+                        or response.get("subtype") != "success" or not isinstance(response.get("response"), dict)):
+                    raise ProviderError("Claude rejected the control handshake. Check CLI compatibility.")
+                break
+            if message.get("type") == "control_request":
+                self.handle_permission(message)
+        self.pipe.send({"type": "user", "session_id": self.native_id, "parent_tool_use_id": None,
+                        "message": {"role": "user", "content": prompt}})
+        while True:
+            message = self.pipe.next()
+            self.validate_session(message)
+            kind = message.get("type")
+            if kind == "control_request":
+                self.handle_permission(message)
+            elif kind == "stream_event" and not message.get("parent_tool_use_id"):
+                event = message.get("event", {})
+                if not isinstance(event, dict):
+                    raise ProviderError("Claude returned an invalid stream event.")
+                if event.get("type") == "message_start":
+                    self.saw_delta = False
+                if event.get("type") == "content_block_delta":
+                    delta = event.get("delta", {})
+                    if isinstance(delta, dict) and delta.get("type") == "text_delta":
+                        self.saw_delta = True
+                        self.cb.text(delta.get("text"))
+            elif kind in ("assistant", "user"):
+                if kind == "assistant" and message.get("error"):
+                    raise ProviderError("Claude reported a provider error; private error details were omitted.")
+                body = message.get("message", {})
+                content = body.get("content", []) if isinstance(body, dict) else []
+                if not isinstance(content, list):
+                    raise ProviderError("Claude returned invalid message content.")
+                for block in content:
+                    if not isinstance(block, dict):
+                        raise ProviderError("Claude returned an invalid content block.")
+                    if block.get("type") == "text" and kind == "assistant" and not message.get("parent_tool_use_id"):
+                        text = block.get("text")
+                        if not isinstance(text, str):
+                            raise ProviderError("Claude returned an invalid assistant message.")
+                        self.messages.append(text)
+                        if sum(len(v.encode()) for v in self.messages) > _MAX_RESULT:
+                            raise ProviderError("Claude response exceeded the text limit.")
+                        if not self.saw_delta:
+                            self.cb.text(text)
+                    elif block.get("type") in ("tool_use", "tool_result"):
+                        self.cb.emit("tool_call" if block["type"] == "tool_use" else "tool_result",
+                                     {"provider": "claude", "item": block})
+            elif kind == "result":
+                if message.get("is_error") or message.get("subtype") != "success":
+                    raise ProviderError("Claude stopped before completing the turn. Check CLI login and limits.")
+                if not self.bound:
+                    raise ProviderError("Claude did not confirm the native session.")
+                result = message.get("result", "\n".join(self.messages))
+                if not isinstance(result, str) or len(result.encode()) > _MAX_RESULT:
+                    raise ProviderError("Claude returned an invalid final result.")
+                if not self.messages and not self.saw_delta:
+                    self.cb.text(result)
+                return self.cb.clean(result)
+
+    def cancel(self):
+        self.pipe.cancel_notice({"type": "control_request", "request_id": "agentdock_interrupt",
+                                 "request": {"subtype": "interrupt"}})
+
+
+def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
+            emit, bind_session, approve, timeout=900):
+    """Run one turn and return final text, retaining native session identity.
+
+    ``command`` is a trusted server-side argv prefix (``codex app-server`` or
+    ``claude``), never user/model supplied. ``mcp_config`` is the sole AgentDock
+    stdio server descriptor: ``{command, args, env}``. The caller owns session
+    authorization and callbacks; ``approve`` returns an offered optionId.
+    Cancellation and deadlines stop the whole child process group.
+    """
+    if provider not in ("codex", "claude"):
+        raise ProviderError("Unsupported native agent provider.")
+    if (not isinstance(command, list) or not command or any(not isinstance(v, str) or not v
+            or "\x00" in v for v in command)):
+        raise ProviderError("Configure a native CLI command for this provider.")
+    if not isinstance(prompt, str) or not prompt.strip() or len(prompt.encode()) > 400000:
+        raise ProviderError("Agent prompt exceeds the supported size.")
+    if native_session_id is not None and not _identifier(native_session_id):
+        raise ProviderError("The saved native session identifier is invalid.")
+    if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 86400:
+        raise ProviderError("The agent run timeout is invalid.")
+    mcp, additions = _validate_mcp(mcp_config)
+    env = dict(os.environ)
+    env.update(additions)
+    argv = list(command)
+    native_id = native_session_id
+    if provider == "codex":
+        argv += ["--listen", "stdio://"]
+    else:
+        # Each worker owns one foreground turn; background work cannot outlive it.
+        env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
+        if native_id:
+            try:
+                uuid.UUID(native_id)
+            except ValueError:
+                raise ProviderError("The saved Claude session identifier is invalid.") from None
+        else:
+            native_id = str(uuid.uuid4())
+        argv += ["--print", "--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
+                 "--include-partial-messages", "--permission-prompt-tool", "stdio",
+                 "--permission-mode", "manual", "--strict-mcp-config",
+                 "--mcp-config", json.dumps({"mcpServers": {"agentdock": {"type": "stdio", **mcp}}})]
+        argv += ["--resume=" + native_id] if native_session_id else ["--session-id", native_id]
+    pipe = adapter = None
+    try:
+        pipe = _Pipe(argv, cwd, env, stop, timeout)
+        callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
+        if provider == "codex":
+            adapter = _Codex(pipe, callbacks)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions)
+        adapter = _Claude(pipe, callbacks, native_id)
+        return adapter.run(prompt)
+    except (ProviderCancelled, ProviderError):
+        if adapter:
+            adapter.cancel()
+        raise
+    except Exception:
+        raise ProviderError("Native agent run failed; private process details were omitted.") from None
+    finally:
+        if pipe:
+            pipe.close()

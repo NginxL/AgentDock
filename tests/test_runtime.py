@@ -1,234 +1,231 @@
-import os
+"""Dispatcher integration tests with a deterministic, non-network native executor."""
+import json
 from pathlib import Path
 import sys
 import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
 
 from agentdock.runtime import Runtime, RuntimeFailure
-from agentdock.store import Forbidden, Store
-
-
-class RuntimeStore:
-    def __init__(self, path):
-        self.path = path
-        self.runs = {}
-        self.events = []
-        self.approvals = {}
-        self.capabilities = set()
-        self.provider = "codex"
-        self.lock = threading.RLock()
-
-    def get_session(self, session_id):
-        return {"id": session_id, "agent_id": "agent", "project_id": "project"}
-
-    def get_agent(self, agent_id):
-        return {"id": agent_id, "provider": self.provider}
-
-    def get_project(self, project_id):
-        return {"id": project_id, "path": self.path}
-
-    def begin_run(self, session_id, prompt):
-        with self.lock:
-            if any(r["status"] == "running" for r in self.runs.values()):
-                raise RuntimeFailure("Agent is already active")
-            value = {"id": str(len(self.runs) + 1), "session_id": session_id,
-                     "agent_id": "agent", "project_id": "project", "status": "running"}
-            self.runs[value["id"]] = value
-            return dict(value)
-
-    def context_for_run(self, run_id):
-        return "Approved shared fact and mailbox context"
-
-    def issue_capability(self, run_id):
-        self.capabilities.add(run_id)
-        return "test-capability-never-persist"
-
-    def revoke_capabilities(self, run_id):
-        self.capabilities.discard(run_id)
-
-    def append_event(self, project_id, session_id, kind, payload):
-        self.events.append({"kind": kind, "payload": payload})
-
-    def finish_run(self, run_id, status, error=None):
-        for approval in self.approvals.values():
-            if approval["status"] == "pending":
-                approval["status"] = "cancelled"
-        self.runs[run_id].update(status=status, error=error)
-
-    def create_approval(self, run_id, request, options):
-        value = {"id": "approval-1", "run_id": run_id, "status": "pending", "options": options}
-        self.approvals[value["id"]] = value
-        return value
-
-    def resolve_approval(self, approval_id, option_id):
-        approval = self.approvals[approval_id]
-        if approval["status"] != "pending":
-            raise RuntimeFailure("Approval is not pending")
-        approval.update(status="resolved", option_id=option_id)
-        return approval
+from agentdock.providers import ProviderCancelled
+from agentdock.store import Forbidden, Invalid, Store
 
 
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory()
-        self.store = RuntimeStore(self.directory.name)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(':memory:')
+        self.project = self.store.add_project('Fixture', self.tmp.name)
+        self.a = self.store.add_agent(self.project['id'], 'Planner', 'codex')
+        self.b = self.store.add_agent(self.project['id'], 'Builder', 'claude')
+        self.sa = self.store.add_session(self.a['id'], 'Original conversation')
+        self.sb = self.store.add_session(self.b['id'], 'Implementation')
+        self.calls = []
         self.runtimes = []
+        self.gate = threading.Event()
 
     def tearDown(self):
+        self.gate.set()
         for runtime in self.runtimes:
             runtime.close()
-        self.directory.cleanup()
+        self.store.close()
+        self.tmp.cleanup()
 
-    def make_runtime(self, scenario="normal", **overrides):
-        command = [sys.executable, str(Path(__file__).with_name("fake_acp.py")), scenario]
-        config = {"execution_enabled": True, "commands": {"codex": command, "claude": command},
-                  "base_url": "http://127.0.0.1:47831", "python": sys.executable,
-                  "package_root": self.directory.name, "run_timeout": 4, "approval_timeout": 2}
-        config.update(overrides)
-        runtime = Runtime(self.store, config)
+    def wait_for(self, predicate):
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            if predicate(): return
+            time.sleep(.005)
+        self.fail('Local fixture did not reach its expected state')
+
+    def executor(self, provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900):
+        token = mcp['env']['AGENTDOCK_CAPABILITY']
+        run = self.store.capability_run(token)
+        self.calls.append(dict(provider=provider, native_id=native_id, prompt=prompt, run=run, token=token))
+        bind(native_id or 'native-' + run['session_id'])
+        if '<block>' in run['prompt']:
+            while not self.gate.wait(.01):
+                if stop.is_set(): raise ProviderCancelled()
+        if '<permission>' in run['prompt']:
+            picked = approve({'command': 'fixture command'}, [
+                {'optionId': 'allow', 'name': 'Allow once', 'kind': 'allow_once'},
+                {'optionId': 'deny', 'name': 'Reject', 'kind': 'reject_once'}])
+            emit('tool_result', {'decision': picked})
+        if '<delegate>' in run['prompt']:
+            self.runtime.respond_tool(token, 'message_send', {
+                'recipient_id': self.b['id'], 'recipient_session_id': self.sb['id'],
+                'body': 'Implement the reviewed plan', 'idempotency_key': 'one-handoff'})
+        if '<failure>' in run['prompt']:
+            raise RuntimeFailure('Fixture failed')
+        result = 'Implemented and verified' if provider == 'claude' else 'Reviewed result'
+        emit('agent_message_chunk', {'content': {'type': 'text', 'text': result}})
+        return result
+
+    def make_runtime(self, executor=None, **config):
+        options = {'execution_enabled': True, 'commands': {'codex': ['test-codex'], 'claude': ['test-claude']},
+                   'python': sys.executable, 'package_root': self.tmp.name, 'base_url': 'http://127.0.0.1:47831',
+                   'approval_timeout': 1, 'run_timeout': 2}
+        options.update(config)
+        runtime = Runtime(self.store, options, executor=executor or self.executor)
+        self.runtime = runtime
         self.runtimes.append(runtime)
         return runtime
 
-    def wait_for(self, condition):
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            if condition():
-                return
-            time.sleep(0.01)
-        self.fail("Fixture did not finish before its test deadline")
-
     def finished(self, run):
-        self.wait_for(lambda: self.store.runs[run["id"]]["status"] != "running")
-        self.assertFalse(self.store.capabilities)
-        return self.store.runs[run["id"]]
+        self.wait_for(lambda: self.store.get_run(run['id'])['status'] not in ('queued', 'running'))
+        return self.store.get_run(run['id'])
 
-    def test_default_disabled_never_spawns(self):
+    def test_review_mode_does_not_dispatch_or_persist_pending_tasks(self):
         runtime = self.make_runtime(execution_enabled=False)
-        with patch("agentdock.runtime.subprocess.Popen") as spawn:
-            with self.assertRaises(Forbidden):
-                runtime.start("session", "task")
-            spawn.assert_not_called()
-        self.assertFalse(self.store.runs)
+        with self.assertRaises(Forbidden): runtime.start(self.sa['id'], 'Task')
+        with self.assertRaises(Forbidden): runtime.send_message(self.project['id'], self.b['id'], 'Task')
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.store.state()['runs'], [])
+        self.assertIsNone(runtime._scheduler)
 
-    def test_claude_requires_api_key_before_starting(self):
-        self.store.provider = "claude"
+    def test_two_turns_resume_native_session_without_history_replay(self):
         runtime = self.make_runtime()
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaisesRegex(RuntimeFailure, "ANTHROPIC_API_KEY"):
-                runtime.start("session", "task")
-        self.assertFalse(self.store.runs)
+        first = self.finished(runtime.start(self.sa['id'], 'First task unique marker'))
+        second = self.finished(runtime.start(self.sa['id'], 'Second task'))
+        self.assertEqual(first['status'], 'completed')
+        self.assertEqual(second['status'], 'completed')
+        self.assertIsNone(self.calls[0]['native_id'])
+        self.assertEqual(self.calls[1]['native_id'], 'native-' + self.sa['id'])
+        self.assertNotIn('First task unique marker', self.calls[1]['prompt'])
+        self.assertNotIn('inbox', self.calls[1]['prompt'])
+        for call in self.calls:
+            with self.assertRaises(Forbidden): self.store.capability_run(call['token'])
 
-    def test_protocol_context_events_and_revocation(self):
+    def test_delegate_executes_and_result_resumes_exact_sender_session(self):
         runtime = self.make_runtime()
-        result = self.finished(runtime.start("session", "Review only"))
-        self.assertEqual(result["status"], "completed")
-        events = str(self.store.events)
-        self.assertIn("Approved shared fact", events)
-        self.assertIn("Review only", events)
-        self.assertNotIn("test-capability-never-persist", events)
+        first = runtime.start(self.sa['id'], '<delegate> Ask Builder to implement')
+        self.wait_for(lambda: len(self.calls) == 3 and all(r['status'] == 'completed' for r in self.store.state()['runs']))
+        self.assertEqual([c['provider'] for c in self.calls], ['codex', 'claude', 'codex'])
+        self.assertEqual([c['run']['origin'] for c in self.calls], ['human', 'delegate', 'reply'])
+        self.assertEqual(self.calls[2]['run']['session_id'], self.sa['id'])
+        self.assertEqual(self.calls[2]['native_id'], self.calls[0]['run']['session_id'].join(['native-', '']))
+        self.assertIn('Implemented and verified', self.calls[2]['prompt'])
+        delivery = self.store.state()['messages'][0]
+        self.assertEqual(delivery['status'], 'completed')
+        self.assertEqual(delivery['result'], 'Implemented and verified')
+        self.assertEqual(delivery['sender_run_id'], first['id'])
+        self.assertTrue(delivery['reply_run_id'])
 
-    def test_permissions_wait_for_explicit_valid_choice(self):
-        runtime = self.make_runtime("permission")
-        run = runtime.start("session", "task")
-        self.wait_for(lambda: bool(self.store.approvals))
-        self.assertEqual(self.store.runs[run["id"]]["status"], "running")
-        with self.assertRaises(ValueError):
-            runtime.approve("approval-1", "made-up-option")
-        runtime.approve("approval-1", "deny")
-        with self.assertRaises(RuntimeFailure):
-            runtime.approve("approval-1", "allow")
-        self.assertEqual(self.finished(run)["status"], "completed")
-        self.assertIn('deny', str(self.store.events))
-
-    def test_permission_timeout_fails_closed(self):
-        runtime = self.make_runtime("permission", approval_timeout=0.1)
-        result = self.finished(runtime.start("session", "task"))
-        self.assertEqual(result["status"], "failed")
-        self.assertIn("expired", result["error"])
-        self.assertEqual(self.store.approvals["approval-1"]["status"], "cancelled")
-        with self.assertRaises(RuntimeFailure):
-            runtime.approve("approval-1", "allow")
-
-    def test_cancel_stops_process_and_revokes_capability(self):
-        runtime = self.make_runtime("hang")
-        run = runtime.start("session", "task")
-        self.wait_for(lambda: bool(runtime._runs["session"].process))
-        process = runtime._runs["session"].process
-        runtime.cancel("session")
-        self.assertEqual(self.finished(run)["status"], "cancelled")
-        self.assertIsNotNone(process.poll())
-
-    def test_one_active_run_per_agent(self):
-        runtime = self.make_runtime("hang")
-        run = runtime.start("session", "task")
-        with self.assertRaises(RuntimeFailure):
-            runtime.start("another-session", "task")
-        runtime.cancel("session")
-        self.finished(run)
-
-    def test_timeout_stops_process(self):
-        runtime = self.make_runtime("hang", run_timeout=0.15)
-        result = self.finished(runtime.start("session", "task"))
-        self.assertEqual(result["status"], "failed")
-        self.assertIn("timed out", result["error"])
-
-    def test_protocol_failures_are_bounded_and_private(self):
-        for scenario in ("crash", "invalid", "flood", "version", "wrong-session"):
-            with self.subTest(scenario=scenario):
-                runtime = self.make_runtime(scenario)
-                result = self.finished(runtime.start("session", "task"))
-                self.assertEqual(result["status"], "failed")
-                self.assertNotIn("private-debug-secret", str(result))
-                runtime.close()
-
-    def test_closed_runtime_rejects_work(self):
+    def test_busy_workspace_queues_and_drains_automatically(self):
         runtime = self.make_runtime()
+        first = runtime.start(self.sa['id'], '<block> Task')
+        self.wait_for(lambda: len(self.calls) == 1)
+        second = runtime.start(self.sb['id'], 'Task B')
+        self.assertEqual(self.store.get_run(second['id'])['status'], 'queued')
+        self.assertEqual(len(self.calls), 1)
+        self.gate.set()
+        self.assertEqual(self.finished(first)['status'], 'completed')
+        self.assertEqual(self.finished(second)['status'], 'completed')
+        self.assertEqual(len(self.calls), 2)
+
+    def test_independent_workspaces_run_while_another_is_busy(self):
+        runtime = self.make_runtime()
+        first = runtime.start(self.sa['id'], '<block>')
+        self.wait_for(lambda: len(self.calls) == 1)
+        with tempfile.TemporaryDirectory() as other:
+            project = self.store.add_project('Independent', other)
+            agent = self.store.add_agent(project['id'], 'Second', 'codex')
+            session = self.store.add_session(agent['id'], 'Task')
+            run = runtime.start(session['id'], 'Independent work')
+            self.assertEqual(self.finished(run)['status'], 'completed')
+            self.assertEqual(self.store.get_run(first['id'])['status'], 'running')
+        runtime.cancel_run(first['id'])
+        self.assertEqual(self.finished(first)['status'], 'cancelled')
+
+    def test_cancel_queued_task_never_invokes_executor(self):
+        runtime = self.make_runtime()
+        first = runtime.start(self.sa['id'], '<block>')
+        self.wait_for(lambda: len(self.calls) == 1)
+        queued = runtime.start(self.sb['id'], 'Must not execute')
+        runtime.cancel_run(queued['id'])
+        self.gate.set()
+        self.finished(first)
+        self.assertEqual(self.store.get_run(queued['id'])['status'], 'cancelled')
+        self.assertEqual(len(self.calls), 1)
+
+    def test_human_dispatch_routes_and_deduplicates(self):
+        runtime = self.make_runtime()
+        one = runtime.send_message(self.project['id'], self.b['id'], 'Build', idempotency_key='retry', recipient_session_id=self.sb['id'])
+        two = runtime.send_message(self.project['id'], self.b['id'], 'Build', idempotency_key='retry', recipient_session_id=self.sb['id'])
+        self.assertEqual(one['run_id'], two['run_id'])
+        self.assertEqual(self.finished({'id': one['run_id']})['status'], 'completed')
+        self.assertEqual(len(self.calls), 1)
+        self.assertIsNone(self.store.get_message(one['id'])['reply_run_id'])
+
+    def test_permission_decision_is_explicit_and_single_use(self):
+        runtime = self.make_runtime()
+        run = runtime.start(self.sa['id'], '<permission>')
+        self.wait_for(lambda: bool(self.store.state()['approvals']))
+        approval = self.store.state()['approvals'][0]
+        with self.assertRaises(Invalid): runtime.approve(approval['id'], 'anything')
+        runtime.approve(approval['id'], 'deny')
+        with self.assertRaises(RuntimeFailure): runtime.approve(approval['id'], 'allow')
+        self.assertEqual(self.finished(run)['status'], 'completed')
+        self.assertEqual(self.store.get_approval(approval['id'])['picked_option_id'], 'deny')
+
+    def test_permission_timeout_and_cancel_fail_closed(self):
+        runtime = self.make_runtime(approval_timeout=.08)
+        run = runtime.start(self.sa['id'], '<permission>')
+        result = self.finished(run)
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('expired', result['error'])
+        self.assertEqual(self.store.state()['approvals'], [])
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM capabilities WHERE revoked=0').fetchone()[0], 0)
+
+    def test_failure_result_returns_to_sender(self):
+        def executor(*args, **kwargs):
+            if args[0] == 'claude': raise RuntimeFailure('Fixture provider unavailable')
+            return self.executor(*args, **kwargs)
+        runtime = self.make_runtime(executor)
+        runtime.start(self.sa['id'], '<delegate>')
+        self.wait_for(lambda: any(c['run']['origin'] == 'reply' for c in self.calls))
+        reply = next(c for c in self.calls if c['run']['origin'] == 'reply')
+        self.assertIn('Fixture provider unavailable', reply['prompt'])
+        self.assertEqual(self.store.state()['messages'][0]['status'], 'failed')
+
+    def test_capability_redacted_from_stream_and_final_result(self):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout):
+            token = mcp['env']['AGENTDOCK_CAPABILITY']
+            self.token = token
+            bind('fake-session')
+            emit('tool_result', {'text': token})
+            return token
+        runtime = self.make_runtime(executor)
+        self.finished(runtime.start(self.sa['id'], 'Task'))
+        self.assertNotIn(self.token, json.dumps(self.store.state()))
+        self.assertIn('[redacted]', json.dumps(self.store.state()))
+
+    def test_stop_parent_cancels_waiting_delegation(self):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout):
+            token = mcp['env']['AGENTDOCK_CAPABILITY']
+            self.runtime.respond_tool(token, 'message_send', {'recipient_id': self.b['id'], 'body': 'Child'})
+            self.gate.set()
+            while not stop.wait(.01): pass
+            raise ProviderCancelled()
+        runtime = self.make_runtime(executor)
+        run = runtime.start(self.sa['id'], 'Delegate then wait')
+        self.wait_for(self.gate.is_set)
+        runtime.cancel_run(run['id'])
+        self.assertEqual(self.finished(run)['status'], 'cancelled')
+        self.assertTrue(all(r['status'] == 'cancelled' for r in self.store.state()['runs']))
+        self.assertIsNone(self.store.state()['messages'][0]['reply_run_id'])
+
+    def test_close_stops_active_and_queued_work(self):
+        runtime = self.make_runtime()
+        first = runtime.start(self.sa['id'], '<block>')
+        self.wait_for(lambda: bool(self.calls))
+        second = runtime.start(self.sb['id'], 'Queued')
         runtime.close()
-        with self.assertRaises(RuntimeFailure):
-            runtime.start("session", "task")
-
-    def test_cancel_also_stops_descendants(self):
-        runtime = self.make_runtime("child")
-        run = runtime.start("session", "task")
-        self.wait_for(lambda: any("child-pid:" in str(event) for event in self.store.events))
-        text = next(event["payload"]["content"]["text"] for event in self.store.events
-                    if event["kind"] == "agent_message_chunk")
-        child_pid = int(text.split(":")[1])
-        runtime.cancel("session")
-        self.assertEqual(self.finished(run)["status"], "cancelled")
-
-        def gone():
-            try:
-                os.getpgid(child_pid)
-                return False
-            except ProcessLookupError:
-                return True
-        self.wait_for(gone)
-
-    def test_real_store_retains_transcript_and_revokes_tool_access(self):
-        store = Store(":memory:")
-        self.store = store
-        try:
-            project = store.add_project("Fixture", self.directory.name)
-            agent = store.add_agent(project["id"], "Fixture", "codex")
-            session = store.add_session(agent["id"], "Fixture")
-            runtime = self.make_runtime()
-            run = runtime.start(session["id"], "Remember the reviewed result")
-            self.wait_for(lambda: store.get_session(session["id"])["status"] != "running")
-            self.assertEqual(store.get_session(session["id"])["status"], "completed")
-            self.assertIn("agent_message_chunk", store.context_for_run(run["id"]))
-            row = store.db.execute("SELECT COUNT(*) FROM capabilities WHERE revoked=0").fetchone()
-            self.assertEqual(row[0], 0)
-            runtime.close()
-        finally:
-            for runtime in self.runtimes:
-                runtime.close()
-            self.runtimes.clear()
-            store.close()
+        self.assertEqual(self.store.get_run(first['id'])['status'], 'cancelled')
+        self.assertEqual(self.store.get_run(second['id'])['status'], 'cancelled')
+        with self.assertRaises(RuntimeFailure): runtime.start(self.sa['id'], 'No')
+        self.assertEqual(len(self.calls), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == '__main__': unittest.main()

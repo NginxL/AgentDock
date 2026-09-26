@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import App from "./App";
 import { QuotaWindow } from "./views/Usage";
+import { conversationEvents, eventText } from "./ui";
 import { ApiError, remainingPercent, request } from "./api";
 import type { DockState } from "./types";
 
@@ -69,6 +70,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
 });
 async function connect() {
@@ -76,7 +78,7 @@ async function connect() {
     target: { value: "example-admin-token-not-a-real-secret" },
   });
   fireEvent.click(screen.getByRole("button", { name: "进入工作台" }));
-  await screen.findByRole("heading", { name: "协作，从这里开始" });
+  await screen.findByRole("heading", { name: "协作工作台" });
 }
 
 function deferred<T>() {
@@ -347,14 +349,40 @@ describe("reviewed memory and messages", () => {
     );
     expect(screen.getByRole("alert").textContent).toContain("操作未应用");
   });
-  it("sends a human mailbox message without executing the recipient", async () => {
+  it("disables dispatch when execution is off", async () => {
     render(<App />);
     await connect();
-    fireEvent.click(screen.getByRole("button", { name: "协作消息" }));
-    fireEvent.change(screen.getByLabelText("消息内容"), {
-      target: { value: "Please review when requested." },
+    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    fireEvent.change(screen.getByLabelText("任务说明"), {
+      target: { value: "Review the change" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "发送到收件箱" }));
+    const button = screen.getByRole("button", {
+      name: "派发任务",
+    }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    fireEvent.click(button);
+    expect(
+      fetchMock.mock.calls.some(([path]) => path === "/api/messages"),
+    ).toBe(false);
+  });
+  it("dispatches to a selected native session with an idempotency key", async () => {
+    fetchMock.mockImplementation(async (path: string) =>
+      response(
+        path.includes("/events?")
+          ? { events: [] }
+          : { ...state, runtime: { enabled: true, version: "0.2.0" } },
+      ),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    fireEvent.change(screen.getByLabelText("目标会话"), {
+      target: { value: "session-a" },
+    });
+    fireEvent.change(screen.getByLabelText("任务说明"), {
+      target: { value: "Review this change." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "派发任务" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([path]) => path === "/api/messages"),
@@ -365,9 +393,10 @@ describe("reviewed memory and messages", () => {
     ) as unknown as [string, RequestInit];
     expect(JSON.parse(call[1].body as string)).toEqual({
       project_id: "project-a",
-      sender_id: "human",
       recipient_id: "agent-a",
-      body: "Please review when requested.",
+      recipient_session_id: "session-a",
+      body: "Review this change.",
+      idempotency_key: expect.any(String),
     });
     expect(
       fetchMock.mock.calls.some(([path]) => String(path).endsWith("/run")),
@@ -514,5 +543,253 @@ describe("usage semantics and transport", () => {
       expect(e).toBeInstanceOf(ApiError);
       expect((e as ApiError).status).toBe(409);
     }
+  });
+});
+
+describe("native session workflow", () => {
+  const runningState: DockState = {
+    ...state,
+    runtime: { enabled: true, version: "0.2.0" },
+    sessions: [
+      {
+        ...state.sessions[0],
+        status: "running",
+        native_session_id: "native-demo-123",
+      },
+    ],
+    runs: [
+      {
+        id: "run-queued",
+        session_id: "session-a",
+        project_id: "project-a",
+        agent_id: "agent-a",
+        prompt: "A queued task",
+        status: "queued",
+        origin: "human",
+        depth: 0,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ],
+  };
+  it("continues the selected session by queuing work while a run is active", async () => {
+    fetchMock.mockImplementation(async (path: string) =>
+      response(path.includes("/events?") ? { events: [] } : runningState),
+    );
+    render(<App />);
+    await connect();
+    expect(await screen.findByText("native-demo-123")).toBeTruthy();
+    const prompt = screen.getByLabelText(
+      "给 Agent 的任务",
+    ) as HTMLTextAreaElement;
+    expect(prompt.disabled).toBe(false);
+    fireEvent.change(prompt, { target: { value: "Continue after this task" } });
+    fireEvent.click(screen.getByRole("button", { name: "加入队列" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([path]) => path === "/api/sessions/session-a/run",
+        ),
+      ).toBe(true),
+    );
+  });
+  it("cancels the exact queued run without cancelling the whole session", async () => {
+    fetchMock.mockImplementation(async (path: string) =>
+      response(path.includes("/events?") ? { events: [] } : runningState),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(await screen.findByText("执行记录"));
+    fireEvent.click(screen.getByRole("button", { name: /^取消$/ }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([path]) => path === "/api/runs/run-queued/cancel",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      fetchMock.mock.calls.some(
+        ([path]) => path === "/api/sessions/session-a/cancel",
+      ),
+    ).toBe(false);
+  });
+  it.each([
+    { side: "recipient", delivery: "waiting", reply: undefined },
+    { side: "sender", delivery: "queued", reply: undefined },
+    { side: "sender", delivery: "running", reply: undefined },
+    { side: "sender", delivery: "waiting", reply: undefined },
+    { side: "sender", delivery: "completed", reply: "queued" },
+    { side: "sender", delivery: "completed", reply: "running" },
+  ])(
+    "cancels pending session work for $side delivery $delivery / reply $reply without an active session run",
+    async ({ side, delivery, reply }) => {
+      const waitingState: DockState = {
+        ...state,
+        runtime: { enabled: true, version: "0.2.0" },
+        messages: [
+          {
+            id: "delivery",
+            project_id: "project-a",
+            sender_id: "agent-a",
+            recipient_id: "agent-a",
+            body: "A child task is still pending",
+            status: delivery,
+            sender_session_id:
+              side === "sender" ? "session-a" : "session-other",
+            recipient_session_id:
+              side === "recipient" ? "session-a" : "session-other",
+            reply_run_id: reply ? "reply-pending" : undefined,
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        ],
+        runs: reply
+          ? [
+              {
+                ...runningState.runs![0],
+                id: "reply-pending",
+                session_id: "session-other",
+                status: reply,
+                origin: "reply",
+              },
+            ]
+          : [],
+      };
+      fetchMock.mockImplementation(async (path: string) =>
+        response(path.includes("/events?") ? { events: [] } : waitingState),
+      );
+      render(<App />);
+      await connect();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "取消会话任务" }),
+      );
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            ([path]) => path === "/api/sessions/session-a/cancel",
+          ),
+        ).toBe(true),
+      );
+    },
+  );
+  it("distinguishes a waiting delegation from a completed delivery", async () => {
+    fetchMock.mockImplementation(async (path: string) =>
+      response(
+        path.includes("/events?")
+          ? { events: [] }
+          : {
+              ...state,
+              messages: [
+                {
+                  id: "delivery",
+                  project_id: "project-a",
+                  sender_id: "human",
+                  recipient_id: "agent-a",
+                  body: "Nested review",
+                  status: "waiting",
+                  recipient_session_id: "session-a",
+                  run_id: "run-finished",
+                  result: "Delegated the next step to another agent",
+                  created_at: "2026-01-01T00:00:00Z",
+                },
+              ],
+              runs: [
+                {
+                  ...runningState.runs![0],
+                  id: "run-finished",
+                  status: "completed",
+                },
+              ],
+            },
+      ),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    expect(screen.getByText("等待协作结果")).toBeTruthy();
+    expect(screen.queryByText("已回传")).toBeNull();
+    expect(screen.getByText("当前进展")).toBeTruthy();
+    expect(screen.queryByText("执行结果")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "取消任务" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([path]) => path === "/api/runs/run-finished/cancel",
+        ),
+      ).toBe(true),
+    );
+  });
+});
+
+describe("offline demonstration", () => {
+  it("uses only fictional fixtures across pages and language changes with no network or storage writes", async () => {
+    window.history.replaceState({}, "", "/?demo=1");
+    const storage = vi.spyOn(Storage.prototype, "setItem");
+    render(<App />);
+    await screen.findByRole("heading", { name: "协作工作台" });
+    expect(screen.getByText(/演示模式/)).toBeTruthy();
+    expect(screen.getByText("demo-native-codex-01")).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "运行任务" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    expect(screen.getByText(/目标会话: 审阅搜索变更/)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "派发任务" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+    expect(
+      (screen.getByRole("button", { name: "批准写入" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(
+      screen
+        .getAllByRole("button", { name: "读取额度" })
+        .every((b) => (b as HTMLButtonElement).disabled),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    await screen.findAllByText("5-hour window");
+    expect(document.documentElement.lang).toBe("en");
+    expect(screen.queryByText("每周额度")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(storage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Exit demo" }));
+    expect(screen.getByLabelText("Access token")).toBeTruthy();
+  });
+});
+
+describe("streamed conversation rendering", () => {
+  it("merges partial text without mixing runs and replaces only the completed run’s preview", () => {
+    const event = (id: string, kind: string, text: string, run_id: string) => ({
+      id,
+      kind,
+      payload: { text, run_id },
+      seq: Number(id),
+      project_id: "p",
+      session_id: "s",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    const partials = [
+      event("1", "agent_message_chunk", "Hello ", "r1"),
+      event("2", "agent_message_chunk", "world", "r1"),
+      event("3", "agent_message_chunk", "Second run", "r2"),
+    ];
+    const merged = conversationEvents(partials);
+    expect(merged.map((e) => eventText(e.payload))).toEqual([
+      "Hello world",
+      "Second run",
+    ]);
+    expect(partials).toHaveLength(3);
+    const completed = conversationEvents([
+      ...partials,
+      event("4", "assistant_message", "Hello world!", "r1"),
+    ]);
+    expect(completed.map((e) => eventText(e.payload))).toEqual([
+      "Second run",
+      "Hello world!",
+    ]);
   });
 });

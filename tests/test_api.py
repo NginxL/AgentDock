@@ -17,7 +17,7 @@ class APITests(unittest.TestCase):
         for override in ({'Authorization':''},{'Host':'evil.example:47831'},{'Origin':'https://evil.example'},{'Sec-Fetch-Site':'cross-site'}): self.assertEqual(self.call('GET','/api/state',headers={**self.h,**override})[0],401 if 'Authorization' in override else 403)
         status,state=self.call('GET','/api/state'); self.assertEqual(status,200); self.assertFalse(state['runtime']['enabled']); self.assertNotIn('test-admin',json.dumps(state))
     def test_review_mode_never_invokes_runtime_or_quota(self):
-        for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)
+        for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)
         self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
     def test_scoped_tools_cannot_call_human_approval_endpoints(self):
         _,p=self.call('POST','/api/projects',{'name':'P','path':self.tmp.name})
@@ -43,15 +43,15 @@ class MCPTests(unittest.TestCase):
         r=b.handle({'jsonrpc':'2.0','id':2,'method':'initialize','params':{'protocolVersion':'2025-06-18'}})
         self.assertEqual(r['result']['protocolVersion'],'2025-06-18')
         self.assertIsNone(b.handle({'jsonrpc':'2.0','method':'notifications/initialized'}))
-        self.assertEqual(len(b.handle({'jsonrpc':'2.0','id':3,'method':'tools/list'})['result']['tools']),6)
+        self.assertEqual(len(b.handle({'jsonrpc':'2.0','id':3,'method':'tools/list'})['result']['tools']),5)
         bad=b.handle({'jsonrpc':'2.0','id':4,'method':'tools/call','params':{'name':'message_send','arguments':{'sender_id':'fake','recipient_id':'x','body':'Hi'}}})
         self.assertIn('error',bad); self.assertEqual(calls,[])
-        r=b.handle({'jsonrpc':'2.0','id':5,'method':'tools/call','params':{'name':'inbox_read'}})
-        self.assertFalse(r['result']['isError']); self.assertEqual(calls,[('inbox_read',{})])
+        r=b.handle({'jsonrpc':'2.0','id':5,'method':'tools/call','params':{'name':'agent_list'}})
+        self.assertFalse(r['result']['isError']); self.assertEqual(calls,[('agent_list',{})])
     def test_private_tool_error_not_returned(self):
         def fail(*args): raise ValueError('sk-private-credential')
         b=Bridge(fail); b.handle({'jsonrpc':'2.0','id':1,'method':'initialize'})
-        r=b.handle({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'inbox_read'}})
+        r=b.handle({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'agent_list'}})
         self.assertTrue(r['result']['isError']); self.assertNotIn('sk-private',json.dumps(r))
 
 if __name__=='__main__': unittest.main()

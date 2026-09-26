@@ -17,6 +17,7 @@ export interface Session {
   project_id: string;
   agent_id: string;
   title: string;
+  native_session_id?: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -29,7 +30,30 @@ export interface Message {
   body: string;
   created_at: string;
   correlation_id?: string;
-  acknowledged_at?: string | null;
+  status?: string;
+  sender_session_id?: string | null;
+  recipient_session_id?: string | null;
+  run_id?: string | null;
+  reply_run_id?: string | null;
+  result?: string | null;
+  error?: string | null;
+}
+export interface Run {
+  id: string;
+  session_id: string;
+  agent_id: string;
+  project_id: string;
+  prompt: string;
+  status: string;
+  error?: string | null;
+  origin: "human" | "delegate" | "reply";
+  parent_run_id?: string | null;
+  root_run_id?: string | null;
+  task_run_id?: string | null;
+  depth: number;
+  delivery_id?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 export interface Memory {
   id: string;
@@ -104,6 +128,7 @@ export interface DockState {
   agents: Agent[];
   sessions: Session[];
   messages: Message[];
+  runs?: Run[];
   memories: Memory[];
   proposals: Proposal[];
   events: AgentEvent[];

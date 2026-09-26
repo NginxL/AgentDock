@@ -43,8 +43,8 @@ export default function Usage({
   return (
     <>
       <PageTitle
-        eyebrow="USAGE, WITHOUT THE GUESSWORK"
-        title={t("额度与账单，各自清楚", "Know your usage and your billing")}
+        eyebrow={t("账户概览", "ACCOUNT OVERVIEW")}
+        title={t("额度与订阅", "Usage & billing")}
         description={t(
           "按需调用本机 AgentMeter 读取 Codex / Claude 额度。订阅信息由你登记，额度未知时明确显示未知。",
           "Fetch Codex / Claude quotas on demand through local AgentMeter. Enter billing details yourself; missing quota is always shown as unknown.",
@@ -100,7 +100,10 @@ export default function Usage({
               </div>
               <div className="quota-source">
                 <span>
-                  AgentMeter · <DateText date={quota?.fetched_at} lang={lang} />
+                  {quota?.source === "demo"
+                    ? t("演示数据", "Demo data")
+                    : "AgentMeter"}{" "}
+                  · <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
                 <button
                   className="text-button"
@@ -228,8 +231,8 @@ export default function Usage({
             </div>
             <p className="form-hint">
               {t(
-                "仅登记信息，不会购买、续费或更改任何订阅。Claude 的 ACP 执行费用由 API 账户另行结算。",
-                "This records information only; it does not purchase, renew or change subscriptions. Claude ACP execution is billed separately to the API account.",
+                "仅登记信息，不会购买、续费或更改任何订阅。实际计费由本机 CLI 使用的账户与服务方案决定。",
+                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows the account and plan used by the local CLI.",
               )}
             </p>
             <button className="primary" disabled={busy}>
@@ -264,10 +267,22 @@ export function QuotaWindow({
   lang: Language;
 }) {
   const remaining = remainingPercent(window.remaining_percent);
+  const labels: Record<string, string> = {
+    Weekly: t("每周额度", "Weekly"),
+    "Weekly window": t("每周额度", "Weekly window"),
+    "5-hour window": t("5 小时额度", "5-hour window"),
+    "5 hours": t("5 小时额度", "5 hours"),
+    "5-hour": t("5 小时额度", "5-hour"),
+    Session: t("当前会话额度", "Session"),
+    Quota: t("额度", "Quota"),
+    每周额度: t("每周额度", "Weekly window"),
+    "5 小时额度": t("5 小时额度", "5-hour window"),
+  };
+  const label = labels[window.label] ?? window.label;
   return (
     <div className="quota-window">
       <div className="record-heading">
-        <span>{window.label}</span>
+        <span>{label}</span>
         <strong>
           {remaining == null
             ? t("未知", "Unknown")
@@ -279,7 +294,7 @@ export function QuotaWindow({
         <div
           className={`meter ${remaining <= 15 ? "low" : ""}`}
           role="progressbar"
-          aria-label={window.label}
+          aria-label={label}
           aria-valuenow={remaining}
           aria-valuemin={0}
           aria-valuemax={100}

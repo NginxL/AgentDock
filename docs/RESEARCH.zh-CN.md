@@ -1,5 +1,7 @@
 # 多 Agent 工作台调研
 
+> **0.1 设计历史记录。** 此处保留产品资料及最初的 ACP／邮箱方案评估；当前原生会话与主动调度实现见[架构设计](ARCHITECTURE.zh-CN.md)及[验证说明](REVIEW.zh-CN.md)。
+
 [English](RESEARCH.md) · **简体中文** · [返回项目首页](../README.zh-CN.md)
 
 调研日期：2026-09-26

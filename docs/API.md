@@ -1,52 +1,116 @@
 # Local API
 
-**English** · [简体中文](API.zh-CN.md) · [Back to README](../README.md)
+**English** · [简体中文](API.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
-Version: 0.1 preview. All timestamps are UTC ISO 8601; IDs are UUID strings. Success responses are JSON. Errors are `{ "error": "message" }`, with HTTP 400 (invalid input), 401 (missing/invalid admin token), 403 (authorization/review mode), 404 (missing), 409 (state/version conflict), or 500 (sanitized internal failure).
+Version: **0.2 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON. Error responses are `{ "error": "message" }`.
 
-## Authentication
+| HTTP status | Meaning |
+| --- | --- |
+| `400` | Invalid input or JSON body. |
+| `401` | Missing or invalid administrator token. |
+| `403` | Access denied, execution disabled, or collaboration limit reached. |
+| `404` | Resource or route not found. |
+| `405` | The MCP endpoint requires POST. |
+| `409` | State, idempotency, ownership, or memory-version conflict. |
+| `413` | HTTP request body exceeds the size limit. |
+| `500` | Sanitized internal failure; success must not be assumed. |
 
-Admin requests require `Authorization: Bearer <local admin token>`. `Host` must exactly match `127.0.0.1:<configured port>`; browser `Origin`, when present, must match that HTTP origin. POST bodies use `application/json` with a 256 KiB maximum. No CORS or remote binding is supported.
+## Authentication and request boundary
 
-MCP requests use a separate per-run capability. It can access only `/mcp/tool` for the current project and agent, never admin APIs. Expired, cancelled and completed runs have no active tool authority.
+Administrator requests require `Authorization: Bearer <local admin token>`. `Host` must exactly match `127.0.0.1:<configured port>`. Browser `Origin`, when present, must match the same HTTP origin; cross-site requests are rejected. POST bodies use `application/json` and are limited to 256 KiB. CORS and remote binding are not supported.
+
+MCP requests use a separate per-run capability. That credential grants access only to `/mcp/tool` for the executing project's agent and session. It cannot access administrator APIs. The capability is revoked when a run ends or is cancelled, and expires after at most one hour.
+
+Execution is disabled by default. In review mode, project, agent, session, memory, and subscription records can be managed; starting tasks, sending executable messages, resolving runtime approvals, and refreshing provider quotas are rejected. Reading state never starts a process or quota probe.
 
 ## Human routes
 
 | Method / route | JSON fields / result |
 | --- | --- |
-| `GET /api/state` | Projects, agents, sessions, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, runtime mode. No probe starts. |
-| `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns project. |
+| `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
+| `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/agents` | `project_id`, `name`, `provider` (`codex` / `claude`), optional `role`. |
-| `POST /api/sessions` | `agent_id`, `title`. Creates an idle session only. |
-| `POST /api/sessions/{id}/run` | `prompt`. Requires execution enabled; returns run record. |
-| `POST /api/sessions/{id}/cancel` | Empty object. Revokes tools and stops the active process group. |
-| `GET /api/sessions/{id}/events?after=0` | `{events: [...]}` ordered by monotonically increasing `seq`, at most 500 per request. |
-| `POST /api/messages` | `project_id`, `recipient_id`, `body`, optional `correlation_id`, `idempotency_key`. Sender must be `human`. |
-| `POST /api/memories` | `project_id`, `key`, `content`, `expected_version` (0 for new). |
-| `POST /api/memories/{id}/archive` | `expected_version`. Soft archive with version/history update. |
-| `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal and current memory. |
-| `POST /api/proposals/{id}/reject` | Empty object. Resolves a pending proposal. |
-| `POST /api/approvals/{id}` | `option_id`, one of the still-pending provider options. |
-| `POST /api/quotas/refresh` | `provider`. Explicit opt-in probe; requires execution enabled. |
-| `POST /api/subscriptions` | `provider`, optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters). |
+| `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
+| `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
+| `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
+| `POST /api/runs/{id}/cancel` | Empty object. Cancels the logical task containing this run, including its existing queued/active descendants. Returns `{ "ok": true }`. |
+| `GET /api/sessions/{id}/events?after=0` | `{ "events": [...] }`, ordered by increasing `seq`, at most 500 per request. |
+| `POST /api/messages` | `project_id`, `recipient_id`, `body` (up to 12,000 characters); optional `recipient_session_id`, `correlation_id`, `idempotency_key`. Dispatches as `human` and returns the delivery record. |
+| `POST /api/memories` | `project_id`, `key`, `content`, `expected_version` (0 for a new key). |
+| `POST /api/memories/{id}/archive` | `expected_version`. Soft archive with a new version and history entry. |
+| `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal's expected version and the current memory version. |
+| `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
+| `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
+| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Explicit AgentMeter probe; requires execution enabled. |
+| `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
-Events contain `seq`, `id`, `project_id`, nullable `session_id`, `kind`, `payload`, `created_at`. Agent update payloads are text/data to render safely, never executable HTML. `GET /api/state` returns only the most recent 300 events; use the session cursor route for full event pagination.
+Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.
+
+## State and task records
+
+`GET /api/state` includes the most recent **300 runs** and **300 events**, in chronological order. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
+
+| Record | Relevant fields |
+| --- | --- |
+| Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
+| Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `result`, `error`, timestamps. |
+| Delivery (`messages`) | `id`, `project_id`, `sender_id`, `recipient_id`, `sender_session_id`, `recipient_session_id`, `sender_run_id`, `run_id`, `reply_run_id`, `body`, `status`, `result`, `error`, `correlation_id`, `idempotency_key`, timestamps. |
+| Approval | `id`, `run_id`, `session_id`, `project_id`, `request`, `options`, `status`, `picked_option_id`, `created_at`. State returns pending approvals only. |
+
+A run's `origin` is `human`, `delegate`, or `reply`. Its lifecycle is `queued` → `running` → `completed`, `failed`, or `cancelled`; an unfinished run found after restart becomes `interrupted`. Session status reflects active or queued work before its last terminal status.
+
+`task_run_id` groups the initial turn and subsequent result-processing turns that belong to one logical assignment. `root_run_id` identifies the whole collaboration tree. A completed turn does not necessarily mean its logical assignment has finished.
+
+The `messages` collection is the delivery audit trail. A successful submission produces a queued run; it does **not** mean the recipient has finished. Its `waiting` status means the recipient has finished a turn but still needs child results or continuation turns before final delivery. Only a settled delivery has a final status/result. `reply_run_id`, when present, identifies the continuation scheduled for the sender; inspect that run to determine whether the sender has processed the result. `acknowledged_at` is the recipient's start time, not a manual inbox acknowledgment.
+
+Events contain `seq`, `id`, `project_id`, nullable `session_id`, `kind`, `payload`, and `created_at`. Lifecycle events include `run_queued`, `run_started`, `run_finished`, `message_queued`, `reply_queued`, and `task_settled`. Text and tool events include `agent_message_chunk`, `assistant_message`, `tool_call`, and `tool_result`. Treat all provider payloads as untrusted display data, never executable HTML or authorization.
+
+## Dispatch and continuation
+
+`message_send` and `POST /api/messages` schedule real execution when execution is enabled. With `recipient_session_id`, the specified session must belong to the recipient in the same project. Without it, AgentDock uses that agent's most recently updated session, or creates one if none exists. Agent-to-self delegation is rejected.
+
+An agent's sender identity, original session, and parent run come from its run capability. API clients cannot impersonate that identity. A `human` dispatch does not create an automatic continuation for a sender agent.
+
+For agent-to-agent delegation, the recipient's logical assignment must settle before its final result returns to the **exact originating session**. If B delegates to C while working for A, B waits for C's result and completes its own continuation before its final response returns to A. Multiple child deliveries are tracked together; intermediate dispatch messages are not returned as finished work.
+
+Completed, failed, and cancelled assignments can schedule a result turn while the requester remains active. Failures and cancellations are returned with their actual status. Stopped requesters receive no new continuation, and interrupted work is not replayed. The native provider session is resumed for each continuation; it may delegate additional work within the same limits.
+
+Agents sharing a workspace run sequentially. After delegating, the sender should finish its current turn; it should not wait or poll for a recipient that is waiting for the same workspace. Independent, non-overlapping workspaces can run concurrently.
+
+`idempotency_key` is scoped to project and sender. Repeating the same key and assignment returns the same delivery; changing the recipient, body, correlation, sender run/session, or explicitly selected target session returns a conflict. This deduplicates retries within the same sending run, not unrelated tasks.
 
 ## MCP tools
 
-`python3 -m agentdock.mcp` speaks newline-delimited JSON-RPC over stdio. It implements `initialize`, `ping`, `tools/list`, `tools/call` and ignores notifications. It requires `AGENTDOCK_URL` and `AGENTDOCK_CAPABILITY` in its process environment. The workbench supplies those values only when creating a run; a user never pastes provider credentials into a tool call.
+`python3 -m agentdock.mcp` uses newline-delimited JSON-RPC over stdio. It implements `initialize`, `ping`, `tools/list`, and `tools/call`; notifications receive no response. Supported protocol versions are `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`.
+
+The workbench supplies `AGENTDOCK_URL` and `AGENTDOCK_CAPABILITY` through the child process environment. Provider credentials are not accepted as tool arguments. The bridge disables HTTP proxies and redirects, requires `http://127.0.0.1:<port>`, bounds input/output, and sanitizes tool failures.
 
 | Tool | Arguments | Effect |
 | --- | --- | --- |
-| `agent_list` | none | List agents in this project. |
-| `message_send` | `recipient_id`, `body`; optional `correlation_id`, `idempotency_key` | Queue addressed message, bound sender identity. Does not start a run. |
-| `inbox_read` | none | Up to 50 pending messages for this agent. |
-| `inbox_ack` | `message_id` | Acknowledge own message only. |
-| `memory_search` | optional `query` | Up to 20 approved, non-archived project entries, literal keyword search. |
-| `memory_propose` | `key`, `content`, `expected_version` | Create pending proposal, not approved memory. |
+| `agent_list` | none | Lists agents in the current project, including the caller. Does not start them. |
+| `message_send` | `recipient_id`, `body`; optional `recipient_session_id`, `correlation_id`, `idempotency_key` | Creates an executable delivery and returns its IDs/status. The recipient runs when eligible; its result schedules a continuation in the sender's session. |
+| `task_status` | `message_id` | Returns the status and result of a delivery the caller sent or received in this project. A snapshot, not a blocking wait. |
+| `memory_search` | optional `query` | Returns up to 20 approved, non-archived project memories using literal keyword matching. |
+| `memory_propose` | `key`, `content`, `expected_version` | Creates a proposal for human review. Cannot directly overwrite approved memory. |
 
-Protocol/tool failures return sanitized errors. The bridge disables HTTP proxies and redirects, accepts only an explicit numeric loopback address, and applies request/response limits. MCP is a tool boundary; it is not A2A or a replacement for OS isolation.
+The former `inbox_read` and `inbox_ack` tools are not part of the 0.2 protocol. MCP tools cannot grant provider permissions; native tool approvals use the authenticated workbench approval flow.
+
+## Execution limits and upgrade behavior
+
+Each native process executes one foreground turn and exits afterward. Claude's child environment sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`; its native background tasks are not managed by AgentDock. Delegation between registered agents uses `message_send` and the persistent dispatcher. This setting does not change the user's global environment or other Claude processes.
+
+| Boundary | Current behavior |
+| --- | --- |
+| Concurrency | At most 4 active native processes. The same agent and identical or parent/child workspace paths cannot execute concurrently. |
+| Collaboration | Root depth is 0; delegation depth is at most 3. Each root task admits at most 16 runs, including the root, delegated tasks, and result continuations. New delegations reserve capacity for their replies and may therefore be rejected before 16 runs exist. |
+| Timeouts | The service uses a 15-minute run deadline and a 2-minute approval deadline. Expiry stops the run without granting permission. |
+| Output | Native output is capped at 8 MiB, with a 512 KiB protocol-line limit. Runtime events and final text have additional bounds; stored final text is capped at 64,000 characters, and automatic result handoffs include at most 12,000 characters. |
+| Quotas | A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
+
+SQLite migration is additive: projects, sessions, history, and memory remain available. Messages from the earlier mailbox model without an executable `run_id` become `legacy` audit records and are never dispatched. Native bindings are created on the first 0.2 execution; older adapter sessions are not imported.
+
+After restart, previously queued/running turns and queued/running/waiting deliveries become `interrupted`, approvals are cancelled, and capabilities are revoked. No unfinished task is replayed automatically. A new explicit submission may resume an existing native session owned by AgentDock; importing Codex App or unrelated terminal sessions is not implemented.
 
 ---
 
-**English** · [简体中文](API.zh-CN.md) · [Back to README](../README.md)
+**English** · [简体中文](API.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)

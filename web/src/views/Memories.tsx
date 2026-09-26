@@ -51,11 +51,11 @@ export default function Memories({
   return (
     <>
       <PageTitle
-        eyebrow="SHARED CONTEXT, REVIEWED"
-        title={t("记住经过确认的事", "Remember what has been reviewed")}
+        eyebrow={t("项目知识", "PROJECT KNOWLEDGE")}
+        title={t("共享记忆", "Shared memory")}
         description={t(
-          "共享记忆以项目隔离、按版本更新。Agent 的写入先成为提案，由你决定是否采纳。",
-          "Shared memory is isolated by project and versioned. Agent writes become proposals for your review.",
+          "仅共享已确认的项目约定与结论。各 Agent 的原生会话历史独立保留；记忆写入需经审阅，并按版本更新。",
+          "Share reviewed project conventions and decisions. Native session histories remain private; memory changes are reviewed and versioned.",
         )}
         action={
           <button

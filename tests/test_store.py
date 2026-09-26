@@ -17,27 +17,35 @@ class StoreTests(unittest.TestCase):
     def token(self):
         r=self.store.begin_run(self.s['id'],'Discuss interface')
         return r,self.store.issue_capability(r['id'])
-    def test_codex_to_claude_mailbox_and_dedup(self):
-        r,t=self.token(); args={'recipient_id':self.b['id'],'body':'Please review','idempotency_key':'one'}
-        m=self.store.respond_tool(t,'message_send',args)
-        self.assertEqual(self.store.respond_tool(t,'message_send',args)['id'],m['id'])
-        self.assertEqual(m['sender_id'],self.a['id'])
+    def test_codex_to_claude_dispatch_and_dedup(self):
+        r,t=self.token()
+        args=dict(project_id=self.p['id'],sender_id=self.a['id'],recipient_id=self.b['id'],body='Please review',idempotency_key='one',parent_run_id=r['id'])
+        m=self.store.enqueue_message(**args)
+        self.assertEqual(self.store.enqueue_message(**args)['id'],m['id'])
+        self.assertEqual(m['sender_session_id'],self.s['id'])
+        self.assertIsNone(self.store.claim_next_run())
         self.store.finish_run(r['id'],'completed')
-        s=self.store.add_session(self.b['id'],'Review'); r=self.store.begin_run(s['id'],'Inbox'); t=self.store.issue_capability(r['id'])
-        self.assertEqual(len(self.store.respond_tool(t,'inbox_read',{})),1)
-        self.assertIn('Please review',self.store.context_for_run(r['id']))
-        self.store.respond_tool(t,'inbox_ack',{'message_id':m['id']})
-        self.assertEqual(self.store.respond_tool(t,'inbox_read',{}),[])
-        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM runs').fetchone()[0],2)
+        child=self.store.claim_next_run()
+        self.assertEqual(child['id'],m['run_id'])
+        self.assertEqual(self.store.get_message(m['id'])['status'],'running')
+        self.assertNotIn('Please review',self.store.context_for_run(child['id']))
+        self.store.finish_run(child['id'],'completed',result='Review passed')
+        reply=self.store.enqueue_reply(m['id'],'Review passed')
+        self.assertEqual(reply['session_id'],self.s['id'])
+        self.assertEqual(self.store.enqueue_reply(m['id'],'Review passed')['id'],reply['id'])
+        self.assertEqual(self.store.get_message(m['id'])['result'],'Review passed')
+        self.assertEqual(self.store.claim_next_run()['id'],reply['id'])
+        self.assertEqual(len(self.store.runs_for_root(r['id'])),3)
     def test_dedup_mismatch_rejected(self):
         self.store.send_message(self.p['id'],'human',self.a['id'],'First',idempotency_key='1')
         with self.assertRaises(Conflict): self.store.send_message(self.p['id'],'human',self.a['id'],'Other',idempotency_key='1')
-    def test_project_and_inbox_isolation(self):
-        _,t=self.token(); other=self.store.add_project('Other',str(self.root)); a=self.store.add_agent(other['id'],'Other','codex','')
-        with self.assertRaises(Forbidden): self.store.respond_tool(t,'message_send',{'recipient_id':a['id'],'body':'No'})
+    def test_project_dispatch_and_tool_isolation(self):
+        r,t=self.token(); other=self.store.add_project('Other',str(self.root)); a=self.store.add_agent(other['id'],'Other','codex','')
+        with self.assertRaises(Forbidden): self.store.enqueue_message(self.p['id'],self.a['id'],a['id'],'No',parent_run_id=r['id'])
         with self.assertRaises(Forbidden): self.store.send_message(self.p['id'],a['id'],self.a['id'],'No')
-        m=self.store.send_message(self.p['id'],'human',self.b['id'],'Hi')
-        with self.assertRaises(Forbidden): self.store.respond_tool(t,'inbox_ack',{'message_id':m['id']})
+        self.store.send_message(self.p['id'],'human',self.b['id'],'Hi')
+        for removed in ('inbox_read','inbox_ack','message_send'):
+            with self.assertRaises(Invalid): self.store.respond_tool(t,removed,{})
         self.assertEqual(len(self.store.respond_tool(t,'agent_list',{})),2)
     def test_capability_expiry_and_revocation(self):
         r,t=self.token()

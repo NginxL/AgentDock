@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { request } from "../api";
+import { listOf, remainingPercent, request } from "../api";
 import type {
   Agent,
   AgentEvent,
@@ -18,7 +18,9 @@ import {
   Empty,
   Icon,
   Stat,
-  eventText,
+  conversationEvents,
+  eventDescription,
+  eventLabel,
   isArchived,
   statusLabel,
 } from "../ui";
@@ -32,6 +34,7 @@ export default function Workspace({
   approvals,
   state,
   token,
+  demo = false,
   runtimeEnabled,
   busy,
   mutate,
@@ -44,6 +47,7 @@ export default function Workspace({
   approvals: Approval[];
   state: DockState;
   token: string;
+  demo?: boolean;
   runtimeEnabled: boolean;
   busy: boolean;
   mutate: Mutate;
@@ -64,6 +68,31 @@ export default function Workspace({
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
   const running = selectedSession?.status === "running";
+  const sessionRuns = (state.runs ?? []).filter(
+    (run) => run.session_id === sessionID,
+  );
+  const queued = sessionRuns.filter((run) => run.status === "queued");
+  const activeRuns = sessionRuns.filter((run) =>
+    ["queued", "running"].includes(run.status),
+  );
+  const pendingDeliveries = state.messages.filter((message) => {
+    if (!sessionID) return false;
+    const reply = (state.runs ?? []).find(
+      (run) => run.id === message.reply_run_id,
+    );
+    return (
+      (message.recipient_session_id === sessionID &&
+        message.status === "waiting") ||
+      (message.sender_session_id === sessionID &&
+        (["queued", "running", "waiting"].includes(message.status ?? "") ||
+          (reply && ["queued", "running"].includes(reply.status))))
+    );
+  });
+  const hasSessionTasks =
+    running ||
+    selectedSession?.status === "waiting" ||
+    activeRuns.length > 0 ||
+    pendingDeliveries.length > 0;
   useEffect(() => {
     if (!agents.some((a) => a.id === agentID)) setAgentID(agents[0]?.id ?? "");
   }, [agents, agentID]);
@@ -75,6 +104,11 @@ export default function Workspace({
     setEvents([]);
     setEventError("");
     lastSeq.current = 0;
+    if (demo) {
+      setEvents(state.events.filter((event) => event.session_id === sessionID));
+      setEventLoading(false);
+      return;
+    }
     if (!sessionID) {
       setEventLoading(false);
       return;
@@ -127,14 +161,13 @@ export default function Workspace({
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [sessionID, token, lang]);
+  }, [sessionID, token, lang, demo, demo ? state.events : null]);
 
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">YOUR AGENT WORKSPACE</span>
-          <h1>{t("协作，从这里开始", "A shared place to work")}</h1>
+          <h1>{t("协作工作台", "Workspace")}</h1>
           <p className="path-line" title={project.path}>
             {project.path}
           </p>
@@ -242,8 +275,8 @@ export default function Workspace({
             </label>
             <p className="form-hint">
               {t(
-                "通过服务器配置的 ACP 适配器执行。Claude 适配器使用 API 密钥计费，与 Claude 订阅额度分开；请在服务端配置凭据。",
-                "Runs through server-configured ACP adapters. The Claude adapter uses API-key billing, separately from Claude subscription usage; configure credentials on the server.",
+                "使用服务端配置的本机 Codex / Claude CLI 与其登录凭据。各 Agent 的原生会话独立保留上下文。",
+                "Uses server-configured local Codex / Claude CLIs and their credentials. Each agent’s native sessions retain their own context.",
               )}
             </p>
             <button className="primary" disabled={busy || !agentName.trim()}>
@@ -270,11 +303,30 @@ export default function Workspace({
               <div className="agent-info">
                 <strong>{agent.name}</strong>
                 <span>
-                  {agent.provider === "codex" ? "Codex" : "Claude"} · ACP
+                  {agent.provider === "codex" ? "Codex" : "Claude"} ·{" "}
+                  {t("原生会话", "Native session")}
                 </span>
                 <p>
                   {agent.role || t("未设置角色说明", "No role description")}
                 </p>
+                {(() => {
+                  const quota = listOf(state.quotas).find(
+                    (q) => q.provider === agent.provider,
+                  );
+                  const value =
+                    quota &&
+                    ["ok", "available", "success"].includes(quota.status)
+                      ? remainingPercent(quota.windows[0]?.remaining_percent)
+                      : null;
+                  return (
+                    <span className="agent-quota">
+                      {t("当前额度", "Current usage")}:{" "}
+                      {value === null
+                        ? t("未知", "Unknown")
+                        : `${value}% ${t("剩余", "left")}`}
+                    </span>
+                  );
+                })()}
               </div>
               <span
                 className={`small-status ${sessions.some((s) => s.agent_id === agent.id && s.status === "running") ? "live" : ""}`}
@@ -384,20 +436,90 @@ export default function Workspace({
                 </h2>
                 <p>
                   {t(
-                    "保留事件记录 · 每次执行建立新的 ACP 会话并注入已存上下文",
-                    "Persistent event log · Each run uses a new ACP session with stored context",
+                    "原生上下文独立保留 · 项目记忆按审阅结果共享",
+                    "Private native context · Reviewed project memory is shared",
                   )}
                 </p>
               </div>
-              {running && (
-                <span className="pill live">
-                  <span className="status-dot" />
-                  {t("运行中", "Running")}
+              {selectedSession && (
+                <span className={`pill ${running ? "live" : ""}`}>
+                  <span className={`status-dot ${running ? "" : "idle"}`} />
+                  {statusLabel(selectedSession.status, t)}
                 </span>
               )}
             </div>
             {selectedSession ? (
               <>
+                <div className="session-context">
+                  <Icon name="shield" size={14} />
+                  <span>{t("原生会话", "Native session")}</span>
+                  <code title={selectedSession.native_session_id ?? ""}>
+                    {selectedSession.native_session_id
+                      ? selectedSession.native_session_id
+                      : t("首次执行后建立", "Created on first run")}
+                  </code>
+                  <span className="private-label">
+                    {t("私有上下文", "Private context")}
+                  </span>
+                </div>
+                {!!sessionRuns.length && (
+                  <details className="run-history">
+                    <summary>
+                      {t("执行记录", "Run history")}{" "}
+                      <span className="count-badge">{sessionRuns.length}</span>
+                      <span className="muted">
+                        {queued.length
+                          ? t(
+                              `${queued.length} 项排队中`,
+                              `${queued.length} queued`,
+                            )
+                          : t("查看任务与派工状态", "Task and dispatch status")}
+                      </span>
+                    </summary>
+                    <div className="run-list">
+                      {sessionRuns
+                        .slice()
+                        .reverse()
+                        .map((run) => (
+                          <article className="run-row" key={run.id}>
+                            <span className={`state-indicator ${run.status}`} />
+                            <div>
+                              <strong>{run.prompt}</strong>
+                              <small>
+                                {run.origin === "delegate"
+                                  ? t("Agent 派工", "Agent delegation")
+                                  : run.origin === "reply"
+                                    ? t("协作结果回传", "Collaboration result")
+                                    : t("你发起的任务", "Your task")}{" "}
+                                · <DateText date={run.created_at} lang={lang} />
+                              </small>
+                              {run.error && (
+                                <p className="inline-error">{run.error}</p>
+                              )}
+                            </div>
+                            <span className="pill">
+                              {statusLabel(run.status, t)}
+                            </span>
+                            {["queued", "running"].includes(run.status) && (
+                              <button
+                                type="button"
+                                className="text-button"
+                                disabled={busy}
+                                onClick={() =>
+                                  void mutate(
+                                    `/api/runs/${encodeURIComponent(run.id)}/cancel`,
+                                    {},
+                                  )
+                                }
+                              >
+                                {t("取消", "Cancel")}
+                              </button>
+                            )}
+                          </article>
+                        ))}
+                    </div>
+                  </details>
+                )}
                 <div
                   className="event-feed"
                   aria-label={t("会话事件", "Session events")}
@@ -421,21 +543,23 @@ export default function Workspace({
                       )}
                     >
                       {t(
-                        "输入任务并点击运行。发出的消息和共享记忆会作为上下文提供给 Agent。",
-                        "Enter a task and click Run. Mailbox messages and shared memory are supplied as context.",
+                        "输入任务并点击运行。后续任务会延续此原生会话，已审阅的项目记忆作为共享上下文。",
+                        "Enter a task and click Run. Follow-up tasks continue this native session with reviewed project memory as shared context.",
                       )}
                     </Empty>
                   ) : (
-                    events.map((event) => (
+                    conversationEvents(events).map((event) => (
                       <article
                         key={event.id}
                         className={`event ${event.kind.includes("error") ? "event-error" : ""}`}
                       >
                         <div className="event-meta">
-                          <span>{event.kind}</span>
+                          <span title={event.kind}>
+                            {eventLabel(event.kind, t)}
+                          </span>
                           <DateText date={event.created_at} lang={lang} />
                         </div>
-                        <pre>{eventText(event.payload)}</pre>
+                        <pre>{eventDescription(event, t)}</pre>
                       </article>
                     ))
                   )}
@@ -472,7 +596,7 @@ export default function Workspace({
                     rows={3}
                     required
                     maxLength={24000}
-                    disabled={running}
+                    disabled={busy}
                     placeholder={t(
                       "描述目标、约束和你希望得到的结果…",
                       "Describe the goal, constraints and expected outcome…",
@@ -490,29 +614,32 @@ export default function Workspace({
                             "Execution is disabled on the service.",
                           )}
                     </span>
-                    {running ? (
-                      <button
-                        className="danger"
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          void mutate(
-                            `/api/sessions/${encodeURIComponent(sessionID)}/cancel`,
-                            {},
-                          )
-                        }
-                      >
-                        {t("取消执行", "Cancel run")}
-                      </button>
-                    ) : (
+                    <div className="button-row">
+                      {hasSessionTasks && (
+                        <button
+                          className="secondary"
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void mutate(
+                              `/api/sessions/${encodeURIComponent(sessionID)}/cancel`,
+                              {},
+                            )
+                          }
+                        >
+                          {t("取消会话任务", "Cancel session tasks")}
+                        </button>
+                      )}
                       <button
                         className="primary"
                         disabled={busy || !runtimeEnabled || !prompt.trim()}
                       >
                         <Icon name="arrow" size={17} />
-                        {t("运行任务", "Run task")}
+                        {running
+                          ? t("加入队列", "Queue task")
+                          : t("运行任务", "Run task")}
                       </button>
-                    )}
+                    </div>
                   </div>
                 </form>
               </>

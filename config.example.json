@@ -1,7 +1,7 @@
 {
   "commands": {
-    "codex": ["codex-acp"],
-    "claude": ["claude-agent-acp"]
+    "codex": ["codex", "app-server"],
+    "claude": ["claude"]
   },
   "agentmeter_command": ["/Applications/AgentMeter.app/Contents/MacOS/AgentMeter"]
 }

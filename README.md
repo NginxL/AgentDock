@@ -1,83 +1,129 @@
-<p align="center"><img src="docs/images/logo.svg" width="84" height="84" alt="AgentDock logo" /></p>
+<p align="center"><img src="docs/images/logo.svg" width="72" height="72" alt="AgentDock logo" /></p>
 <h1 align="center">AgentDock</h1>
-<p align="center">One workspace for your agents. Shared context, visible decisions.</p>
+<p align="center">Native agent sessions. Connected work. One clear workspace.</p>
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/status-developer_preview-cc8a36" alt="Developer preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
+<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/version-0.2_preview-6366f1" alt="0.2 preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
 
-AgentDock is a local web workbench for Codex and Claude ACP adapters, project-scoped messaging, reviewed shared memory, and [AgentMeter](https://github.com/NginxL/AgentMeter) quota readings. The interface starts in Chinese and switches to English. A Python standard-library backend stores state in SQLite; a React interface provides the workspace.
+AgentDock brings Codex and Claude Code into a local workspace for conversations, task handoffs, shared project memory, and usage monitoring. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
 
-> **Developer preview.** Execution is disabled by default. Automated tests use simulated adapters; compatibility with live Codex and Claude adapters has not yet been verified.
+The interface defaults to Chinese and supports English throughout. A Python standard-library service and SQLite store power the React workspace.
+
+> **Developer preview.** Execution is off by default. Automated checks cover simulated native CLI protocols and task handoffs; live model execution and account compatibility still require acceptance testing.
 
 [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
-## Interface
+## Workspace
 
-<p align="center"><img src="docs/images/interface.svg" alt="Illustrative AgentDock workbench with agents, a task conversation, shared memory, and quota cards" width="1100" /></p>
+![AgentDock English workspace with native sessions, task status, and usage](docs/images/workspace.en.png)
 
-*Annotated design illustration with fictitious data, not a runtime screenshot.*
+*Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional.*
 
-## What is included
+<details>
+<summary>Task handoffs and usage monitoring</summary>
 
-| Capability | Preview behavior |
+**Dispatch:** inspect the target conversation, execution result and return status.
+
+![Task dispatch and returned results](docs/images/dispatch.en.png)
+
+**Usage:** view quota windows and reset times separately from subscription renewal records. These are fictional demo readings.
+
+![Codex and Claude usage and subscriptions](docs/images/usage.en.png)
+
+</details>
+
+## Features
+
+| Capability | What it does |
 | --- | --- |
-| Unified workbench | Projects, named Codex/Claude agents, roles, sessions, streamed events, explicit run/cancel and permission decisions. Uses configured ACP adapters. |
-| Agent communication | Six MCP tools expose teammates, a persistent addressed mailbox, and memory. Messages wait for the recipient's next explicit run; acknowledgments and deduplication are stored. |
-| Shared memory | Project-scoped, searchable entries with source, author, versions and archive history. Agents propose changes; humans approve them. Stale versions cannot overwrite newer facts. |
-| Quotas & subscriptions | AgentMeter `--probe` integration for Codex/Claude, remaining percentages, reset and fetch times, stale/unknown/error states. Billing dates and amounts are manual and separate. |
-| Local control | Loopback-only server, in-memory UI access token, per-run scoped MCP capabilities, bounded processes, approval expiry and restart recovery. No automatic execution loops. |
+| Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
+| Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
+| Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
+| Usage & subscriptions | Integrates [AgentMeter](https://github.com/NginxL/AgentMeter) for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
+| Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
 
-This preview manages **sessions created in AgentDock**. It does not take over existing desktop windows, import every provider's sessions, implement A2A, provide semantic/vector search, or automatically install adapters. More providers require capability-tested adapters, not just a new name in a dropdown.
+## Getting started
 
-## Build from source
-
-Requirements: macOS or Linux, Python 3.9+, Node.js 20.19+ and npm. No Python runtime dependencies are required when working from this checkout.
+Requires macOS or Linux, Python 3.9+, Node.js 20.19+, and npm. Execution also requires a compatible, separately installed Codex or Claude Code CLI with its normal local authentication configured. AgentMeter is optional.
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
 cd AgentDock
-python3 -m unittest discover -s tests -v
-cd web
-npm ci --ignore-scripts
-npm test
-npm run build
+npm --prefix web ci --ignore-scripts
+npm --prefix web run build
+cp config.example.json config.local.json
+python3 -m agentdock --config config.local.json
 ```
 
-These commands run isolated tests and build static files. Tests use temporary databases and simulated ACP/probe subprocesses; they do not bind an application server or contact model/quota services. The frontend build is in `web/dist`.
+Open the printed loopback URL and enter the access token from the printed local file path. The default address is `http://127.0.0.1:47831`. The token is held only in UI memory, never in a URL or browser local storage. To explore fictional data, append `?demo=1`; demo mode has no execution or network actions.
 
-## Configuration and usage
+The workbench starts in **review mode**. Creating projects and viewing saved state do not launch agents or fetch quotas. Enable execution explicitly when ready:
 
-Adapter commands and the AgentMeter executable are configured in a local JSON file. See [`config.example.json`](config.example.json) for the supported fields.
+```bash
+python3 -m agentdock --config config.local.json --enable-execution
+```
 
-1. Install and pin the official project releases of [`codex-acp`](https://github.com/agentclientprotocol/codex-acp) and [`claude-agent-acp`](https://github.com/agentclientprotocol/claude-agent-acp) yourself. Paths and arguments are server configuration, not editable executable commands from the web UI. Their versions have not yet been live-validated here.
-2. Copy the example configuration to `config.local.json` (ignored by Git) and set the executable paths. To use quota refresh, point `agentmeter_command` at your existing AgentMeter executable.
-3. Start the workbench: `python3 -m agentdock --config /absolute/path/to/config.local.json`. Agent and quota execution remain disabled by default. Open the printed loopback address and enter the token from the printed local file path. The token is not placed in a URL or browser local storage.
-4. To enable agent runs and quota refresh, restart with `--enable-execution`. Select a trusted project directory and start a task explicitly. Quota refresh is also an explicit action.
+Select a trusted project directory, create agents, and submit a task. Teammate dispatches and result-return turns execute automatically while execution is enabled. Quota refresh remains an explicit action.
 
-The default address is `http://127.0.0.1:47831`. State lives in `~/.local/share/agentdock`; the directory is private to the current user. Only one instance may own a database. An interrupted run is recorded as interrupted and is never automatically replayed.
+## Configuration
 
-**Claude execution and subscription monitoring are separate.** The Claude ACP adapter uses the Agent SDK; this preview requires `ANTHROPIC_API_KEY` in the server's environment for Claude execution. It does not offer claude.ai sign-in or claim that a Pro/Max subscription authorizes SDK inference. Model-provider charges still apply. See the [official SDK authentication guidance](https://code.claude.com/docs/en/agent-sdk/overview). AgentMeter remains a separate read-only source for the subscription quota display.
+[`config.example.json`](config.example.json) contains the complete public configuration surface:
 
-## Operating boundaries
+```json
+{
+  "commands": {
+    "codex": ["codex", "app-server"],
+    "claude": ["claude"]
+  },
+  "agentmeter_command": ["/Applications/AgentMeter.app/Contents/MacOS/AgentMeter"]
+}
+```
 
-- Each run creates a fresh ACP session with bounded recent conversation, approved project memory and pending inbox context. Provider-native session resume is not implemented.
-- Messages do not start agents. They are queued, read and acknowledged through MCP. A reply requires another explicit run.
-- Runs sharing equal or overlapping working directories are serialized. Use separate, non-overlapping worktrees for parallel work. AgentDock does not create those worktrees or enforce an OS sandbox itself.
-- Provider permission prompts appear in the UI. Unknown client capabilities are rejected; unanswered approvals expire. An approval applies to the option and run shown, not future runs.
-- Quotas are cached for display, not guaranteed live. A reading older than 15 minutes is stale; an elapsed reset does not magically replenish the cache. Quota reset dates are never used as renewal dates.
+Use absolute executable paths if the CLIs are not on the server's `PATH`. Keep machine-specific configuration in the ignored `config.local.json`. Provider commands cannot be supplied by the UI or an agent.
 
-## Privacy and trust
+AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. It does not use the Claude Agent SDK, require a new API key, or read provider credential stores. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
 
-Prompts, events, messages and reviewed memory are stored locally in SQLite. Starting an agent sends the selected task/context to that agent and its configured model service. Reading quotas through AgentMeter can contact the provider. “Local workbench” does not mean offline inference.
+## How collaboration works
 
-AgentDock does not read provider OAuth credential stores. Agent authentication remains with the configured adapters; quota authentication remains with AgentMeter. The app provides no API-key input or storage interface. Run capabilities are hashed in the database, expire and are revoked when the run ends. Provider stderr is not persisted. The HTTP/MCP boundaries protect against cross-origin requests and accidental cross-project access; **processes running as the same OS user are not isolated from each other**. Treat project files and third-party MCP servers as trusted execution inputs.
+```mermaid
+sequenceDiagram
+    participant U as You
+    participant C as Codex session
+    participant D as AgentDock dispatcher
+    participant A as Claude Code session
+    U->>C: Analyze and delegate implementation
+    C->>D: Addressed task with context
+    D-->>C: Queued task ID
+    Note over C: Finish the current turn
+    D->>A: Start or resume, then execute
+    A-->>D: Result or failure
+    D->>C: Resume requesting session with result
+    C-->>U: Review and complete the task
+```
+
+Sessions belonging to the same agent, or using equal/overlapping working directories, execute sequentially. Independent workspaces can run in parallel. A collaboration chain is bounded to 16 runs and three delegation levels. Cancelling a task also cancels its descendants. Application restart marks unfinished work interrupted and does not replay it automatically.
+
+## Data and boundaries
+
+State is stored in `~/.local/share/agentdock`; only one instance can own the database. History, task records, and shared memory are local. Running an agent sends task context to its configured model service; quota refresh may contact provider services.
+
+This version manages **sessions created by AgentDock**. Attaching existing desktop/terminal conversations, remote devices, and multiple users is not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay with the CLIs and AgentMeter, and per-run MCP tokens expire and are revoked after execution.
+
+When upgrading from 0.1, replace ACP commands with the native commands above. Historical messages remain readable as legacy records and are never dispatched automatically. Sessions without a native binding start a new provider conversation; old stored text is not silently replayed as native history.
 
 ## Development
 
-See [architecture](docs/ARCHITECTURE.md) for protocol boundaries, [API](docs/API.md) for request fields and [validation](docs/REVIEW.md) for test coverage and compatibility limits. Submit issues with reproduction steps and sanitized fixtures; do not include credentials or private conversation logs. Keep the English and Chinese READMEs consistent.
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q agentdock tests
+npm --prefix web test
+npm --prefix web run build
+```
+
+Tests use temporary stores, fake CLI processes, and fictional UI data. They do not invoke real coding agents or quota services. See [validation](docs/REVIEW.md) for coverage and the remaining live acceptance work. Keep English and Chinese documentation aligned, and include sanitized reproduction steps when reporting bugs.
 
 ## License
 
-Released under the [MIT License](LICENSE).
+[MIT](LICENSE). External CLIs and AgentMeter are separately installed programs with their own licenses and service terms. See [notices](NOTICE.md).
 
 ---
 

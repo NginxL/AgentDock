@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .runtime import _kill_group
+from .processes import stop_group as _kill_group
 from .store import Forbidden
 
 

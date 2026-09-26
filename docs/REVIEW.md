@@ -1,31 +1,50 @@
 # Validation and compatibility
 
-**English** · [简体中文](REVIEW.zh-CN.md) · [Back to README](../README.md)
+**English** · [简体中文](REVIEW.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
 ## Implementation status
 
-AgentDock combines a local React interface, a Python standard-library service and SQLite storage. ACP manages Codex and Claude adapter sessions; MCP exposes project mailboxes and memory tools. AgentMeter remains a separate application and supplies read-only quota data through `--probe`.
+AgentDock 0.2 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. AgentMeter remains a separate application that supplies quota snapshots through `--probe`.
 
-| Area | Implemented | Live acceptance or capability boundary |
+| Area | Implemented | Acceptance boundary |
 | --- | --- | --- |
-| Interface | Chinese/English switching, projects, roles, sessions, task events, run/cancel controls and permission approvals. | The application has not been launched for browser acceptance. The current illustration is explicitly marked as a design mockup. |
-| Agent integration | ACP v1 over stdio, initialization, sessions, prompts, updates, permissions and cancellation; commands configured on the server. | Actual `codex-acp` and `claude-agent-acp` versions and account compatibility require verification. |
-| Communication | Project-scoped mailboxes with bound sender identities, deduplication and acknowledgments; six MCP tools. | Real model tool use requires verification. Automatic wake-up and autonomous team loops are not implemented. |
-| Memory | Project isolation, keyword search, version conflicts, Agent proposals, human approval, soft archive and database history. | Vector search, automatic extraction, a complete history browser and cross-project sharing are not implemented. |
-| Quotas | AgentMeter probes for fixed providers, timeouts, throttling, unknown/stale/error states and manual billing records. | Real login, Keychain prompts and quota refresh require verification. Continued availability is not guaranteed for every account or provider endpoint. |
-| Lifecycle | Process-group cancellation, approval expiry, exclusion of overlapping working directories, a single-instance database lock and no task replay after restart. | OS-level sandboxing, automatic worktree creation and remote multi-user access are not implemented. |
+| Interface | Chinese by default, English switching, project navigation, native-session status, conversation events, task dispatch, approvals, shared memory, and quota summaries. | Offline previews use the actual interface with fictional fixtures. They do not demonstrate real model execution, subscriptions, or quota availability. |
+| Native providers | Codex app-server JSON-RPC; Claude Code stream-json control messages; retained native IDs, text/tool events, permission decisions, deadlines, and process-group cleanup. | Wire contracts have been checked against documentation and local CLI metadata. Real login and model execution remain unverified. |
+| Collaboration | Automatic dispatch, workspace-aware queuing, native-session continuation, result return, retry deduplication, depth and run limits, and cancellation of task descendants. | Real model behavior during delegation and long-running collaboration requires live acceptance. |
+| Shared memory | Project isolation, literal keyword search, version conflicts, agent proposals, human approval, soft archive, and database history. | Vector search, automatic extraction, a complete history browser, and cross-project sharing are not implemented. |
+| Quotas | AgentMeter probes for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Real Keychain prompts, account compatibility, and agreement with official usage pages remain unverified. |
+| Recovery | Additive database migration, historical mailbox preservation, one owner per native session, overlapping-workspace exclusion, database instance locking, and no automatic task replay after restart. | Existing Codex App or unrelated terminal sessions cannot be imported. Remote devices, automatic worktrees, and remote multi-user access are not implemented. |
 
-The Claude ACP adapter uses the Agent SDK and requires an API key for execution. Displaying existing Pro/Max quota does not authorize SDK inference. Authentication compatibility must be reviewed before launch when choosing ACP, an unmodified CLI or another officially supported execution path.
+## Provider compatibility
+
+| Provider | Locally inspected version | Contract used |
+| --- | --- | --- |
+| Codex | `codex-cli 0.154.0` | Generated app-server JSON schemas and official app-server documentation: `initialize`, `thread/start`, `thread/resume`, `turn/start`, approval requests, event notifications, and `turn/interrupt`. |
+| Claude Code | `2.1.268` | Native CLI help and Anthropic's public control-protocol definitions: `--print`, `--input-format stream-json`, `--output-format stream-json`, `--resume`, `--session-id`, and stdio permission requests. |
+
+These are **contract inspection versions**, not a claim of end-to-end compatibility or a supported minimum across all releases. Claude's adapter uses `--permission-mode manual` and `--permission-prompt-tool stdio`; a CLI that does not accept those flags will fail rather than fall back to permission bypass. The native CLI decides authentication using its own supported local configuration. AgentDock does not require an API key, export provider credentials, change login state, or install an agent SDK.
+
+Codex starts an app-server process owned by the run, with `workspace-write`, `untrusted` command approval, and user review. It creates or resumes only an AgentDock-owned thread. Claude uses its manual permission policy and sends permission prompts to the workbench; an approval returns the original tool input for that action, while denial does not grant it. Existing native policies and managed restrictions still apply. AgentDock itself does not provide a separate operating-system sandbox.
+
+The native process ends after a foreground turn, but the native conversation persists for the next run. Claude's child environment sets `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` to disable native background work, as described in the [official environment-variable documentation](https://code.claude.com/docs/en/env-vars). The setting does not change the user's global environment or other Claude processes. Registered agents collaborate through AgentDock's dispatcher. This is session continuation, not attachment to an already running desktop or terminal process. Quota visibility and execution authentication are independent: a quota snapshot does not establish that a provider can execute tasks.
+
+Official protocol material: [Codex app-server](https://learn.chatgpt.com/docs/app-server), [Claude Code CLI](https://code.claude.com/docs/en/cli-reference), and [Anthropic's control-protocol implementation](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py).
 
 ## Isolated verification
 
-Backend tests use temporary SQLite stores, direct HTTP dispatcher calls and fake ACP/AgentMeter Python subprocesses. Frontend tests use DOM simulation and mocked HTTP. The build produces static assets. None of these checks starts the AgentDock HTTP service, a real coding agent or a provider quota request.
+Backend checks use temporary SQLite databases, fake native CLI processes, and fake AgentMeter probes. Dispatcher integration tests use a temporary loopback HTTP endpoint and the actual MCP bridge, but all coding agents are deterministic local fixtures. No real model, provider login, or live quota endpoint is involved.
 
-Local verification passed **45 backend tests and 16 interface tests**, Python bytecode compilation, TypeScript checks and the Vite production build on macOS with Python 3.9.6 and Node.js 20.20.2. The interface regression suite includes delayed state refresh and out-of-order polling, verifying that a task submitted after session creation targets the new session.
+Frontend checks use simulated DOM and HTTP responses. The production build validates TypeScript and generates static assets. The offline demonstration renders fictional projects, conversations, and quota values; it disables execution, mutation, and provider requests. Screenshots of that mode illustrate the interface only.
 
-Coverage includes rejection of cross-project and cross-identity access, tool revocation after cancellation, compare-and-swap write conflicts, memory approval provenance, rejection of expired approvals, malformed protocol messages, output limits, child-process group cleanup, rejection of multiple instances using one database, parent/child directory conflicts, stale or unknown quota values, interface requests and language switching.
+| Test area | Coverage |
+| --- | --- |
+| Native protocol | New and resumed sessions, metadata-only Codex resume, exact native identity, streaming without duplicate final text, permission allow/deny round trips, child-scoped Claude foreground policy, mismatched session/turn IDs, invalid JSON, early exits, and sanitized failures. |
+| Resource bounds | Output limits, permission expiry, run deadlines while approval is blocked, cancellation, descendant-process cleanup, and MCP authority revocation. |
+| Dispatcher and MCP | Automatic delivery and return to the exact requesting session, final-result settlement after nested or multiple child tasks, queued-work admission, workspace exclusion, idempotency, failure propagation, cancellation, and reserved reply capacity. |
+| Storage and authorization | Project and sender isolation, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
+| Quotas and interface | Stale/unknown/zero quota distinctions, explicit refresh, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
 
-Reproduce these checks without launching the application:
+Reproduce the automated checks without starting a real agent:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -36,28 +55,30 @@ npm test
 npm run build
 ```
 
-CI performs these isolated checks on Python 3.9/3.12 and Node 20. Passing them does not establish live-provider compatibility. Real agent execution and real quota refresh have not passed acceptance testing.
+[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
-## Code review checklist
+## Code review map
 
-1. [Architecture](ARCHITECTURE.md): ACP, MCP, quota and shared-memory boundaries; explicit execution and human approval requirements.
-2. [Storage](../agentdock/store.py): project isolation, message semantics, memory versions and provenance, run permissions and locks.
-3. [Runtime](../agentdock/runtime.py) and [MCP bridge](../agentdock/mcp.py): ACP fields, approval expiry, tool authority and cancellation.
-4. [Quota bridge](../agentdock/quota.py) and [local server](../agentdock/server.py): quota accuracy, local authentication, shutdown order and execution disabled by default.
-5. [Interface](../web/src/) and [tests](../tests/): consistency between visible state and the API, error handling and boundary coverage.
+| Area | Review focus |
+| --- | --- |
+| [Architecture](ARCHITECTURE.md) and [API](API.md) | Native sessions, task lifecycle, result return, memory review, execution limits, and review mode. |
+| [Storage](../agentdock/store.py) | Ownership, durable task relationships, migration, idempotency, version checks, and restart handling. |
+| [Dispatcher](../agentdock/runtime.py) and [providers](../agentdock/providers.py) | Queue admission, session binding, approvals, bounded IO, cancellation, and result propagation. |
+| [MCP bridge](../agentdock/mcp.py), [quota bridge](../agentdock/quota.py), and [server](../agentdock/server.py) | Capability scope, fixed provider commands, loopback authentication, output sanitization, and shutdown order. |
+| [Interface](../web/src/) and [tests](../tests/) | Accurate execution states, read-only offline previews, bilingual copy, safe display of agent output, and regressions. |
 
 ## Live acceptance requirements
 
-Begin these steps only after explicitly deciding to run the preview:
+Real execution is a separate, explicitly enabled acceptance step. Use trusted disposable workspaces and complete these checks before relying on the preview for regular work:
 
-- Pin adapter versions and verify official authentication in disposable, trusted worktrees.
-- Confirm that one Codex task and one Claude task stream results, request permissions correctly, cancel fully and recover cleanly after restart.
-- Verify Codex-to-Claude and Claude-to-Codex mailbox exchange without uncontrolled automatic calls. Confirm that memory proposals require review and version conflicts are visible.
-- Refresh real AgentMeter quotas and compare remaining amounts and reset times with the official usage page, including authentication failures and stale caches.
-- Inspect the Chinese and English interface and capture demonstration screenshots without private information.
+1. Verify native CLI authentication and the configured CLI versions. Complete two turns with each provider and confirm that the second turn resumes the same native conversation.
+2. Verify permission allow, denial, expiry, cancellation, and restart behavior. Confirm queued tasks do not launch after cancellation and unfinished tasks do not replay after restart.
+3. Run a Codex → Claude → Codex collaboration and a nested delegation. Confirm the original sender receives the final result in its original conversation and that limits stop repeated delegation.
+4. Verify shared-memory proposal review, version conflicts, and project isolation. Compare real AgentMeter remaining quotas and reset times with official usage pages, including failure and stale-cache states.
+5. Inspect both interface languages using live sessions. Confirm errors, queued work, approvals, results, and unknown quota states are understandable and contain no exposed credentials.
 
-The preview does not install services, start at login, register global MCP configuration, alter AgentMeter or modify existing provider logins.
+Real agent execution, real quota refresh, and existing desktop-session import have **not** passed live acceptance; existing-session import is not implemented. The preview does not install a background service, start at login, register global MCP configuration, or alter AgentMeter or provider logins.
 
 ---
 
-**English** · [简体中文](REVIEW.zh-CN.md) · [Back to README](../README.md)
+**English** · [简体中文](REVIEW.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)

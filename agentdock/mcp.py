@@ -16,9 +16,8 @@ def tool(name, description, properties, required=()):
 S = {"type":"string"}
 TOOLS = [
     tool("agent_list","List teammates in this run's project. Does not start them.",{}),
-    tool("message_send","Queue a message for a teammate. Delivery does not start a run; use idempotency_key to deduplicate retries.",{"recipient_id":S,"body":S,"correlation_id":S,"idempotency_key":S},("recipient_id","body")),
-    tool("inbox_read","Read your pending inbox in this project. Acknowledge only after consuming it.",{}),
-    tool("inbox_ack","Acknowledge a message in your own inbox.",{"message_id":S},("message_id",)),
+    tool("message_send","Dispatch a task to another agent's native session. It runs automatically when available, and its result resumes this conversation. Finish your current turn after delegating; do not wait or poll. Use idempotency_key for retries.",{"recipient_id":S,"recipient_session_id":S,"body":S,"correlation_id":S,"idempotency_key":S},("recipient_id","body")),
+    tool("task_status","Inspect the execution state and result of a task you sent or received. This does not wait for completion.",{"message_id":S},("message_id",)),
     tool("memory_search","Search approved, non-archived project memory using literal keywords.",{"query":S}),
     tool("memory_propose","Propose a memory update for human review. Cannot overwrite approved memory. expected_version is zero for a new key.",{"key":S,"content":S,"expected_version":{"type":"integer","minimum":0}},("key","content","expected_version")),
 ]
@@ -46,7 +45,7 @@ class Bridge:
             if method=="initialize":
                 requested=params.get("protocolVersion")
                 self.initialized=True
-                result={"protocolVersion":requested if requested in PROTOCOLS else PROTOCOLS[0],"capabilities":{"tools":{"listChanged":False}},"serverInfo":{"name":"agentdock","version":"0.1.0"}}
+                result={"protocolVersion":requested if requested in PROTOCOLS else PROTOCOLS[0],"capabilities":{"tools":{"listChanged":False}},"serverInfo":{"name":"agentdock","version":"0.2.0"}}
             elif not self.initialized: raise ValueError("Initialize first")
             elif method=="ping": result={}
             elif method=="tools/list": result={"tools":TOOLS}

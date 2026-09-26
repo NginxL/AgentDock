@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentdock-workbench"
-version = "0.1.0"
-description = "Local multi-agent workbench with scoped messaging, reviewed memory, and AgentMeter quotas"
+version = "0.2.0"
+description = "Native agent sessions, automatic task handoff, shared memory, and usage in one local workbench"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 dependencies = []

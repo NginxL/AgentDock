@@ -1,83 +1,129 @@
-<p align="center"><img src="docs/images/logo.svg" width="84" height="84" alt="AgentDock 图标" /></p>
+<p align="center"><img src="docs/images/logo.svg" width="72" height="72" alt="AgentDock 标志" /></p>
 <h1 align="center">AgentDock</h1>
-<p align="center">一个工作台，连接多个 Agent、共享上下文、看清每次决策。</p>
+<p align="center">原生会话，任务协作，一个清晰的工作台。</p>
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://img.shields.io/badge/自动检查-查看结果-187c68" alt="查看自动检查结果" /></a> <img src="https://img.shields.io/badge/状态-开发预览版-cc8a36" alt="开发预览版" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9 及以上" /> <a href="LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-187c68" alt="MIT 许可证" /></a></p>
+<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="自动检查" /></a> <img src="https://img.shields.io/badge/version-0.2_preview-6366f1" alt="0.2 预览版" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9 及以上" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT 许可证" /></a></p>
 
-AgentDock 是本地 Web 工作台，接入 Codex、Claude 的 ACP 适配器，提供项目内通信、可审核的共享记忆，以及 [AgentMeter](https://github.com/NginxL/AgentMeter/blob/main/README.zh-CN.md) 额度展示。界面默认中文，支持英语切换。后端使用 Python 标准库与 SQLite，前端使用 React。
+AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会话、任务交接、项目共享记忆与可用额度。智能体通过原生 CLI 执行，后续对话沿用各自的原生会话。发送给同伴的任务会进入执行队列，结果自动回到发起任务的会话。
 
-> **开发预览版。** 执行默认关闭。自动化测试使用模拟适配器，真实 Codex 和 Claude 适配器的兼容性尚未验证。
+界面默认中文，支持完整切换为英文。后端采用 Python 标准库与 SQLite，前端使用 React。
 
-[架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证说明](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
+> **开发者预览版。** 默认关闭执行。自动检查已覆盖模拟原生 CLI 协议和任务交接；真实模型调用与账号兼容性仍需验收。
 
-## 界面说明
+[架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
-<p align="center"><img src="docs/images/interface.zh-CN.svg" alt="AgentDock 工作台示意：Agent 列表、任务对话、共享记忆与额度卡片" width="1100" /></p>
+## 工作台
 
-*带标注的设计示意图，使用虚构示例数据，并非运行截图。*
+![AgentDock 中文工作台，展示原生会话、任务状态与额度](docs/images/workspace.zh-CN.png)
 
-## 已实现范围
+*离线演示模式下的实际界面截图。图中的项目、对话和额度均为虚构数据。*
 
-| 能力 | 预览版行为 |
+<details>
+<summary>查看任务派工与额度界面</summary>
+
+**任务派工：**查看目标会话、执行结果与回传状态。
+
+![任务派工与结果回传界面](docs/images/dispatch.zh-CN.png)
+
+**额度与订阅：**额度窗口及重置时间与订阅续费记录分开展示。图中数值均为虚构演示数据。
+
+![Codex 和 Claude 额度及订阅界面](docs/images/usage.zh-CN.png)
+
+</details>
+
+## 功能
+
+| 能力 | 说明 |
 | --- | --- |
-| 统一工作台 | 项目、Codex / Claude Agent、角色、会话、流式事件、显式运行/取消、权限审批。通过配置的 ACP 适配器连接。 |
-| Agent 通信 | 6 个 MCP 工具提供队友列表、持久邮箱和记忆操作。消息等待接收者下一次显式运行，记录去重标识与确认状态。 |
-| 共享记忆 | 按项目隔离、关键词查询、来源/作者/版本、归档与历史。Agent 提议更新，人审核；旧版本不能覆盖新事实。 |
-| 额度与订阅 | 通过 AgentMeter `--probe` 读取 Codex / Claude 剩余额度、重置和采集时间，区分过期、未知和错误。订阅日期与金额单独手动记录。 |
-| 本地控制 | 仅监听本机、界面访问令牌仅存内存、每次运行的 MCP 权限受限、进程超时/取消、审批过期、重启恢复。无自动无限互聊。 |
+| 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
+| 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
+| 共享记忆 | 项目知识与私有对话分开管理；支持来源、版本、关键词检索、智能体提议审核和归档历史。 |
+| 额度与订阅 | 接入 [AgentMeter](https://github.com/NginxL/AgentMeter)，展示 Codex／Claude 剩余额度、重置时间及过期或错误状态；续费日期与订阅费用单独记录。 |
+| 本地工作台 | 紧凑项目导航、会话与执行记录面板、中英文切换，以及不发送接口请求的只读演示。 |
 
-本版管理的是 **AgentDock 内创建的会话**，不接管已有桌面窗口，不导入所有厂商的历史会话，不实现 A2A、向量语义检索或自动安装适配器。新增厂商需要实现并验证适配器能力，不能只增加一个名称。
+## 快速开始
 
-## 从源码构建
-
-需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。从源码目录使用时，无额外 Python 运行时依赖。
+需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。执行任务还需要单独安装兼容的 Codex 或 Claude Code CLI，并完成其正常本地登录配置。AgentMeter 为可选组件。
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
 cd AgentDock
-python3 -m unittest discover -s tests -v
-cd web
-npm ci --ignore-scripts
-npm test
-npm run build
+npm --prefix web ci --ignore-scripts
+npm --prefix web run build
+cp config.example.json config.local.json
+python3 -m agentdock --config config.local.json
 ```
 
-以上只运行隔离测试并生成静态文件。测试使用临时数据库和模拟 ACP / 额度子进程，不监听应用端口，不请求模型或真实额度。前端产物位于 `web/dist`。
+打开终端显示的本机地址，读取终端提示的本地令牌文件并输入令牌。默认地址为 `http://127.0.0.1:47831`。令牌仅保存在界面内存中，不放入网址或浏览器本地存储。地址加上 `?demo=1` 可查看虚构数据，演示模式不执行任务、不请求接口。
 
-## 配置与使用
+工作台默认处于**评审模式**。创建项目、查看已有数据不会启动智能体或读取额度。准备就绪后，可显式开启执行：
 
-适配器命令和 AgentMeter 可执行文件通过本地 JSON 文件配置，支持的字段见 [`config.example.json`](config.example.json)。
+```bash
+python3 -m agentdock --config config.local.json --enable-execution
+```
 
-1. 自行安装并固定 [`codex-acp`](https://github.com/agentclientprotocol/codex-acp)、[`claude-agent-acp`](https://github.com/agentclientprotocol/claude-agent-acp) 的上游发布版本。可执行路径与参数由服务端配置，Web 界面不能填写任意执行命令。本版尚未完成具体适配器版本的实机验收。
-2. 将示例配置复制到 `config.local.json`（已被 Git 忽略），填写可执行文件路径。需要额度刷新时，把 `agentmeter_command` 指向已有 AgentMeter 可执行文件。
-3. 启动工作台：`python3 -m agentdock --config /绝对路径/config.local.json`。Agent 与额度执行默认关闭。手动打开终端显示的本机地址，从终端提示的本地文件读取访问令牌，填入界面；令牌不放进 URL 或浏览器本地存储。
-4. 需要启用 Agent 运行与额度刷新时，使用 `--enable-execution` 重新启动。选择可信的项目目录，显式开始任务；额度刷新同样需要点击触发。
+选择可信项目目录，创建智能体并提交任务。开启执行期间，同伴派工和结果回传轮次会自动执行；额度刷新仍需手动触发。
 
-默认地址为 `http://127.0.0.1:47831`，数据位于当前用户私有的 `~/.local/share/agentdock`。同一数据库只允许一个实例占用；中断的任务会记录为中断，不会自动重放。
+## 配置
 
-**Claude 执行认证与订阅额度监控分开。** Claude ACP 适配器使用 Agent SDK，本版要求服务端环境中存在 `ANTHROPIC_API_KEY` 才允许 Claude 执行；不提供 claude.ai 登录，也不承诺 Pro / Max 订阅可用于 SDK 推理。实际模型调用仍按提供商规则计费，详见[官方 SDK 认证说明](https://code.claude.com/docs/zh-CN/agent-sdk/overview)。AgentMeter 仍是独立的只读订阅额度来源。
+[`config.example.json`](config.example.json) 包含全部公开配置项：
 
-## 行为边界
+```json
+{
+  "commands": {
+    "codex": ["codex", "app-server"],
+    "claude": ["claude"]
+  },
+  "agentmeter_command": ["/Applications/AgentMeter.app/Contents/MacOS/AgentMeter"]
+}
+```
 
-- 每次运行建立新 ACP 会话，并附带有长度上限的近期对话、已审核项目记忆和待收消息；未实现提供商原生会话恢复。
-- 消息只入队，由 Agent 通过 MCP 读取与确认，不自动启动接收方。回复需要另一次显式运行。
-- 相同或父子重叠的目录不能并发运行。并行工作应选择独立且不重叠的 Git 工作树；本版不自动创建工作树，也不是操作系统级沙箱。
-- 提供商权限请求进入界面审批；不支持的客户端能力会拒绝，超时未答的审批会失效。审批只对应展示的选项与运行。
-- 额度是带时间的缓存。超过 15 分钟标为过期；重置时间经过后不会假定额度自动补满，更不会将其作为订阅续费日期。
+如果服务的 `PATH` 中没有相应 CLI，请使用可执行文件的绝对路径。机器专属配置保存在 Git 忽略的 `config.local.json` 中。界面和智能体均不能指定执行命令。
 
-## 隐私与信任
+AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，不使用 Claude Agent SDK、不要求新增 API Key，也不读取提供方的凭据存储。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
 
-提示词、事件、消息和共享记忆保存在本地 SQLite。开始任务时，选中的任务与上下文会交给对应 Agent 及其模型服务。AgentMeter 额度刷新也可能请求提供商；本地工作台不等于离线推理。
+## 协作流程
 
-AgentDock 不读取提供商 OAuth 凭据库；执行认证由配置的适配器管理，额度认证由 AgentMeter 管理。应用不提供 API 密钥输入或保存接口。运行能力令牌在数据库中仅保存哈希，过期或运行结束后失效；不持久化提供商的标准错误输出。HTTP 与 MCP 边界防止跨站请求和意外跨项目访问，但**同一系统用户下的进程并不互相隔离**。项目文件和第三方 MCP 服务应视为可信执行输入。
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant C as Codex 会话
+    participant D as AgentDock 调度器
+    participant A as Claude Code 会话
+    U->>C: 分析需求并安排实现
+    C->>D: 提交目标明确、含上下文的任务
+    D-->>C: 返回排队任务 ID
+    Note over C: 结束当前轮次
+    D->>A: 创建或恢复会话并执行
+    A-->>D: 返回结果或失败原因
+    D->>C: 恢复发起会话并送达结果
+    C-->>U: 审阅结果并完成任务
+```
+
+同一智能体的会话，以及使用相同或父子目录的任务，按顺序执行；独立工作目录可以并行。每条协作链最多包含 16 个执行任务，派工深度最多三层。取消任务会同时取消其后续派生任务。应用重启将未完成任务标记为中断，不自动重放。
+
+## 数据与边界
+
+状态保存在 `~/.local/share/agentdock`，同一数据库只允许一个实例占用。历史、任务记录和共享记忆存储在本地。执行智能体会将任务上下文发送到其配置的模型服务；刷新额度也可能访问提供方服务。
+
+当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 和 AgentMeter 管理，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
+
+从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 
 ## 开发与贡献
 
-协议分层见[架构设计](docs/ARCHITECTURE.zh-CN.md)，接口字段见[接口说明](docs/API.zh-CN.md)，测试覆盖与兼容性限制见[验证说明](docs/REVIEW.zh-CN.md)。反馈请使用可复现步骤和去除敏感数据的测试样本，不上传凭据或私人会话日志。文档修改应保持中英文 README 一致。
+```bash
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q agentdock tests
+npm --prefix web test
+npm --prefix web run build
+```
+
+测试使用临时数据库、模拟 CLI 进程和虚构界面数据，不调用真实编码智能体或额度服务。[验证文档](docs/REVIEW.zh-CN.md)列出了覆盖范围与真实环境待验收项。提交问题时请附脱敏复现步骤，并保持中英文文档一致。
 
 ## 许可证
 
-项目采用 [MIT 许可证](LICENSE)。
+采用 [MIT 许可证](LICENSE)。外部 CLI 与 AgentMeter 需要单独安装，适用各自的许可证和服务条款，详见[声明](NOTICE.zh-CN.md)。
 
 ---
 

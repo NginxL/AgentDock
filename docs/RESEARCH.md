@@ -1,5 +1,7 @@
 # Multi-agent workspace research
 
+> **Historical design record (0.1).** Product findings and the original ACP/mailbox evaluation are retained here. The current native-session dispatcher is described in [Architecture](ARCHITECTURE.md) and [Validation](REVIEW.md).
+
 **English** · [简体中文](RESEARCH.zh-CN.md) · [Back to README](../README.md)
 
 Researched: 2026-09-26

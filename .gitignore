@@ -15,3 +15,6 @@ coverage/
 
 *.tsbuildinfo
 *.sqlite3.lock
+
+.playwright-cli/
+output/playwright/

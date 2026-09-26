@@ -33,6 +33,9 @@ class API:
             if parsed.path=="/mcp/tool":
                 if method!="POST": return 405,{"error":"POST required"}
                 payload=self._json(headers,body)
+                if payload.get("name") in ("message_send", "task_status"):
+                    if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
+                    return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
             if method=="GET" and parsed.path=="/api/state":
@@ -49,7 +52,8 @@ class API:
             elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
             elif parsed.path=="/api/messages":
                 if p.get("sender_id","human")!="human": raise Forbidden("Human endpoint cannot impersonate an agent")
-                result=self.store.send_message(p.get("project_id"),"human",p.get("recipient_id"),p.get("body"),p.get("correlation_id"),p.get("idempotency_key"))
+                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
+                result=self.runtime.send_message(p.get("project_id"),p.get("recipient_id"),p.get("body"),p.get("correlation_id"),p.get("idempotency_key"),p.get("recipient_session_id"))
             elif parsed.path=="/api/memories": result=self.store.put_memory(p.get("project_id"),p.get("key"),p.get("content"),p.get("expected_version"))
             elif parsed.path=="/api/subscriptions": result=self.store.save_subscription(p.get("provider"),p.get("plan",""),p.get("renewal_date"),p.get("monthly_cost"),p.get("currency","USD"))
             elif parsed.path=="/api/quotas/refresh":
@@ -60,6 +64,9 @@ class API:
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
                 elif parts[3]=="cancel": self.runtime.cancel(parts[2]); result={"ok":True}
                 else: raise Missing("Route not found")
+            elif len(parts)==4 and parts[:2]==["api","runs"] and parts[3]=="cancel":
+                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
+                self.runtime.cancel_run(parts[2]); result={"ok":True}
             elif len(parts)==4 and parts[:2]==["api","memories"] and parts[3]=="archive": result=self.store.archive_memory(parts[2],p.get("expected_version"))
             elif len(parts)==4 and parts[:2]==["api","proposals"]:
                 if parts[3]=="approve": result=self.store.approve_proposal(parts[2],p.get("expected_version"))
@@ -143,7 +150,7 @@ def main(argv=None):
     if args.config:
         config=json.loads(args.config.read_text())
         if not isinstance(config,dict): parser.error("config must be an object")
-    commands=config.get("commands",{})
+    commands=config.get("commands",{"codex":["codex","app-server"],"claude":["claude"]})
     if not isinstance(commands,dict) or any(k not in ("codex","claude") or not isinstance(v,list) or not v or any(not isinstance(x,str) or not x for x in v) for k,v in commands.items()): parser.error("commands must contain codex/claude argument lists")
     command=config.get("agentmeter_command")
     if command is not None and (not isinstance(command,list) or not command or any(not isinstance(x,str) or not x for x in command)): parser.error("agentmeter_command must be an argument list")
@@ -173,7 +180,7 @@ def main(argv=None):
     signal.signal(signal.SIGTERM,stop); signal.signal(signal.SIGINT,stop)
     print("AgentDock: http://127.0.0.1:"+str(args.port))
     print("Local access token file: "+str(token_path))
-    print("Execution: "+("explicit runs enabled" if args.enable_execution else "disabled (review mode)"))
+    print("Execution: "+("native sessions and automatic task dispatch enabled" if args.enable_execution else "disabled (review mode)"))
     try: server.serve_forever(poll_interval=0.3)
     finally: runtime.close(); quota.close(); server.server_close(); store.close()
 

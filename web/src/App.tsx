@@ -8,6 +8,7 @@ import {
 import { ApiError, listOf, request } from "./api";
 import type { DockState, Language, Mutate, Translate } from "./types";
 import { Brand, Empty, Icon } from "./ui";
+import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
 import Messages from "./views/Messages";
 import Memories from "./views/Memories";
@@ -16,6 +17,9 @@ import Usage from "./views/Usage";
 type Tab = "workspace" | "messages" | "memory" | "usage";
 
 export default function App() {
+  const [demo, setDemo] = useState(
+    () => new URLSearchParams(window.location.search).get("demo") === "1",
+  );
   const [lang, setLang] = useState<Language>("zh");
   const t: Translate = (zh, en) => (lang === "zh" ? zh : en);
   const [token, setToken] = useState("");
@@ -23,7 +27,9 @@ export default function App() {
   const mutationInFlight = useRef(false);
   const stateEpoch = useRef(0);
   const [entryToken, setEntryToken] = useState("");
-  const [state, setState] = useState<DockState | null>(null);
+  const [state, setState] = useState<DockState | null>(() =>
+    demo ? demoState("zh") : null,
+  );
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -33,10 +39,15 @@ export default function App() {
   const [projectForm, setProjectForm] = useState(false);
 
   useEffect(() => {
+    if (demo) setState(demoState(lang));
+  }, [demo, lang]);
+
+  useEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   }, [lang]);
 
   const disconnect = useCallback(() => {
+    setDemo(false);
     tokenRef.current = "";
     stateEpoch.current += 1;
     setToken("");
@@ -139,7 +150,8 @@ export default function App() {
   }
 
   const mutate: Mutate = async (path, data, success) => {
-    if (busy || mutationInFlight.current || !tokenRef.current) return false;
+    if (demo || busy || mutationInFlight.current || !tokenRef.current)
+      return false;
     const currentToken = tokenRef.current;
     mutationInFlight.current = true;
     // Ignore any polling response captured before this mutation began.
@@ -218,7 +230,7 @@ export default function App() {
       {lang === "zh" ? "EN" : "中文"}
     </button>
   );
-  if (!state || !token)
+  if (!state || (!token && !demo))
     return (
       <div className="welcome-page">
         <header>
@@ -227,22 +239,24 @@ export default function App() {
         </header>
         <main className="welcome-main">
           <section className="welcome-copy">
-            <span className="eyebrow">LOCAL FIRST · HUMAN DIRECTED</span>
+            <span className="eyebrow">
+              {t("本地 Agent 工作台", "LOCAL AGENT WORKSPACE")}
+            </span>
             <h1>
-              {t("让 Agent 协作，", "Bring your agents")}
+              {t("一个工作台，", "One workspace.")}
               <br />
-              <em>{t("让你掌握全局。", "into one workspace.")}</em>
+              <em>{t("连续的协作。", "Connected work.")}</em>
             </h1>
             <p>
               {t(
-                "在同一个工作台安排 Codex 与 Claude，交换消息、审阅共享记忆，并查看可用额度。每一次执行，由你发起。",
-                "Coordinate Codex and Claude, exchange messages, review shared memory, and see available usage. You decide when work begins.",
+                "连接 Codex 与 Claude 的原生会话，派发任务、跟踪协作、审阅共享记忆，并查看可用额度。",
+                "Connect native Codex and Claude sessions, dispatch tasks, follow collaboration, review shared memory and track usage.",
               )}
             </p>
             <div className="welcome-features">
               <span>
                 <Icon name="message" />
-                {t("明确的协作消息", "Explicit peer messaging")}
+                {t("连续的原生会话", "Persistent native sessions")}
               </span>
               <span>
                 <Icon name="memory" />
@@ -264,7 +278,7 @@ export default function App() {
             </div>
           </section>
           <section className="connection-card">
-            <span className="step-label">01 / CONNECT</span>
+            <span className="step-label">{t("连接工作台", "CONNECT")}</span>
             <h2>{t("连接本地工作台", "Connect your local workspace")}</h2>
             <p>
               {t(
@@ -310,8 +324,8 @@ export default function App() {
         <footer className="welcome-footer">
           AgentDock ·{" "}
           {t(
-            "首版支持 Codex / Claude 的 ACP 适配器。现有客户端窗口不受此工作台控制。",
-            "Initial support: Codex / Claude via ACP adapters. Existing client windows are not controlled here.",
+            "使用本机 Codex / Claude CLI。已有客户端窗口的共享接入需单独验证。",
+            "Uses local Codex / Claude CLIs. Sharing an existing client window requires separate verification.",
           )}
         </footer>
       </div>
@@ -340,7 +354,7 @@ export default function App() {
       en: "Workspace",
       badge: approvals.length,
     },
-    { key: "messages", icon: "message", zh: "协作消息", en: "Messages" },
+    { key: "messages", icon: "message", zh: "任务派工", en: "Dispatch" },
     {
       key: "memory",
       icon: "memory",
@@ -401,15 +415,19 @@ export default function App() {
           <div className="local-status">
             <span className="status-dot" />
             <div>
-              {t("本地服务已连接", "Local service connected")}
+              {demo
+                ? t("离线演示", "Offline demo")
+                : t("本地服务已连接", "Local service connected")}
               <small>
                 v{state.runtime.version} ·{" "}
-                {t("数据存于本机", "Stored on this device")}
+                {demo
+                  ? t("虚构数据 · 只读", "Fictional data · Read-only")
+                  : t("数据存于本机", "Stored on this device")}
               </small>
             </div>
           </div>
           <button className="disconnect" onClick={disconnect}>
-            {t("断开连接", "Disconnect")}
+            {demo ? t("退出演示", "Exit demo") : t("断开连接", "Disconnect")}
           </button>
         </div>
       </aside>
@@ -432,7 +450,7 @@ export default function App() {
               title={t("刷新工作台状态", "Refresh workspace state")}
               aria-label={t("刷新工作台状态", "Refresh workspace state")}
               onClick={manualRefresh}
-              disabled={!!busy}
+              disabled={!!busy || demo}
             >
               <Icon name="refresh" />
             </button>
@@ -444,15 +462,20 @@ export default function App() {
           >
             <Icon name="shield" size={18} />
             <span>
-              {state.runtime.enabled
+              {demo
                 ? t(
-                    "执行已启用 · 只有点击运行才会启动 Agent；消息不会自动触发执行。",
-                    "Execution enabled · Agents start only when you click Run. Messages never trigger automatic runs.",
+                    "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
+                    "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
                   )
-                : t(
-                    "执行已关闭 · 当前可管理项目、消息和记忆。启动服务时添加 --enable-execution 才能运行 Agent 或读取额度。",
-                    "Execution disabled · Manage projects, messages and memory. Start the service with --enable-execution to run agents or fetch quotas.",
-                  )}
+                : state.runtime.enabled
+                  ? t(
+                      "执行已启用 · 任务会提交到原生会话，协作派工会自动执行并回传结果。",
+                      "Execution enabled · Tasks use native sessions. Delegated work runs automatically and returns its result.",
+                    )
+                  : t(
+                      "执行已关闭 · 可以查看记录、管理项目和共享记忆。运行、派工和额度读取暂不可用。",
+                      "Execution disabled · Review records, manage projects and shared memory. Runs, dispatch and quota fetching are unavailable.",
+                    )}
             </span>
           </div>
           {error && (
@@ -482,7 +505,7 @@ export default function App() {
           {projectForm && (
             <ProjectForm
               t={t}
-              busy={!!busy}
+              busy={!!busy || demo}
               mutate={mutate}
               close={() => setProjectForm(false)}
               onCreated={(id) => setProjectID(id)}
@@ -520,8 +543,9 @@ export default function App() {
                   approvals={approvals}
                   state={state}
                   token={token}
+                  demo={demo}
                   runtimeEnabled={state.runtime.enabled}
-                  busy={!!busy}
+                  busy={!!busy || demo}
                   mutate={mutate}
                 />
               )}
@@ -533,7 +557,7 @@ export default function App() {
                   state={state}
                   projectID={projectID}
                   agents={agents}
-                  busy={!!busy}
+                  busy={!!busy || demo}
                   mutate={mutate}
                 />
               )}
@@ -546,7 +570,7 @@ export default function App() {
                   projectID={projectID}
                   agents={agents}
                   proposals={proposals}
-                  busy={!!busy}
+                  busy={!!busy || demo}
                   mutate={mutate}
                 />
               )}
@@ -557,7 +581,7 @@ export default function App() {
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
                   runtimeEnabled={state.runtime.enabled}
-                  busy={!!busy}
+                  busy={!!busy || demo}
                   mutate={mutate}
                 />
               )}
@@ -565,8 +589,8 @@ export default function App() {
           )}
           <footer className="workspace-footer">
             {t(
-              "消息是上下文，不是指令授权。额度重置时间不等于订阅续费日期。",
-              "Messages provide context, not execution authorization. Quota resets are separate from subscription renewal.",
+              "原生会话保留各自上下文；已审阅记忆在项目内共享。额度重置与订阅续费分开记录。",
+              "Native sessions keep private context; reviewed memory is shared within the project. Quota resets and renewal dates are separate.",
             )}
           </footer>
         </main>
