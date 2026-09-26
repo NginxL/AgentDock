@@ -1,6 +1,8 @@
 # Multi-agent workspace research
 
-[简体中文](RESEARCH.zh-CN.md) · Researched: 2026-09-26
+**English** · [简体中文](RESEARCH.zh-CN.md) · [Back to README](../README.md)
+
+Researched: 2026-09-26
 
 Scope: one interface for Codex, Claude and other agents, with inter-agent communication, subscription quotas and shared project memory.
 
@@ -73,3 +75,7 @@ The exact distribution, adapter version and authentication combination remains s
 | [LangGraph](https://docs.langchain.com/oss/python/concepts/memory) | Thread checkpoints and namespaced cross-session stores. | Reference for scope isolation; no graph runtime dependency. |
 
 [BeeAI Agent Communication Protocol](https://github.com/i-am-bee/acp) is a different use of “ACP”; its repository describes its merge into A2A. AgentDock uses **Agent Client Protocol**.
+
+---
+
+**English** · [简体中文](RESEARCH.zh-CN.md) · [Back to README](../README.md)

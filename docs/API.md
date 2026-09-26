@@ -1,5 +1,7 @@
 # Local API
 
+**English** · [简体中文](API.zh-CN.md) · [Back to README](../README.md)
+
 Version: 0.1 preview. All timestamps are UTC ISO 8601; IDs are UUID strings. Success responses are JSON. Errors are `{ "error": "message" }`, with HTTP 400 (invalid input), 401 (missing/invalid admin token), 403 (authorization/review mode), 404 (missing), 409 (state/version conflict), or 500 (sanitized internal failure).
 
 ## Authentication
@@ -36,7 +38,7 @@ Events contain `seq`, `id`, `project_id`, nullable `session_id`, `kind`, `payloa
 
 | Tool | Arguments | Effect |
 | --- | --- | --- |
-| `agent_list` | none | List teammates in this project. |
+| `agent_list` | none | List agents in this project. |
 | `message_send` | `recipient_id`, `body`; optional `correlation_id`, `idempotency_key` | Queue addressed message, bound sender identity. Does not start a run. |
 | `inbox_read` | none | Up to 50 pending messages for this agent. |
 | `inbox_ack` | `message_id` | Acknowledge own message only. |
@@ -44,3 +46,7 @@ Events contain `seq`, `id`, `project_id`, nullable `session_id`, `kind`, `payloa
 | `memory_propose` | `key`, `content`, `expected_version` | Create pending proposal, not approved memory. |
 
 Protocol/tool failures return sanitized errors. The bridge disables HTTP proxies and redirects, accepts only an explicit numeric loopback address, and applies request/response limits. MCP is a tool boundary; it is not A2A or a replacement for OS isolation.
+
+---
+
+**English** · [简体中文](API.zh-CN.md) · [Back to README](../README.md)

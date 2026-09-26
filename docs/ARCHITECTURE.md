@@ -1,4 +1,6 @@
-# Architecture / 架构设计
+# Architecture
+
+**English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)
 
 AgentDock 0.1 is a local, single-user review preview. The implemented boundaries are described below; live provider interoperability is not yet verified.
 
@@ -6,7 +8,7 @@ AgentDock 0.1 is a local, single-user review preview. The implemented boundaries
 
 ```mermaid
 flowchart LR
-  Human[Human / 人] --> UI[React workbench]
+  Human[Human] --> UI[React workbench]
   UI -->|Loopback HTTP + admin token| API[Python services]
   API --> DB[(SQLite)]
   API --> Runtime[Bounded ACP runtime]
@@ -30,7 +32,7 @@ ACP connects the client to an agent. MCP exposes application tools to that agent
 | Agent tools | `agentdock/mcp.py` | Six MCP tools using newline JSON-RPC; current-run identity is supplied by the server, not by tool arguments. |
 | Quota bridge | `agentdock/quota.py` | Fixed Codex/Claude probes through a separately configured AgentMeter executable; sanitized, time-aware snapshots. |
 
-## Task lifecycle / 任务生命周期
+## Task lifecycle
 
 A human selects a project and agent, creates a session, and explicitly submits a prompt. `begin_run` atomically reserves the agent and its canonical workspace. Equal or parent/child overlapping directories cannot run concurrently, including aliases registered as separate projects. Independent worktrees can run in parallel. This is a coordination guard, not an OS filesystem sandbox.
 
@@ -54,7 +56,7 @@ ACP permission requests are stored with the run and exact offered options. Only 
 
 Runs have a 15-minute deadline, 8 MiB total output bound, 512 KiB line bound and event/approval count limits. Provider stderr is drained without being stored. Cancellation revokes MCP access and terminates the process group. Service shutdown stops active runs and quota probes, drains request handlers and then closes the database. Restart recovery marks unfinished runs interrupted and never automatically replays them.
 
-## Communication / 相互通信
+## Communication
 
 A message has a project, authenticated sender, recipient, body, optional correlation/deduplication identifiers and acknowledgment state. Both endpoints must belong to the same project. Agent identity is bound to the run capability; a tool cannot select a different sender. A deduplication key with different content is a conflict.
 
@@ -76,7 +78,7 @@ sequenceDiagram
 
 Message delivery does not dispatch a model call. A recipient can read while running or on its next explicit run. There is no automatic team loop, unbounded recursion or inferred completion acknowledgment.
 
-## Shared memory / 共享记忆
+## Shared memory
 
 Approved memory is keyed by `(project_id, key)`. It records content, version, author, source, archive state and timestamps; every accepted update/archive adds a history row. SQLite transactions provide compare-and-swap semantics through `expected_version`.
 
@@ -84,7 +86,7 @@ Human writes can create/update approved entries. Agent writes create pending pro
 
 The UI shows entry versions, sources and proposal review. Full revision browsing/export and retention controls are not implemented in this preview; history is retained in SQLite.
 
-## Quota & billing / 额度与账期
+## Quota & billing
 
 AgentDock invokes only `configured AgentMeter command + --probe + codex|claude`, with a 35-second timeout and 60-second refresh throttle. The command is private server configuration, never supplied by MCP or an agent response. No probe runs on import, startup, `GET /api/state`, or while execution is disabled.
 
@@ -92,10 +94,14 @@ Quota snapshots retain provider, plan label, remaining percentage, reset time, f
 
 Renewal dates and monthly amounts are manual records. They are neither quota reset dates nor model-call cost estimates. The separately installed AgentMeter owns authentication and any provider network request; displaying its quota does not grant execution access to that provider.
 
-## Trust boundary / 信任边界
+## Trust boundary
 
 The server binds only to `127.0.0.1` and rejects unexpected Host/Origin values. It has no remote binding option or CORS. An admin token is generated on manual launch and written to a mode-0600 file in the private data directory; the UI keeps it only in memory. Run tool tokens are separate, hashed in SQLite, expire after one hour and are revoked when the run ends. Tokens cannot approve permissions or memories through admin endpoints.
 
 A file lock prevents two instances from opening the same database and corrupting recovery state. This protects operational correctness, not hostile processes running as the same OS user. Agents and adapters may have that user's filesystem/network access. Stronger isolation requires a separate user, container or VM and is not provided here.
 
 AgentDock has no external backend or analytics. Real agent runs and quota reads can send data to configured providers. Private database/token files, `.env` files, `config.local*.json` and `web/dist` are excluded from version control. Configuration saved under another filename must be kept outside the repository or explicitly ignored.
+
+---
+
+**English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)

@@ -1,33 +1,31 @@
-# Review brief / 评审说明
+# Validation and compatibility
 
-## Decision summary / 决策摘要
+**English** · [简体中文](REVIEW.zh-CN.md) · [Back to README](../README.md)
 
-独立实现 AgentDock，本地 React UI + Python 标准库服务 + SQLite。ACP 管理 Codex / Claude 适配器会话；MCP 提供项目邮箱和记忆工具；AgentMeter 通过只读 `--probe` 复用。名称不绑定某个模型厂商，原 AgentMeter 保持独立。
+## Implementation status
 
-选择依据：AionUi 的 ACP / Team MCP 分层、Agor 的受控知识条目和 AO 的工作区隔离都贴近目标，但已核实的文档不足以证明存在完全覆盖全部需求的现成方案。比较和认证边界见[中文调研](RESEARCH.zh-CN.md) / [English research](RESEARCH.md)。没有复制这些项目的代码。
+AgentDock combines a local React interface, a Python standard-library service and SQLite storage. ACP manages Codex and Claude adapter sessions; MCP exposes project mailboxes and memory tools. AgentMeter remains a separate application and supplies read-only quota data through `--probe`.
 
-## Implementation status / 实现状态
-
-| 领域 | 已实现 | 待实机验收 / 后续决策 |
+| Area | Implemented | Live acceptance or capability boundary |
 | --- | --- | --- |
-| UI | 中英切换、项目/角色/会话、任务事件、运行与取消入口、权限审批。 | 未启动应用或浏览器验收；当前图片为标记的设计示意。 |
-| Agent 接入 | ACP v1 stdio、初始化/会话/prompt/更新/权限/取消；服务端命令配置。 | 真实 codex-acp、claude-agent-acp 版本与账号兼容性。 |
-| 互通 | 同项目身份绑定邮箱、去重、确认；6 个 MCP 工具。 | 真实模型是否按任务调用工具；自动唤醒/自动团队循环未实现。 |
-| 记忆 | 项目隔离、关键词检索、版本冲突、Agent 提议/人工批准、软归档及数据库历史。 | 向量语义检索、自动提取、UI 完整版本浏览、跨项目共享未实现。 |
-| 额度 | AgentMeter 固定 provider 探测、超时/限流、未知/过期/错误；手动账期。 | 真实登录、钥匙串提示、实际刷新；不承诺所有账号或提供商接口长期可用。 |
-| 生命周期 | 进程组取消、审批过期、工作目录重叠互斥、数据库单实例锁、重启不重放。 | 操作系统级沙箱、自动创建 worktree、远程多用户未实现。 |
+| Interface | Chinese/English switching, projects, roles, sessions, task events, run/cancel controls and permission approvals. | The application has not been launched for browser acceptance. The current illustration is explicitly marked as a design mockup. |
+| Agent integration | ACP v1 over stdio, initialization, sessions, prompts, updates, permissions and cancellation; commands configured on the server. | Actual `codex-acp` and `claude-agent-acp` versions and account compatibility require verification. |
+| Communication | Project-scoped mailboxes with bound sender identities, deduplication and acknowledgments; six MCP tools. | Real model tool use requires verification. Automatic wake-up and autonomous team loops are not implemented. |
+| Memory | Project isolation, keyword search, version conflicts, Agent proposals, human approval, soft archive and database history. | Vector search, automatic extraction, a complete history browser and cross-project sharing are not implemented. |
+| Quotas | AgentMeter probes for fixed providers, timeouts, throttling, unknown/stale/error states and manual billing records. | Real login, Keychain prompts and quota refresh require verification. Continued availability is not guaranteed for every account or provider endpoint. |
+| Lifecycle | Process-group cancellation, approval expiry, exclusion of overlapping working directories, a single-instance database lock and no task replay after restart. | OS-level sandboxing, automatic worktree creation and remote multi-user access are not implemented. |
 
-Claude ACP 使用 Agent SDK，执行端要求 API key；现有 Pro / Max 额度展示不构成 SDK 推理授权。这会影响后续是否采用 ACP、未修改 CLI 或其他官方支持路径的选择，需在启动前审查。
+The Claude ACP adapter uses the Agent SDK and requires an API key for execution. Displaying existing Pro/Max quota does not authorize SDK inference. Authentication compatibility must be reviewed before launch when choosing ACP, an unmodified CLI or another officially supported execution path.
 
-## Validation approach / 验证方式
+## Isolated verification
 
-Backend tests use temporary SQLite stores, direct HTTP dispatcher calls and fake ACP/AgentMeter Python subprocesses. Frontend tests use DOM simulation and mocked HTTP. Build produces static assets. None of these starts the AgentDock HTTP service, a real coding agent or a provider quota request.
+Backend tests use temporary SQLite stores, direct HTTP dispatcher calls and fake ACP/AgentMeter Python subprocesses. Frontend tests use DOM simulation and mocked HTTP. The build produces static assets. None of these checks starts the AgentDock HTTP service, a real coding agent or a provider quota request.
 
-Local verification: 45 backend tests and 16 UI tests passed; Python bytecode compilation, TypeScript checks and the Vite production build passed (macOS, Python 3.9.6, Node.js 20.20.2). The UI regression suite includes delayed state refresh and out-of-order polling, verifying that a task after session creation targets the new session.
+Local verification passed **45 backend tests and 16 interface tests**, Python bytecode compilation, TypeScript checks and the Vite production build on macOS with Python 3.9.6 and Node.js 20.20.2. The interface regression suite includes delayed state refresh and out-of-order polling, verifying that a task submitted after session creation targets the new session.
 
-覆盖：跨项目/跨身份访问拒绝、取消后工具失效、CAS 并发写冲突、记忆审核来源、过期审批拒绝、异常协议/输出大小、子进程组回收、同库多实例拒绝、父子目录冲突、缓存额度过期/未知、界面请求与语言切换。
+Coverage includes rejection of cross-project and cross-identity access, tool revocation after cancellation, compare-and-swap write conflicts, memory approval provenance, rejection of expired approvals, malformed protocol messages, output limits, child-process group cleanup, rejection of multiple instances using one database, parent/child directory conflicts, stale or unknown quota values, interface requests and language switching.
 
-Reproduce without launching the app:
+Reproduce these checks without launching the application:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -38,24 +36,28 @@ npm test
 npm run build
 ```
 
-CI performs these isolated checks on Python 3.9 / 3.12 and Node 20. Passing them is not a substitute for live-provider acceptance. No claim is made that real agent execution or real quota refresh has passed.
+CI performs these isolated checks on Python 3.9/3.12 and Node 20. Passing them does not establish live-provider compatibility. Real agent execution and real quota refresh have not passed acceptance testing.
 
-## Review order / 建议审查顺序
+## Code review checklist
 
-1. [Architecture](ARCHITECTURE.md)：ACP、MCP、配额与共享记忆的边界，以及是否接受显式运行、人工审核的首版范围。
-2. `agentdock/store.py`：项目隔离、消息语义、记忆版本/来源、运行权限和锁。
-3. `agentdock/runtime.py` / `mcp.py`：真实 ACP 字段、审批时效、工具授权和取消路径。
-4. `agentdock/quota.py` / `server.py`：额度真实性、本地认证、关闭顺序和默认禁执行。
-5. `web/src/` / `tests/`：可见状态与 API 一致性、异常和边界覆盖。
+1. [Architecture](ARCHITECTURE.md): ACP, MCP, quota and shared-memory boundaries; explicit execution and human approval requirements.
+2. [Storage](../agentdock/store.py): project isolation, message semantics, memory versions and provenance, run permissions and locks.
+3. [Runtime](../agentdock/runtime.py) and [MCP bridge](../agentdock/mcp.py): ACP fields, approval expiry, tool authority and cancellation.
+4. [Quota bridge](../agentdock/quota.py) and [local server](../agentdock/server.py): quota accuracy, local authentication, shutdown order and execution disabled by default.
+5. [Interface](../web/src/) and [tests](../tests/): consistency between visible state and the API, error handling and boundary coverage.
 
-## After-review acceptance / 评审后的验收门槛
+## Live acceptance requirements
 
-Only begin these steps after explicitly deciding to run the preview:
+Begin these steps only after explicitly deciding to run the preview:
 
-- Pin adapter versions and verify official authentication on disposable, trusted worktrees.
-- Confirm one Codex task and one Claude task stream results, request permissions correctly, cancel fully and recover cleanly after restart.
-- Verify Codex→Claude and Claude→Codex mailbox exchange without automatic runaway calls; confirm memory proposals require review and conflicts are visible.
-- Refresh real AgentMeter quotas and compare remaining/reset values with the official usage page, including auth failure and stale cache.
-- Review the real Chinese/English interface and capture privacy-safe demonstration screenshots.
+- Pin adapter versions and verify official authentication in disposable, trusted worktrees.
+- Confirm that one Codex task and one Claude task stream results, request permissions correctly, cancel fully and recover cleanly after restart.
+- Verify Codex-to-Claude and Claude-to-Codex mailbox exchange without uncontrolled automatic calls. Confirm that memory proposals require review and version conflicts are visible.
+- Refresh real AgentMeter quotas and compare remaining amounts and reset times with the official usage page, including authentication failures and stale caches.
+- Inspect the Chinese and English interface and capture demonstration screenshots without private information.
 
-Review preview does not install services, start at login, register global MCP configuration, alter AgentMeter or modify existing provider logins.
+The preview does not install services, start at login, register global MCP configuration, alter AgentMeter or modify existing provider logins.
+
+---
+
+**English** · [简体中文](REVIEW.zh-CN.md) · [Back to README](../README.md)

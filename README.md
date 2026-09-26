@@ -8,7 +8,7 @@ AgentDock is a local web workbench for Codex and Claude ACP adapters, project-sc
 
 > **Developer preview.** Execution is disabled by default. Automated tests use simulated adapters; compatibility with live Codex and Claude adapters has not yet been verified.
 
-[Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
+[Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Interface
 
@@ -73,8 +73,12 @@ AgentDock does not read provider OAuth credential stores. Agent authentication r
 
 ## Development
 
-See [architecture](docs/ARCHITECTURE.md) for protocol boundaries and [validation](docs/REVIEW.md) for test coverage and compatibility limits. Submit issues with reproduction steps and sanitized fixtures; do not include credentials or private conversation logs. Keep the English and Chinese READMEs consistent.
+See [architecture](docs/ARCHITECTURE.md) for protocol boundaries, [API](docs/API.md) for request fields and [validation](docs/REVIEW.md) for test coverage and compatibility limits. Submit issues with reproduction steps and sanitized fixtures; do not include credentials or private conversation logs. Keep the English and Chinese READMEs consistent.
 
 ## License
 
 Released under the [MIT License](LICENSE).
+
+---
+
+**English** · [简体中文](README.zh-CN.md)
