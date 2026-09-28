@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from agentdock.store import Store, Conflict, Forbidden, Invalid
+from agentdock.store import Store, Conflict, Forbidden, Invalid, Missing
 
 class StoreTests(unittest.TestCase):
     def setUp(self):
@@ -17,6 +17,39 @@ class StoreTests(unittest.TestCase):
     def token(self):
         r=self.store.begin_run(self.s['id'],'Discuss interface')
         return r,self.store.issue_capability(r['id'])
+    def test_roles_are_optional_and_independent_of_provider(self):
+        for provider in ('codex', 'claude'):
+            empty = self.store.add_agent(self.p['id'], 'General helper', provider)
+            custom = self.store.add_agent(self.p['id'], 'My researcher', provider, '  Research requirements, then propose a plan.  ')
+            self.assertEqual(empty['role'], '')
+            self.assertEqual(custom['role'], 'Research requirements, then propose a plan.')
+            self.assertEqual(self.store.get_agent(custom['id'])['provider'], provider)
+    def test_agent_edits_persist_and_preserve_native_session_and_history(self):
+        r,t = self.token()
+        self.store.bind_native_session(self.s['id'], 'native-session-1', r['id'])
+        session = self.store.get_session(self.s['id'])
+        events = self.store.session_events(self.s['id'])
+        edited = self.store.update_agent(self.a['id'], {'name': 'My designer', 'role': 'Design interfaces'})
+        self.assertEqual(edited, {**self.a, 'name': 'My designer', 'role': 'Design interfaces'})
+        self.assertEqual(self.store.get_session(self.s['id']), session)
+        self.assertEqual(self.store.session_events(self.s['id']), events)
+        roster = self.store.respond_tool(t, 'agent_list', {})
+        self.assertEqual(next(a for a in roster if a['id'] == edited['id'])['role'], 'Design interfaces')
+        self.store.finish_run(r['id'], 'completed')
+        self.store.close(); self.store = Store(self.root/'state.sqlite3')
+        self.assertEqual(self.store.get_agent(edited['id']), edited)
+        self.assertEqual(self.store.get_session(self.s['id'])['native_session_id'], 'native-session-1')
+        cleared = self.store.update_agent(edited['id'], {'role': ''})
+        self.assertEqual(cleared['name'], 'My designer')
+        self.assertEqual(cleared['role'], '')
+    def test_invalid_agent_edits_leave_original_values_unchanged(self):
+        for change in ({}, {'provider': 'claude'}, {'project_id': self.p['id']}, {'id': 'other'},
+                       {'name': ''}, {'name': 'x' * 101}, {'role': None}, {'role': 'x' * 4001},
+                       {'name': 'Valid name', 'role': '\x00'}):
+            with self.subTest(change=str(change)[:100]):
+                with self.assertRaises(Invalid): self.store.update_agent(self.a['id'], change)
+                self.assertEqual(self.store.get_agent(self.a['id']), self.a)
+        with self.assertRaises(Missing): self.store.update_agent('missing', {'role': 'Research'})
     def test_codex_to_claude_dispatch_and_dedup(self):
         r,t=self.token()
         args=dict(project_id=self.p['id'],sender_id=self.a['id'],recipient_id=self.b['id'],body='Please review',idempotency_key='one',parent_run_id=r['id'])

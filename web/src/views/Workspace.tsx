@@ -53,6 +53,7 @@ export default function Workspace({
   mutate: Mutate;
 }) {
   const [agentForm, setAgentForm] = useState(false);
+  const [editingAgentID, setEditingAgentID] = useState<string | null>(null);
   const [agentName, setAgentName] = useState("");
   const [provider, setProvider] = useState<Provider>("codex");
   const [role, setRole] = useState("");
@@ -67,6 +68,7 @@ export default function Workspace({
   const relevantSessions = sessions.filter((s) => s.agent_id === agentID);
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
+  const editingAgent = agents.find((a) => a.id === editingAgentID);
   const running = selectedSession?.status === "running";
   const sessionRuns = (state.runs ?? []).filter(
     (run) => run.session_id === sessionID,
@@ -172,10 +174,41 @@ export default function Workspace({
             {project.path}
           </p>
         </div>
-        <button className="primary" onClick={() => setAgentForm(!agentForm)}>
-          <Icon name="plus" size={18} />
-          {t("添加 Agent", "Add agent")}
-        </button>
+        <div className="button-row">
+          {selectedAgent && (
+            <button
+              className="secondary"
+              disabled={busy && !demo}
+              aria-label={t(
+                `编辑 ${selectedAgent.name} 的角色`,
+                `Edit role for ${selectedAgent.name}`,
+              )}
+              onClick={() => {
+                setEditingAgentID(selectedAgent.id);
+                setAgentName(selectedAgent.name);
+                setProvider(selectedAgent.provider);
+                setRole(selectedAgent.role);
+                setAgentForm(true);
+              }}
+            >
+              {t("编辑角色", "Edit role")}
+            </button>
+          )}
+          <button
+            className="primary"
+            disabled={busy && !demo}
+            onClick={() => {
+              setEditingAgentID(null);
+              setAgentName("");
+              setProvider("codex");
+              setRole("");
+              setAgentForm(true);
+            }}
+          >
+            <Icon name="plus" size={18} />
+            {t("添加 Agent", "Add agent")}
+          </button>
+        </div>
       </div>
       <div className="stat-grid">
         <Stat
@@ -206,11 +239,23 @@ export default function Workspace({
       {agentForm && (
         <section className="panel inset-form">
           <div className="panel-heading">
-            <h2>{t("添加项目 Agent", "Add a project agent")}</h2>
+            <h2>
+              {editingAgent
+                ? t(
+                    `编辑 Agent · ${editingAgent.name}`,
+                    `Edit agent · ${editingAgent.name}`,
+                  )
+                : t("添加项目 Agent", "Add a project agent")}
+            </h2>
             <button
               className="icon-button"
               onClick={() => setAgentForm(false)}
-              aria-label={t("取消添加 Agent", "Cancel adding agent")}
+              aria-label={
+                editingAgent
+                  ? t("取消编辑 Agent", "Cancel editing agent")
+                  : t("取消添加 Agent", "Cancel adding agent")
+              }
+              disabled={busy && !demo}
             >
               <Icon name="close" />
             </button>
@@ -219,17 +264,22 @@ export default function Workspace({
             onSubmit={async (e) => {
               e.preventDefault();
               await mutate(
-                "/api/agents",
-                {
-                  project_id: project.id,
-                  name: agentName.trim(),
-                  provider,
-                  role: role.trim(),
-                },
+                editingAgentID
+                  ? `/api/agents/${encodeURIComponent(editingAgentID)}`
+                  : "/api/agents",
+                editingAgentID
+                  ? { name: agentName.trim(), role: role.trim() }
+                  : {
+                      project_id: project.id,
+                      name: agentName.trim(),
+                      provider,
+                      role: role.trim(),
+                    },
                 (result) => {
                   setAgentID(result.id);
                   setAgentName("");
                   setRole("");
+                  setEditingAgentID(null);
                   setAgentForm(false);
                 },
               );
@@ -244,8 +294,8 @@ export default function Workspace({
                   required
                   maxLength={100}
                   placeholder={t(
-                    "例如：代码审阅员",
-                    "For example: Code reviewer",
+                    "为这位 Agent 命名",
+                    "Choose a name for this agent",
                   )}
                 />
               </label>
@@ -254,6 +304,7 @@ export default function Workspace({
                 <select
                   value={provider}
                   onChange={(e) => setProvider(e.target.value as Provider)}
+                  disabled={!!editingAgentID}
                 >
                   <option value="codex">Codex</option>
                   <option value="claude">Claude</option>
@@ -261,26 +312,39 @@ export default function Workspace({
               </label>
             </div>
             <label>
-              {t("角色说明", "Role")}
+              {t("角色说明（可选）", "Role (optional)")}
               <textarea
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
                 rows={2}
                 maxLength={4000}
                 placeholder={t(
-                  "说明此 Agent 的职责和边界",
-                  "Describe this agent’s responsibilities and boundaries",
+                  "填写职责、工作方式和边界；留空则按每次任务要求执行。",
+                  "Describe responsibilities, working style and boundaries. Leave blank to follow each task.",
                 )}
               />
             </label>
             <p className="form-hint">
               {t(
-                "使用服务端配置的本机 Codex / Claude CLI 与其登录凭据。各 Agent 的原生会话独立保留上下文。",
-                "Uses server-configured local Codex / Claude CLIs and their credentials. Each agent’s native sessions retain their own context.",
+                "名称和角色由你定义，与 Codex / Claude 服务无关。角色在后续执行时生效，不会清除已有原生会话历史。",
+                "You define the name and role independently of Codex / Claude. Changes apply to future turns and do not clear existing native conversation history.",
               )}
             </p>
+            <p className="form-hint">
+              {editingAgentID
+                ? t(
+                    "服务保持不变，以保留已有会话绑定。需要使用另一服务时，请添加新的 Agent。",
+                    "The provider stays unchanged to preserve session bindings. Add a new agent to use another provider.",
+                  )
+                : t(
+                    "使用服务端配置的本机 Codex / Claude CLI 与其登录凭据。",
+                    "Uses server-configured local Codex / Claude CLIs and their credentials.",
+                  )}
+            </p>
             <button className="primary" disabled={busy || !agentName.trim()}>
-              {t("创建 Agent", "Create agent")}
+              {editingAgentID
+                ? t("保存角色", "Save role")
+                : t("创建 Agent", "Create agent")}
             </button>
           </form>
         </section>
@@ -307,7 +371,11 @@ export default function Workspace({
                   {t("原生会话", "Native session")}
                 </span>
                 <p>
-                  {agent.role || t("未设置角色说明", "No role description")}
+                  {agent.role ||
+                    t(
+                      "未设置角色 · 按任务要求执行",
+                      "No role set · Follows each task",
+                    )}
                 </p>
                 {(() => {
                   const quota = listOf(state.quotas).find(

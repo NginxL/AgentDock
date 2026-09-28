@@ -49,6 +49,7 @@ class API:
             p=self._json(headers,body)
             if parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"))
             elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""))
+            elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
             elif parsed.path=="/api/messages":
                 if p.get("sender_id","human")!="human": raise Forbidden("Human endpoint cannot impersonate an agent")

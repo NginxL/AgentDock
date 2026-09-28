@@ -11,6 +11,7 @@ import App from "./App";
 import { QuotaWindow } from "./views/Usage";
 import { conversationEvents, eventText } from "./ui";
 import { ApiError, remainingPercent, request } from "./api";
+import { demoState } from "./demo";
 import type { DockState } from "./types";
 
 const state: DockState = {
@@ -88,6 +89,184 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe("user-defined agent roles", () => {
+  it.each(["codex", "claude"])(
+    "creates %s agents without assigning a role",
+    async (provider) => {
+      render(<App />);
+      await connect();
+      fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+      const name = screen.getByLabelText("名称") as HTMLInputElement;
+      const role = screen.getByLabelText(
+        "角色说明（可选）",
+      ) as HTMLTextAreaElement;
+      expect(name.value).toBe("");
+      expect(role.value).toBe("");
+      fireEvent.change(name, { target: { value: "My helper" } });
+      fireEvent.change(role, { target: { value: "Research requirements" } });
+      fireEvent.change(screen.getByLabelText("服务"), {
+        target: { value: "claude" },
+      });
+      fireEvent.change(screen.getByLabelText("服务"), {
+        target: { value: "codex" },
+      });
+      expect(role.value).toBe("Research requirements");
+      fireEvent.change(screen.getByLabelText("服务"), {
+        target: { value: provider },
+      });
+      fireEvent.change(role, { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(([path]) => path === "/api/agents"),
+        ).toBe(true),
+      );
+      const call = fetchMock.mock.calls.find(
+        ([path]) => path === "/api/agents",
+      )!;
+      expect(JSON.parse(call[1].body)).toEqual({
+        project_id: "project-a",
+        name: "My helper",
+        provider,
+        role: "",
+      });
+    },
+  );
+
+  it("saves a new name and clears the role while keeping the selected native session", async () => {
+    let current = {
+      ...state,
+      sessions: [
+        { ...state.sessions[0], native_session_id: "existing-native-session" },
+      ],
+    };
+    fetchMock.mockImplementation(
+      async (path: string, options?: RequestInit) => {
+        if (path === "/api/agents/agent-a") {
+          const agent = {
+            ...current.agents[0],
+            ...JSON.parse(options!.body as string),
+          };
+          current = { ...current, agents: [agent] };
+          return response(agent);
+        }
+        return response(path.includes("/events?") ? { events: [] } : current);
+      },
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
+    );
+    expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
+    ).toBe("Review changes");
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Custom helper" },
+    });
+    fireEvent.change(screen.getByLabelText("角色说明（可选）"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
+    await screen.findByRole("button", { name: "编辑 Custom helper 的角色" });
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "保存角色" })).toBeNull(),
+    );
+    expect(screen.getByText("未设置角色 · 按任务要求执行")).toBeTruthy();
+    expect(screen.getByText("existing-native-session")).toBeTruthy();
+    const call = fetchMock.mock.calls.find(
+      ([path]) => path === "/api/agents/agent-a",
+    )!;
+    expect(JSON.parse(call[1].body)).toEqual({
+      name: "Custom helper",
+      role: "",
+    });
+    expect(current.agents[0].provider).toBe("codex");
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑 Custom helper 的角色" }),
+    );
+    expect(
+      (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
+    ).toBe("");
+  });
+
+  it("keeps an unsuccessful edit as a draft and lets the user cancel without writing", async () => {
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path === "/api/agents/agent-a")
+        return response({ error: "Temporary save failure" }, 500);
+      return response(path.includes("/events?") ? { events: [] } : state);
+    });
+    render(<App />);
+    await connect();
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
+    );
+    fireEvent.change(screen.getByLabelText("角色说明（可选）"), {
+      target: { value: "My unsaved role" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
+    await screen.findByText("Temporary save failure");
+    expect(
+      (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
+    ).toBe("My unsaved role");
+    expect(screen.getByText("Review changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+    expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
+      false,
+    );
+    expect(
+      fetchMock.mock.calls.filter(([path]) => path === "/api/agents/agent-a"),
+    ).toHaveLength(1);
+  });
+
+  it("translates role controls without changing user content", async () => {
+    render(<App />);
+    await connect();
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(
+      screen.getByRole("heading", { name: "Edit agent · Review agent" }),
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Role (optional)") as HTMLTextAreaElement).value,
+    ).toBe("Review changes");
+    expect(screen.getByRole("button", { name: "Save role" })).toBeTruthy();
+    expect(screen.queryByText("角色说明（可选）")).toBeNull();
+  });
+
+  it("shows no fixed provider roles in either demo language and never saves demo edits", async () => {
+    for (const lang of ["zh", "en"] as const) {
+      expect(
+        demoState(lang).agents.map((agent) => [agent.name, agent.role]),
+      ).toEqual([
+        ["Agent A", ""],
+        ["Agent B", ""],
+      ]);
+    }
+    window.history.replaceState({}, "", "/?demo=1");
+    render(<App />);
+    await screen.findByRole("heading", { name: "协作工作台" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑 Agent A 的角色" }),
+    );
+    expect(
+      (screen.getByRole("button", { name: "保存角色" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 describe("selection after delayed mutation refresh", () => {
   it("selects a new project only after its refreshed state is available", async () => {
@@ -180,7 +359,7 @@ describe("selection after delayed mutation refresh", () => {
     await waitFor(() =>
       expect(
         screen
-          .getByRole("button", { name: /New helper/ })
+          .getByRole("button", { name: /New helper/, pressed: true })
           .getAttribute("aria-pressed"),
       ).toBe("true"),
     );

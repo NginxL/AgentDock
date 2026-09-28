@@ -207,6 +207,16 @@ class Store:
             self.db.execute("INSERT INTO agents VALUES(:id,:project_id,:name,:provider,:role,:created_at)",item)
         return item
 
+    def update_agent(self, agent_id, changes):
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role"}:
+            raise Invalid("Only name and role can be updated")
+        with self.transaction():
+            agent = self._one("agents", agent_id)
+            name = text(changes.get("name", agent["name"]), "name", 100)
+            role = text(changes.get("role", agent["role"]), "role", 4000, True)
+            self.db.execute("UPDATE agents SET name=?,role=? WHERE id=?", (name, role, agent_id))
+            return self._one("agents", agent_id)
+
     def _add_session(self, agent_id, title):
         agent = self._one("agents",agent_id)
         item = dict(id=str(uuid.uuid4()),project_id=agent["project_id"],agent_id=agent_id,title=text(title,"title",160),status="idle",native_session_id=None,created_at=now(),updated_at=now())

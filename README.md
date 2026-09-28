@@ -16,10 +16,14 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 ![AgentDock English workspace with native sessions, task status, and usage](docs/images/workspace.en.png)
 
-*Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional.*
+*Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional. Agent A/B are example names with no preset roles; users define their names and responsibilities.*
 
 <details>
-<summary>Task handoffs and usage monitoring</summary>
+<summary>Role configuration, task handoffs, and usage monitoring</summary>
+
+**Custom roles:** select an agent and choose **Edit role** to change its name, describe its responsibilities, or clear the role. Provider selection is independent of the role.
+
+![Agent name and role editor](docs/images/roles.en.png)
 
 **Dispatch:** inspect the target conversation, execution result and return status.
 
@@ -35,6 +39,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 | Capability | What it does |
 | --- | --- |
+| Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
@@ -62,7 +67,9 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Select a trusted project directory, create agents, and submit a task. Teammate dispatches and result-return turns execute automatically while execution is enabled. Quota refresh remains an explicit action.
+Select a trusted project directory and choose **Add agent** to select a provider, name the agent, and optionally describe its role. Leave the role blank to follow each task. To change an existing agent, select its card and choose **Edit role**. Changes apply to future turns without interrupting active tasks or clearing native conversation history. Create a new session when you need a fresh context.
+
+Teammate dispatches and result-return turns execute automatically while execution is enabled. Quota refresh remains an explicit action.
 
 ## Configuration
 
@@ -87,17 +94,17 @@ AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. 
 ```mermaid
 sequenceDiagram
     participant U as You
-    participant C as Codex session
+    participant C as Agent A session
     participant D as AgentDock dispatcher
-    participant A as Claude Code session
-    U->>C: Analyze and delegate implementation
+    participant A as Agent B session
+    U->>C: Define responsibilities and submit a task
     C->>D: Addressed task with context
     D-->>C: Queued task ID
     Note over C: Finish the current turn
     D->>A: Start or resume, then execute
     A-->>D: Result or failure
     D->>C: Resume requesting session with result
-    C-->>U: Review and complete the task
+    C-->>U: Process results and complete the task
 ```
 
 Sessions belonging to the same agent, or using equal/overlapping working directories, execute sequentially. Independent workspaces can run in parallel. A collaboration chain is bounded to 16 runs and three delegation levels. Cancelling a task also cancels its descendants. Application restart marks unfinished work interrupted and does not replay it automatically.

@@ -19,6 +19,19 @@ class APITests(unittest.TestCase):
     def test_review_mode_never_invokes_runtime_or_quota(self):
         for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)
         self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
+    def test_agent_role_updates_work_without_enabling_execution(self):
+        _,project = self.call('POST','/api/projects',{'name':'P','path':self.tmp.name})
+        _,agent = self.call('POST','/api/agents',{'project_id':project['id'],'name':'Helper','provider':'claude'})
+        route = '/api/agents/' + agent['id']
+        status,updated = self.call('POST',route,{'name':'Custom specialist','role':'Implement and test'})
+        self.assertEqual(status,200)
+        self.assertEqual((updated['name'],updated['role'],updated['provider']),('Custom specialist','Implement and test','claude'))
+        self.assertEqual(self.call('POST',route,{'role':''})[1]['role'],'')
+        for invalid in ({'provider':'codex'},{'name':' '},{'role':None},{}):
+            self.assertEqual(self.call('POST',route,invalid)[0],400)
+        self.assertEqual(self.call('POST','/api/agents/missing',{'role':'Research'})[0],404)
+        self.assertEqual(self.call('POST',route,{'role':'Unauthorized'},headers={**self.h,'Authorization':'Bearer invalid'})[0],401)
+        self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
     def test_scoped_tools_cannot_call_human_approval_endpoints(self):
         _,p=self.call('POST','/api/projects',{'name':'P','path':self.tmp.name})
         _,a=self.call('POST','/api/agents',{'project_id':p['id'],'name':'A','provider':'codex'})
@@ -27,6 +40,8 @@ class APITests(unittest.TestCase):
         status,proposal=self.call('POST','/mcp/tool',{'name':'memory_propose','arguments':{'key':'Fact','content':'Value','expected_version':0}},h)
         self.assertEqual(status,200)
         self.assertEqual(self.call('GET','/api/state',headers=h)[0],401)
+        self.assertEqual(self.call('POST','/api/agents/'+a['id'],{'role':'Self-assigned authority'},h)[0],401)
+        self.assertEqual(self.store.get_agent(a['id'])['role'],'')
         route='/api/proposals/'+proposal['id']+'/approve'
         self.assertEqual(self.call('POST',route,{'expected_version':0},h)[0],401)
         self.assertEqual(self.call('POST',route,{'expected_version':0})[0],200)

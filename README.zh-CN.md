@@ -16,10 +16,14 @@ AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会�
 
 ![AgentDock 中文工作台，展示原生会话、任务状态与额度](docs/images/workspace.zh-CN.png)
 
-*离线演示模式下的实际界面截图。图中的项目、对话和额度均为虚构数据。*
+*离线演示模式下的实际界面截图。图中的项目、对话和额度均为虚构数据。Agent A／B 为示例名称，未预设角色；名称与职责由用户定义。*
 
 <details>
-<summary>查看任务派工与额度界面</summary>
+<summary>查看角色配置、任务派工与额度界面</summary>
+
+**自定义角色：**选择 Agent 后点击“编辑角色”，修改名称、职责或清空角色说明。服务选择与角色定义独立。
+
+![Agent 名称与角色编辑界面](docs/images/roles.zh-CN.png)
 
 **任务派工：**查看目标会话、执行结果与回传状态。
 
@@ -35,6 +39,7 @@ AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会�
 
 | 能力 | 说明 |
 | --- | --- |
+| 自定义角色 | 自行定义 Agent 名称和职责，支持创建后编辑或清空角色；Codex／Claude 均可承担任意用户定义的分工。 |
 | 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
 | 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
 | 共享记忆 | 项目知识与私有对话分开管理；支持来源、版本、关键词检索、智能体提议审核和归档历史。 |
@@ -62,7 +67,9 @@ python3 -m agentdock --config config.local.json
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-选择可信项目目录，创建智能体并提交任务。开启执行期间，同伴派工和结果回传轮次会自动执行；额度刷新仍需手动触发。
+选择可信项目目录，通过**添加 Agent**选择服务、填写名称和可选的角色说明。角色留空时按每次任务要求执行。已有 Agent 可先选中卡片，再点击**编辑角色**修改名称和职责；变更用于后续执行，不会中断当前任务，也不会清除原生会话历史。需要全新上下文时，创建新会话。
+
+开启执行期间，同伴派工和结果回传轮次会自动执行；额度刷新仍需手动触发。
 
 ## 配置
 
@@ -87,17 +94,17 @@ AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，不使用 
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant C as Codex 会话
+    participant C as Agent A 会话
     participant D as AgentDock 调度器
-    participant A as Claude Code 会话
-    U->>C: 分析需求并安排实现
+    participant A as Agent B 会话
+    U->>C: 定义职责并提交任务
     C->>D: 提交目标明确、含上下文的任务
     D-->>C: 返回排队任务 ID
     Note over C: 结束当前轮次
     D->>A: 创建或恢复会话并执行
     A-->>D: 返回结果或失败原因
     D->>C: 恢复发起会话并送达结果
-    C-->>U: 审阅结果并完成任务
+    C-->>U: 处理结果并完成任务
 ```
 
 同一智能体的会话，以及使用相同或父子目录的任务，按顺序执行；独立工作目录可以并行。每条协作链最多包含 16 个执行任务，派工深度最多三层。取消任务会同时取消其后续派生任务。应用重启将未完成任务标记为中断，不自动重放。

@@ -13,21 +13,15 @@ export function demoState(lang: Language): DockState {
         id: "demo-codex",
         project_id: "demo-project",
         provider: "codex",
-        name: t("实现工程师", "Implementation"),
-        role: t(
-          "实现功能、验证测试，向审阅者交接变更。",
-          "Implement features, verify tests and hand changes to a reviewer.",
-        ),
+        name: "Agent A",
+        role: "",
       },
       {
         id: "demo-claude",
         project_id: "demo-project",
         provider: "claude",
-        name: t("代码审阅员", "Code review"),
-        role: t(
-          "独立审阅行为、边界条件与测试覆盖。",
-          "Independently review behavior, edge cases and test coverage.",
-        ),
+        name: "Agent B",
+        role: "",
       },
     ],
     sessions: [
@@ -191,8 +185,8 @@ export function demoState(lang: Language): DockState {
         kind: "user_message",
         payload: {
           text: t(
-            "为搜索加入键盘导航，沿用项目的可访问性约定。完成后请 Claude 独立审阅。",
-            "Add keyboard navigation to search following the project accessibility conventions. Ask Claude for an independent review when ready.",
+            "为搜索加入键盘导航，沿用项目的可访问性约定。完成后请 Agent B 独立审阅。",
+            "Add keyboard navigation to search following the project accessibility conventions. Ask Agent B for an independent review when ready.",
           ),
         },
         created_at: date,
@@ -205,8 +199,8 @@ export function demoState(lang: Language): DockState {
         kind: "agent_message",
         payload: {
           text: t(
-            "已完成键盘导航和焦点恢复。\n\n• ↑ / ↓ 在结果中移动，Enter 打开所选项\n• Esc 关闭搜索并恢复焦点\n• 空结果不会触发无效选择\n\n已将审阅任务派给 Claude，沿用独立的审阅会话。",
-            "Keyboard navigation and focus restoration are complete.\n\n• ↑ / ↓ move through results; Enter opens the selection\n• Escape closes search and restores focus\n• Empty results cannot trigger invalid selections\n\nThe review was dispatched to Claude in its own review session.",
+            "已完成键盘导航和焦点恢复。\n\n• ↑ / ↓ 在结果中移动，Enter 打开所选项\n• Esc 关闭搜索并恢复焦点\n• 空结果不会触发无效选择\n\n已将审阅任务派给 Agent B，沿用独立的审阅会话。",
+            "Keyboard navigation and focus restoration are complete.\n\n• ↑ / ↓ move through results; Enter opens the selection\n• Escape closes search and restores focus\n• Empty results cannot trigger invalid selections\n\nThe review was dispatched to Agent B in its own review session.",
           ),
         },
         created_at: date,
@@ -219,8 +213,8 @@ export function demoState(lang: Language): DockState {
         kind: "message_sent",
         payload: {
           text: t(
-            "实现工程师 → 代码审阅员 · 审阅搜索变更",
-            "Implementation → Code review · Review search changes",
+            "Agent A → Agent B · 审阅搜索变更",
+            "Agent A → Agent B · Review search changes",
           ),
         },
         created_at: date,

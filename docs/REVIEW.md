@@ -41,8 +41,8 @@ Frontend checks use simulated DOM and HTTP responses. The production build valid
 | Native protocol | New and resumed sessions, metadata-only Codex resume, exact native identity, streaming without duplicate final text, permission allow/deny round trips, child-scoped Claude foreground policy, mismatched session/turn IDs, invalid JSON, early exits, and sanitized failures. |
 | Resource bounds | Output limits, permission expiry, run deadlines while approval is blocked, cancellation, descendant-process cleanup, and MCP authority revocation. |
 | Dispatcher and MCP | Automatic delivery and return to the exact requesting session, final-result settlement after nested or multiple child tasks, queued-work admission, workspace exclusion, idempotency, failure propagation, cancellation, and reserved reply capacity. |
-| Storage and authorization | Project and sender isolation, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
-| Quotas and interface | Stale/unknown/zero quota distinctions, explicit refresh, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
+| Storage and authorization | Project and sender isolation, user-defined role persistence and administrator-only edits, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
+| Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, explicit refresh, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
 
 Reproduce the automated checks without starting a real agent:
 

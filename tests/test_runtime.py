@@ -97,6 +97,32 @@ class RuntimeTests(unittest.TestCase):
         for call in self.calls:
             with self.assertRaises(Forbidden): self.store.capability_run(call['token'])
 
+    def test_role_changes_reach_future_turns_without_rewriting_active_prompts(self):
+        runtime = self.make_runtime()
+        for agent,session in ((self.a,self.sa),(self.b,self.sb)):
+            with self.subTest(provider=agent['provider']):
+                self.gate.clear()
+                start = len(self.calls)
+                self.store.update_agent(agent['id'], {'role': 'ROLE_BEFORE_EDIT'})
+                first = runtime.start(session['id'], '<block> Work on this task')
+                self.wait_for(lambda: len(self.calls) == start + 1)
+                self.store.update_agent(agent['id'], {'name': 'User-defined helper', 'role': 'ROLE_AFTER_EDIT'})
+                second = runtime.start(session['id'], 'Next task')
+                self.assertEqual(self.store.get_run(second['id'])['status'], 'queued')
+                self.assertIn('ROLE_BEFORE_EDIT', self.calls[start]['prompt'])
+                self.assertNotIn('ROLE_AFTER_EDIT', self.calls[start]['prompt'])
+                self.gate.set()
+                self.assertEqual(self.finished(first)['status'], 'completed')
+                self.assertEqual(self.finished(second)['status'], 'completed')
+                self.assertIn('ROLE_AFTER_EDIT', self.calls[start + 1]['prompt'])
+                self.assertNotIn('ROLE_BEFORE_EDIT', self.calls[start + 1]['prompt'])
+                self.assertEqual(self.calls[start + 1]['native_id'], 'native-' + session['id'])
+                self.assertEqual(self.calls[start + 1]['provider'], agent['provider'])
+                self.store.update_agent(agent['id'], {'role': ''})
+                self.assertEqual(self.finished(runtime.start(session['id'], 'Task without a preset role'))['status'], 'completed')
+                self.assertIn('"role": ""', self.calls[start + 2]['prompt'])
+                self.assertNotIn('ROLE_AFTER_EDIT', self.calls[start + 2]['prompt'])
+
     def test_delegate_executes_and_result_resumes_exact_sender_session(self):
         runtime = self.make_runtime()
         first = runtime.start(self.sa['id'], '<delegate> Ask Builder to implement')

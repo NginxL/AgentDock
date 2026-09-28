@@ -29,7 +29,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | --- | --- |
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
-| `POST /api/agents` | `project_id`、`name`、`provider`（`codex` / `claude`），以及可选的 `role`。 |
+| `POST /api/agents` | `project_id`、`name`、`provider`（`codex` / `claude`），以及可选的 `role`（默认空）。 |
+| `POST /api/agents/{id}` | `name`（1–100 字符）与 `role`（最多 4,000 字符）至少提供一项。`role: ""` 清空角色；省略的字段保持原值。仅允许这两个字段，返回更新后的 Agent。 |
 | `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
@@ -45,6 +46,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/subscriptions` | `provider`；可选 `plan`、`renewal_date`（`YYYY-MM-DD` 或 null）、`monthly_cost`（非负有限数值或 null）、`currency`（三个字母，默认为 `USD`）。 |
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。
+
+名称和角色由用户定义，与 `provider` 独立。更新接口使用工作台管理员令牌，在仅审阅模式也可调用；智能体的执行令牌不能修改角色。每轮构建提示词时读取最新角色，已提交给原生 CLI 的提示词保持不变。更新不会重建会话或清除历史。`provider` 与 `project_id` 不可通过此接口修改，以保留原生会话归属。
 
 ## 状态与任务记录
 

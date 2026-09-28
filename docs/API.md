@@ -29,7 +29,8 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | --- | --- |
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
-| `POST /api/agents` | `project_id`, `name`, `provider` (`codex` / `claude`), optional `role`. |
+| `POST /api/agents` | `project_id`, `name`, `provider` (`codex` / `claude`), optional `role` (empty by default). |
+| `POST /api/agents/{id}` | At least one of `name` (1–100 characters) and `role` (up to 4,000 characters). `role: ""` clears the role; omitted fields keep their values. Only these two fields are accepted. Returns the updated agent. |
 | `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
@@ -45,6 +46,8 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.
+
+Names and roles are user-defined and independent of `provider`. Updates require the workbench administrator token and are allowed in review mode; a run capability cannot change roles. Each turn reads the latest role when building its prompt; prompts already submitted to a native CLI are unchanged. Updating does not recreate sessions or clear history. `provider` and `project_id` cannot be changed through this endpoint, preserving native-session ownership.
 
 ## State and task records
 
