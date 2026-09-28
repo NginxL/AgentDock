@@ -128,4 +128,6 @@ Upgrading a 0.1 store preserves historical messages as `legacy` records without 
 
 `native/Sources/AgentDockDesktop` provides a native window and nonpersistent WebView. The app owns a local Python child process. After that child reports readiness, the access token is injected only into the same-origin main page’s memory, never URLs, logs or browser storage. Quitting stops the service. External links open in the system browser.
 
+An `NSStatusItem` and native `NSMenu` keep a menu-bar entry available while the main window is hidden. Closing the window does not stop tasks; explicit quit drains the owned backend. The menu reads the authenticated, cache-only `GET /api/quotas` endpoint and invokes provider refreshes only after a click. Its ephemeral HTTP client rejects redirects. A same-origin main-frame bridge shares the interface language with the native menus; only that preference is persisted.
+
 `quota_command` selects the bundled `AgentDockUsage`; legacy `agentmeter_command` remains supported. Ordinary reads prohibit Keychain interaction; only an explicit administrator authorization request allows a prompt. Codex queries its native app server. Claude reads existing local credentials for the official usage endpoint; the helper does not refresh, copy or persist credentials.

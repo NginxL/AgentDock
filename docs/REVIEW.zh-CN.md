@@ -56,9 +56,10 @@ npm run build
 cd ..
 swift run --package-path native MeterChecks
 swift run --package-path native MeterProviderChecks
+swift run --package-path native DesktopChecks
 ```
 
-[持续集成](../.github/workflows/check.yml)在 Python 3.9、3.12 环境下执行后端检查，在 Node 20 环境下执行前端检查，并在 macOS 构建桌面程序、执行离线额度解析和提供商回归检查。通过这些检查表示本地协议契约及测试覆盖的生命周期行为符合预期，不代表实际提供商账号、模型决策、其他客户端版本或在线额度准确性已经通过验证。
+[持续集成](../.github/workflows/check.yml)在 Python 3.9、3.12 环境下执行后端检查，在 Node 20 环境下执行前端检查，并在 macOS 构建桌面程序、执行离线额度解析和提供商回归检查。桌面检查覆盖菜单额度格式、缓存过期、未知数值、摘要长度和中英文显示；接口及界面检查覆盖只读缓存和语言同步。通过这些检查表示本地协议契约及测试覆盖的生命周期行为符合预期，不代表实际提供商账号、模型决策、其他客户端版本或在线额度准确性已经通过验证。
 
 ## 代码审查索引
 

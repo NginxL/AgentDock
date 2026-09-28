@@ -28,6 +28,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
+| `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 Codex／Claude 缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
 | `POST /api/agents` | `project_id`、`name`、`provider`（`codex` / `claude`），以及可选的 `role`（默认空）。 |
 | `POST /api/agents/{id}` | `name`（1–100 字符）与 `role`（最多 4,000 字符）至少提供一项。`role: ""` 清空角色；省略的字段保持原值。仅允许这两个字段，返回更新后的 Agent。 |

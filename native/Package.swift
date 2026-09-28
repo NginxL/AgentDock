@@ -10,10 +10,12 @@ let package = Package(
     ],
     targets: [
         .target(name: "MeterCore"),
+        .target(name: "DesktopCore"),
         .target(name: "MeterProviders", dependencies: ["MeterCore"]),
         .executableTarget(name: "AgentDockUsage", dependencies: ["MeterCore", "MeterProviders"]),
-        .executableTarget(name: "AgentDockDesktop"),
+        .executableTarget(name: "AgentDockDesktop", dependencies: ["DesktopCore"]),
         .executableTarget(name: "MeterChecks", dependencies: ["MeterCore"], path: "Tests/MeterChecks"),
+        .executableTarget(name: "DesktopChecks", dependencies: ["DesktopCore"], path: "Tests/DesktopChecks"),
         .executableTarget(name: "MeterProviderChecks", dependencies: ["MeterCore", "MeterProviders"], path: "Tests/ProviderChecks"),
     ]
 )

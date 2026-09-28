@@ -20,6 +20,16 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],403)
         for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)
         self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
+    def test_menu_quota_read_is_authenticated_and_cache_only(self):
+        self.assertEqual(self.call('GET','/api/quotas',headers={**self.h,'Authorization':'Bearer wrong'})[0],401)
+        self.quota.cached.assert_not_called()
+        snapshot={'provider':'codex','status':'stale','windows':[]}
+        self.quota.cached.side_effect=[snapshot,None]
+        status,result=self.call('GET','/api/quotas')
+        self.assertEqual((status,result),(200,{'quotas':[snapshot]}))
+        self.assertEqual([c.args for c in self.quota.cached.call_args_list],[('codex',),('claude',)])
+        self.quota.refresh.assert_not_called()
+        self.assertEqual(self.runtime.mock_calls,[])
     def test_interactive_usage_requires_admin_and_valid_provider(self):
         self.api.execution_enabled = True
         self.quota.refresh.return_value = {'status':'available'}

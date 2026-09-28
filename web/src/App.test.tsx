@@ -73,11 +73,26 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   delete window.__AGENTDOCK_DESKTOP_TOKEN__;
+  delete window.__AGENTDOCK_DESKTOP_LANGUAGE__;
+  delete window.webkit;
   window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
 });
 
 describe("desktop connection and built-in usage", () => {
+  it("restores the desktop language and keeps the native menu in sync", async () => {
+    const postMessage = vi.fn();
+    window.__AGENTDOCK_DESKTOP_TOKEN__ = "native-fixture-token";
+    window.__AGENTDOCK_DESKTOP_LANGUAGE__ = "en";
+    window.webkit = { messageHandlers: { agentdockLanguage: { postMessage } } };
+    render(<App />);
+    await screen.findByRole("heading", { name: "Workspace" });
+    expect(postMessage).toHaveBeenCalledWith("en");
+    fireEvent.click(screen.getByRole("button", { name: "切换为中文" }));
+    expect(postMessage).toHaveBeenLastCalledWith("zh");
+    expect(screen.getByRole("heading", { name: "协作工作台" })).toBeTruthy();
+  });
+
   it("localizes expired cache guidance without hiding the last known quota", async () => {
     fetchMock.mockImplementation(async () =>
       response({

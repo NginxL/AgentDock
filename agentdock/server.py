@@ -38,6 +38,8 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method=="GET" and parsed.path=="/api/quotas":
+                return 200,{"quotas":[snapshot for provider in ("codex","claude") if (snapshot:=self.quota.cached(provider)) is not None]}
             if method=="GET" and parsed.path=="/api/state":
                 state=self.store.state(); state["quotas"]=[self.quota.cached(q["provider"]) or q for q in state["quotas"]]; state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state

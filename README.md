@@ -45,6 +45,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
 | Usage & subscriptions | Built-in usage reader for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
+| macOS menu bar | A persistent entry for opening the workbench, viewing Codex/Claude remaining quotas and reset times, fetching usage, and quitting. Language follows the workbench. |
 
 ## macOS application
 
@@ -54,7 +55,9 @@ Requires macOS 14+, Python 3.9+, Node.js 20.19+, and Apple Command Line Tools. F
 python3 scripts/install-macos.py
 ```
 
-The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. The app enables execution, but agents run only after a task is submitted; fetching usage requires an explicit click. Closing the window or quitting stops its local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
+The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. Its stacked-layers icon in the menu bar opens usage summaries and the workbench. Closing the main window hides it while the app and active tasks keep running. Choose **Quit AgentDock** or press `⌘Q` to stop the local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
+
+The app enables execution, but agents run only after a task is submitted. The menu displays cached quotas and their freshness; opening it does not query providers. Choose **Fetch latest usage** to refresh Codex/Claude. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
 
 If Claude requires Keychain access, choose **Connect Claude** and approve the macOS prompt yourself. Ordinary refreshes never open a Keychain permission dialog.
 

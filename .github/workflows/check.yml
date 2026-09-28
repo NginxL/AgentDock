@@ -39,3 +39,4 @@ jobs:
       - run: swift build --package-path native -c release
       - run: swift run --package-path native MeterChecks
       - run: swift run --package-path native MeterProviderChecks
+      - run: swift run --package-path native DesktopChecks

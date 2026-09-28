@@ -106,7 +106,7 @@ private final class CodexRPCReader: @unchecked Sendable {
         // A CLI crash between two requests must produce an error, not terminate the dashboard.
         _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         let deadline = Date().addingTimeInterval(timeout)
-        try send(["id": 1, "method": "initialize", "params": ["clientInfo": ["name": "agentdock-usage", "title": "AgentDock", "version": "0.2.1"]]], to: input)
+        try send(["id": 1, "method": "initialize", "params": ["clientInfo": ["name": "agentdock-usage", "title": "AgentDock", "version": "0.2.2"]]], to: input)
         _ = try response(id: 1, fd: fd, deadline: deadline)
         try send(["method": "initialized", "params": [:]], to: input)
         try send(["id": 2, "method": "account/read", "params": ["refreshToken": false]], to: input)

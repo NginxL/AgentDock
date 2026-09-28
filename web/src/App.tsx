@@ -19,6 +19,12 @@ type Tab = "workspace" | "messages" | "memory" | "usage";
 declare global {
   interface Window {
     __AGENTDOCK_DESKTOP_TOKEN__?: string;
+    __AGENTDOCK_DESKTOP_LANGUAGE__?: Language;
+    webkit?: {
+      messageHandlers?: {
+        agentdockLanguage?: { postMessage(language: Language): void };
+      };
+    };
   }
 }
 
@@ -26,7 +32,9 @@ export default function App() {
   const [demo, setDemo] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1",
   );
-  const [lang, setLang] = useState<Language>("zh");
+  const [lang, setLang] = useState<Language>(() =>
+    window.__AGENTDOCK_DESKTOP_LANGUAGE__ === "en" ? "en" : "zh",
+  );
   const t: Translate = (zh, en) => (lang === "zh" ? zh : en);
   const [token, setToken] = useState("");
   const tokenRef = useRef("");
@@ -78,7 +86,9 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-  }, [lang]);
+    if (!demo)
+      window.webkit?.messageHandlers?.agentdockLanguage?.postMessage(lang);
+  }, [lang, demo]);
 
   const disconnect = useCallback(() => {
     setDemo(false);

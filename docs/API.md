@@ -28,6 +28,7 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | Method / route | JSON fields / result |
 | --- | --- |
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
+| `GET /api/quotas` | Cached Codex/Claude snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/agents` | `project_id`, `name`, `provider` (`codex` / `claude`), optional `role` (empty by default). |
 | `POST /api/agents/{id}` | At least one of `name` (1–100 characters) and `role` (up to 4,000 characters). `role: ""` clears the role; omitted fields keep their values. Only these two fields are accepted. Returns the updated agent. |
