@@ -42,14 +42,14 @@ afterEach(() => {
 it("adds an SSH destination without connecting or executing a task until requested", async () => {
   const mutate = vi.fn(async () => true);
   render(<Environments state={state} t={t} busy={false} mutate={mutate} />);
-  fireEvent.click(screen.getByRole("button", { name: "添加 SSH 环境" }));
-  fireEvent.change(screen.getByLabelText("环境名称"), {
+  fireEvent.click(screen.getByRole("button", { name: "添加 SSH 设备" }));
+  fireEvent.change(screen.getByLabelText("设备名称"), {
     target: { value: "Build host" },
   });
   fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
     target: { value: "builder@devbox" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "添加环境" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存设备" }));
   await waitFor(() =>
     expect(mutate).toHaveBeenCalledWith(
       "/api/environments",
@@ -135,7 +135,7 @@ it("discovers models on the selected environment and binds a new independent age
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-  fireEvent.change(screen.getByLabelText("运行环境"), {
+  fireEvent.change(screen.getByLabelText("运行位置"), {
     target: { value: "remote" },
   });
   await waitFor(() =>

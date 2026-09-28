@@ -77,6 +77,7 @@ export default function App() {
   const quotaRequest = useRef<AbortController | null>(null);
   const [projectID, setProjectID] = useState("");
   const [projectForm, setProjectForm] = useState(false);
+  const [agentEnvironment, setAgentEnvironment] = useState<string | null>(null);
   const desktopToken = useRef(window.__AGENTDOCK_DESKTOP_TOKEN__ ?? "");
 
   useEffect(() => {
@@ -532,7 +533,12 @@ export default function App() {
       en: "Shared memory",
       badge: proposals.length,
     },
-    { key: "environments", icon: "dock", zh: "运行环境", en: "Environments" },
+    {
+      key: "environments",
+      icon: "dock",
+      zh: "设备与连接",
+      en: "Devices & connections",
+    },
     { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
   ];
@@ -560,6 +566,8 @@ export default function App() {
           </select>
           <button
             className="sidebar-add"
+            aria-expanded={projectForm}
+            aria-controls="project-form"
             onClick={() => setProjectForm(!projectForm)}
           >
             <Icon name="plus" size={16} />
@@ -700,7 +708,9 @@ export default function App() {
               </Empty>
               <button
                 className="primary empty-action"
-                onClick={() => setProjectForm(true)}
+                aria-expanded={projectForm}
+                aria-controls="project-form"
+                onClick={() => setProjectForm(!projectForm)}
               >
                 <Icon name="plus" size={18} />
                 {t("创建第一个项目", "Create your first project")}
@@ -725,6 +735,8 @@ export default function App() {
                   runtimeEnabled={state.runtime.enabled}
                   busy={!!busy || demo}
                   mutate={mutate}
+                  initialEnvironment={agentEnvironment ?? undefined}
+                  onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
                 />
               )}
               {tab === "messages" && project && (
@@ -758,6 +770,12 @@ export default function App() {
                   t={t}
                   busy={!!busy || demo}
                   mutate={mutate}
+                  onAddAgent={(environmentID) => {
+                    setProjectID("");
+                    setProjectForm(false);
+                    setAgentEnvironment(environmentID);
+                    setTab("workspace");
+                  }}
                 />
               )}
               {tab === "tokens" && (
@@ -777,7 +795,12 @@ export default function App() {
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
                   agents={state.agents}
-                  onAddAgent={() => setTab("workspace")}
+                  onAddAgent={() => {
+                    setProjectID("");
+                    setProjectForm(false);
+                    setAgentEnvironment("local");
+                    setTab("workspace");
+                  }}
                   refreshing={quotaRefreshing}
                   refreshFailed={quotaRefreshFailed}
                   busy={!!busy || demo}
@@ -811,7 +834,7 @@ function ProjectForm({
   const [path, setPath] = useState("");
   const [environment, setEnvironment] = useState("local");
   return (
-    <section className="panel inset-form">
+    <section className="panel inset-form" id="project-form">
       <div className="panel-heading">
         <h2>{t("新建项目", "New project")}</h2>
         <button
@@ -840,7 +863,7 @@ function ProjectForm({
         }}
       >
         <label>
-          {t("运行环境", "Environment")}
+          {t("项目所在设备", "Project device")}
           <select
             value={environment}
             onChange={(e) => setEnvironment(e.target.value)}

@@ -7,11 +7,13 @@ export default function Environments({
   t,
   busy,
   mutate,
+  onAddAgent,
 }: {
   state: DockState;
   t: Translate;
   busy: boolean;
   mutate: Mutate;
+  onAddAgent?: (environmentID: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
@@ -30,17 +32,36 @@ export default function Environments({
   return (
     <>
       <PageTitle
-        eyebrow={t("设备与连接", "DEVICES & CONNECTIONS")}
-        title={t("运行环境", "Environments")}
+        eyebrow={t("连接管理", "CONNECTIONS")}
+        title={t("设备与连接", "Devices & connections")}
+        description={t(
+          "在这里配置设备连接，再选择设备添加 Agent。一台设备可以运行多个 Agent。",
+          "Set up a device connection, then add agents to it. Multiple agents can share a device.",
+        )}
       />
       <div className="button-row environment-actions">
-        <button className="primary" onClick={() => setAdding(!adding)}>
+        <button
+          className="primary"
+          aria-expanded={adding}
+          aria-controls="device-form"
+          onClick={() => setAdding(!adding)}
+        >
           <Icon name="plus" size={18} />
-          {t("添加 SSH 环境", "Add SSH environment")}
+          {t("添加 SSH 设备", "Add SSH device")}
         </button>
       </div>
       {adding && (
-        <section className="panel inset-form">
+        <section className="panel inset-form" id="device-form">
+          <div className="panel-heading">
+            <h2>{t("添加 SSH 设备", "Add SSH device")}</h2>
+            <button
+              className="icon-button"
+              onClick={() => setAdding(false)}
+              aria-label={t("关闭设备表单", "Close device form")}
+            >
+              <Icon name="close" />
+            </button>
+          </div>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -61,7 +82,7 @@ export default function Environments({
           >
             <div className="form-grid">
               <label>
-                {t("环境名称", "Environment name")}
+                {t("设备名称", "Device name")}
                 <input
                   required
                   maxLength={100}
@@ -96,7 +117,7 @@ export default function Environments({
               )}
             </p>
             <button className="primary" disabled={busy}>
-              {t("添加环境", "Add environment")}
+              {t("保存设备", "Save device")}
             </button>
           </form>
         </section>
@@ -140,31 +161,41 @@ export default function Environments({
                 ),
               )}
             </div>
-            {env.kind === "ssh" && (
-              <div className="button-row">
-                <button
-                  className="secondary"
-                  disabled={busy || !state.runtime.enabled}
-                  onClick={() =>
-                    void mutate(`/api/environments/${env.id}/connect`, {})
-                  }
-                >
-                  {t("连接 / 检查", "Connect / check")}
+            <div className="button-row">
+              {onAddAgent && (
+                <button className="primary" onClick={() => onAddAgent(env.id)}>
+                  <Icon name="plus" size={18} />
+                  {t("在此设备添加 Agent", "Add agent on this device")}
                 </button>
-                {!state.agents.some((a) => a.environment_id === env.id) &&
-                  !state.projects.some((p) => p.environment_id === env.id) && (
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() =>
-                        void mutate(`/api/environments/${env.id}/remove`, {})
-                      }
-                    >
-                      {t("移除", "Remove")}
-                    </button>
-                  )}
-              </div>
-            )}
+              )}
+              {env.kind === "ssh" && (
+                <>
+                  <button
+                    className="secondary"
+                    disabled={busy || !state.runtime.enabled}
+                    onClick={() =>
+                      void mutate(`/api/environments/${env.id}/connect`, {})
+                    }
+                  >
+                    {t("连接 / 检查", "Connect / check")}
+                  </button>
+                  {!state.agents.some((a) => a.environment_id === env.id) &&
+                    !state.projects.some(
+                      (p) => p.environment_id === env.id,
+                    ) && (
+                      <button
+                        className="text-button"
+                        disabled={busy}
+                        onClick={() =>
+                          void mutate(`/api/environments/${env.id}/remove`, {})
+                        }
+                      >
+                        {t("移除", "Remove")}
+                      </button>
+                    )}
+                </>
+              )}
+            </div>
           </section>
         ))}
       </div>

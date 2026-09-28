@@ -69,7 +69,7 @@ it.each<[Provider, string]>([
     fireEvent.change(screen.getByLabelText("服务"), {
       target: { value: provider },
     });
-    fireEvent.change(screen.getByLabelText("运行环境"), {
+    fireEvent.change(screen.getByLabelText("运行位置"), {
       target: { value: environment },
     });
     fireEvent.change(permissions, { target: { value: "full_access" } });

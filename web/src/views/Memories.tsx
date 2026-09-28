@@ -60,7 +60,15 @@ export default function Memories({
         action={
           <button
             className="primary"
-            onClick={() => setEditor({ key: "", content: "", version: 0 })}
+            aria-expanded={!!editor && !editor.id}
+            aria-controls="memory-form"
+            onClick={() =>
+              setEditor(
+                editor && !editor.id
+                  ? null
+                  : { key: "", content: "", version: 0 },
+              )
+            }
           >
             <Icon name="plus" size={18} />
             {t("新增记忆", "Add memory")}
@@ -147,7 +155,7 @@ export default function Memories({
         </section>
       )}
       {editor && (
-        <section className="panel inset-form">
+        <section className="panel inset-form" id="memory-form">
           <div className="panel-heading">
             <h2>
               {editor.id
@@ -289,13 +297,19 @@ export default function Memories({
                     <div className="button-row">
                       <button
                         className="text-button"
+                        aria-expanded={editor?.id === memory.id}
+                        aria-controls="memory-form"
                         onClick={() =>
-                          setEditor({
-                            id: memory.id,
-                            key: memory.key,
-                            content: memory.content,
-                            version: memory.version,
-                          })
+                          setEditor(
+                            editor?.id === memory.id
+                              ? null
+                              : {
+                                  id: memory.id,
+                                  key: memory.key,
+                                  content: memory.content,
+                                  version: memory.version,
+                                },
+                          )
                         }
                       >
                         {t("编辑", "Edit")}

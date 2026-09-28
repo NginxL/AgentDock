@@ -16,7 +16,7 @@ export function errorMessage(message: string, t: Translate): string {
     "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.":
       "SSH 连接失败，请检查连接权限、远端 Python 3.9+ 及 CLI 安装情况。",
     "Connect this SSH environment before starting an agent.":
-      "请先在运行环境中连接或检查这台 SSH 主机，再启动 Agent。",
+      "请先在「设备与连接」中连接或检查这台 SSH 主机，再启动 Agent。",
     "The selected native CLI was not found on this environment.":
       "所选环境中未找到该 Agent CLI。",
     "Use an SSH Host alias, without flags or shell commands":
@@ -28,7 +28,7 @@ export function errorMessage(message: string, t: Translate): string {
     "This environment is still in use":
       "该环境仍有关联的项目或 Agent，无法移除。",
     "Remote operation failed. Reconnect the environment and check the remote CLI.":
-      "远端操作失败，请重新检查运行环境连接及远端 CLI。",
+      "远端操作失败，请在「设备与连接」中检查连接及远端 CLI。",
     "The remote working directory does not exist.":
       "远端工作目录不存在，请检查目录设置。",
     "Codex selected a different working directory; no prompt was sent.":

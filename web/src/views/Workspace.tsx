@@ -40,6 +40,8 @@ export default function Workspace({
   runtimeEnabled,
   busy,
   mutate,
+  initialEnvironment,
+  onInitialEnvironmentUsed,
 }: {
   t: Translate;
   lang: Language;
@@ -55,12 +57,22 @@ export default function Workspace({
   runtimeEnabled: boolean;
   busy: boolean;
   mutate: Mutate;
+  initialEnvironment?: string;
+  onInitialEnvironmentUsed?: () => void;
 }) {
-  const [agentForm, setAgentForm] = useState(false);
+  const [agentForm, setAgentForm] = useState(initialEnvironment !== undefined);
+  const draftTarget = useRef<string | null>(
+    initialEnvironment !== undefined ? "new" : null,
+  );
   const [editingAgentID, setEditingAgentID] = useState<string | null>(null);
   const [agentName, setAgentName] = useState("");
   const [provider, setProvider] = useState<Provider>("codex");
-  const [environment, setEnvironment] = useState("local");
+  const [environment, setEnvironment] = useState(
+    initialEnvironment ?? project?.environment_id ?? "local",
+  );
+  useEffect(() => {
+    if (initialEnvironment !== undefined) onInitialEnvironmentUsed?.();
+  }, [initialEnvironment, onInitialEnvironmentUsed]);
   const environmentName = (id?: string) =>
     !id || id === "local"
       ? t("本机", "This Mac")
@@ -245,21 +257,30 @@ export default function Workspace({
             <button
               className="secondary"
               disabled={busy && !demo}
+              aria-expanded={agentForm && editingAgentID === selectedAgent.id}
+              aria-controls="agent-form"
               aria-label={t(
                 `设置 ${selectedAgent.name}`,
                 `Configure ${selectedAgent.name}`,
               )}
               onClick={() => {
-                setEditingAgentID(selectedAgent.id);
-                setAgentName(selectedAgent.name);
-                setProvider(selectedAgent.provider);
-                setEnvironment(selectedAgent.environment_id ?? "local");
-                setRole(selectedAgent.role);
-                setWorkspace(selectedAgent.workspace ?? "");
-                setAgentProject(selectedAgent.project_id ?? "");
-                setModel(selectedAgent.model ?? "");
-                setEffort(selectedAgent.effort ?? "");
-                setPermissionMode(selectedAgent.permission_mode ?? "ask");
+                if (agentForm && editingAgentID === selectedAgent.id) {
+                  setAgentForm(false);
+                  return;
+                }
+                if (draftTarget.current !== selectedAgent.id) {
+                  setEditingAgentID(selectedAgent.id);
+                  setAgentName(selectedAgent.name);
+                  setProvider(selectedAgent.provider);
+                  setEnvironment(selectedAgent.environment_id ?? "local");
+                  setRole(selectedAgent.role);
+                  setWorkspace(selectedAgent.workspace ?? "");
+                  setAgentProject(selectedAgent.project_id ?? "");
+                  setModel(selectedAgent.model ?? "");
+                  setEffort(selectedAgent.effort ?? "");
+                  setPermissionMode(selectedAgent.permission_mode ?? "ask");
+                  draftTarget.current = selectedAgent.id;
+                }
                 setAgentForm(true);
               }}
             >
@@ -269,17 +290,26 @@ export default function Workspace({
           <button
             className="primary"
             disabled={busy && !demo}
+            aria-expanded={agentForm && editingAgentID === null}
+            aria-controls="agent-form"
             onClick={() => {
-              setEditingAgentID(null);
-              setAgentName("");
-              setProvider("codex");
-              setEnvironment(project?.environment_id ?? "local");
-              setRole("");
-              setWorkspace("");
-              setAgentProject(project?.id ?? "");
-              setModel("");
-              setEffort("");
-              setPermissionMode("ask");
+              if (agentForm && editingAgentID === null) {
+                setAgentForm(false);
+                return;
+              }
+              if (draftTarget.current !== "new") {
+                setEditingAgentID(null);
+                setAgentName("");
+                setProvider("codex");
+                setEnvironment(project?.environment_id ?? "local");
+                setRole("");
+                setWorkspace("");
+                setAgentProject(project?.id ?? "");
+                setModel("");
+                setEffort("");
+                setPermissionMode("ask");
+                draftTarget.current = "new";
+              }
               setAgentForm(true);
             }}
           >
@@ -311,7 +341,7 @@ export default function Workspace({
         />
       </div>
       {agentForm && (
-        <section className="panel inset-form">
+        <section className="panel inset-form" id="agent-form">
           <div className="panel-heading">
             <h2>
               {editingAgent
@@ -367,6 +397,7 @@ export default function Workspace({
                       role: role.trim(),
                     },
                 (result) => {
+                  draftTarget.current = null;
                   setAgentID(result.id);
                   setAgentName("");
                   setRole("");
@@ -407,7 +438,7 @@ export default function Workspace({
               </label>
             </div>
             <label>
-              {t("运行环境", "Environment")}
+              {t("运行位置", "Run on")}
               <select
                 value={environment}
                 disabled={!!editingAgentID}
@@ -428,6 +459,14 @@ export default function Workspace({
                   ))}
               </select>
             </label>
+            {!editingAgentID && (
+              <p className="form-hint">
+                {t(
+                  "使用所选设备上的 CLI 与登录状态。新设备可在「设备与连接」中添加，同一设备可运行多个 Agent。",
+                  "Uses the CLI and login on this device. Add devices in Devices & connections; each device can run multiple agents.",
+                )}
+              </p>
+            )}
             <div className="form-grid">
               <label>
                 {t("关联项目（可选）", "Project (optional)")}
@@ -593,17 +632,14 @@ export default function Workspace({
                 "You define the name and role independently of Codex / Claude. Changes apply to future turns and do not clear existing native conversation history.",
               )}
             </p>
-            <p className="form-hint">
-              {editingAgentID
-                ? t(
-                    "服务保持不变，以保留已有会话绑定。需要使用另一服务时，请添加新的 Agent。",
-                    "The provider stays unchanged to preserve session bindings. Add a new agent to use another provider.",
-                  )
-                : t(
-                    "使用所选环境中的原生 CLI 与已有登录状态。",
-                    "Uses the native CLI and existing login on the selected environment.",
-                  )}
-            </p>
+            {editingAgentID && (
+              <p className="form-hint">
+                {t(
+                  "运行位置与服务保持不变，以保留已有会话绑定。需要更换时，请添加新的 Agent。",
+                  "The device and provider stay unchanged to preserve session bindings. Add a new agent to use another device or provider.",
+                )}
+              </p>
+            )}
             <button className="primary" disabled={busy || !agentName.trim()}>
               {editingAgentID
                 ? t("保存设置", "Save settings")

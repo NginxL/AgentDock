@@ -89,7 +89,7 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Choose **Workspace → Add agent**, select an environment and provider, and name your agent. No project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
+Choose **Workspace → Add agent**. Use **Run on** to select This Mac or a saved SSH device, then choose a provider and name. Multiple agents can share a device connection; no project or duplicate connection setup is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
 
 Create a conversation and send a message to your agent. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
@@ -110,13 +110,15 @@ Changes apply to future messages without clearing the conversation. Wait for que
 
 Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
 
+Click an add, settings or edit button again to collapse its panel, or use × to close it. Collapsing execution details keeps the task running and leaves the final reply visible.
+
 ## SSH environments
 
-![Local and SSH environments, fictional demo data](docs/images/environments.en.jpg)
+![Devices and connections: configure SSH and add agents to a selected device, fictional demo data](docs/images/environments.en.jpg)
 
-Open **Environments → Add SSH environment**, enter a system SSH Host alias or `user@host`, then choose **Connect / check**. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
+Open **Devices & connections → Add SSH device**, enter a name and a system SSH Host alias or `user@host`, choose **Save device**, then **Connect / check**. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
 
-Select the environment when creating an agent. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
+Choose **Add agent on this device** on a device card to open the creation form with that device selected. You can also select a saved device when adding an agent from Workspace. Device connections are configured separately from agent names, models, roles and permissions. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
 
 ## Tokens and throughput
 

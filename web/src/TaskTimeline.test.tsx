@@ -62,6 +62,8 @@ it("shows running work, live thinking and command output, then a separate final 
   expect(disclosure.open).toBe(false);
   fireEvent.click(summary);
   expect(disclosure.open).toBe(true);
+  fireEvent.click(summary);
+  expect(disclosure.open).toBe(false);
   events.push(
     event(3, "reasoning_chunk", {
       item_id: "thought",
@@ -71,6 +73,8 @@ it("shows running work, live thinking and command output, then a separate final 
     event(4, "tool_output", { item_id: "cmd", text: "/workspace\n" }),
   );
   view.rerender(<TaskTimeline {...props} runs={[run]} events={events} />);
+  expect(disclosure.open).toBe(false);
+  fireEvent.click(summary);
   expect(disclosure.open).toBe(true);
   expect(
     within(disclosure).getByText("I will inspect the workspace."),

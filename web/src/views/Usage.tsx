@@ -46,6 +46,10 @@ export default function Usage({
   const [cost, setCost] = useState("");
   const [currency, setCurrency] = useState("USD");
   function edit(provider: Provider, environment: string) {
+    if (editing?.provider === provider && editing.environment === environment) {
+      setEditing(null);
+      return;
+    }
     const record = subscriptions.find(
       (s) =>
         s.provider === provider &&
@@ -194,6 +198,11 @@ export default function Usage({
                   <h3>{t("手动订阅记录", "Manual billing record")}</h3>
                   <button
                     className="text-button"
+                    aria-expanded={
+                      editing?.provider === provider &&
+                      editing.environment === environment
+                    }
+                    aria-controls="billing-form"
                     onClick={() => edit(provider, environment)}
                   >
                     {t("编辑", "Edit")}
@@ -221,7 +230,7 @@ export default function Usage({
         })}
       </div>
       {editing && (
-        <section className="panel inset-form">
+        <section className="panel inset-form" id="billing-form">
           <div className="panel-heading">
             <h2>
               {t("编辑订阅记录", "Edit billing record")} ·{" "}
