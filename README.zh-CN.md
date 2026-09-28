@@ -98,7 +98,11 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 ![Token 累计统计与吞吐趋势，虚构演示数据](docs/images/tokens.zh-CN.png)
 
-Token 统计包含本机可读取的 Codex／Claude Code 历史日志和 AgentDock 会话。索引只保存计数、时间及去重标识，不复制外部对话正文。支持 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`；默认读取 `~/.codex/{sessions,archived_sessions}` 与 `~/.claude/projects`。历史文件缺失、损坏或格式不支持时，累计值可能不完整；统计不是服务商账单。缓存属于输入的子集，不重复累加。
+Token 统计包含本机可读取的 Codex／Claude Code 历史日志和 AgentDock 会话。索引只保存计数、时间及去重标识，不复制外部对话正文。支持 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`；默认读取 `~/.codex/{sessions,archived_sessions}` 与 `~/.claude/projects`。数值按 K（千）、M（百万）、B（十亿）缩写，最多两位小数；悬停可查看完整计数。历史文件缺失、损坏或格式不支持时，累计值可能不完整；统计不是服务商账单。缓存属于输入的子集，不重复累加。
+
+**每日活跃**以方块热力图展示最近一年、半年或三个月的用量，颜色越深表示当天 Token 用量越高。悬停方块可查看日期和计数。
+
+![每日活跃热力图与时间范围选择，数据为虚构演示](docs/images/activity.zh-CN.png)
 
 TPS 使用真实输出 Token 增量及其采样区间，包含等待和工具耗时；当前值为最近 15 秒均值，三分钟均值包含空闲时间。原生客户端批量上报可能造成延迟。活跃任务尚未收到有效采样时显示“—”，空闲时显示 0。未关联的历史会话计入总量与对应服务，不冒充某个自建 Agent 的用量。
 

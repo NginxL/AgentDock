@@ -22,6 +22,13 @@ export interface Metrics {
   agents: Record<string, Meter>;
   unassigned_sessions: number;
   scan_status: string;
+  activity?: Activity;
+}
+export interface Activity {
+  today: string;
+  days: { date: string; tokens: number }[];
+  updated_at: number | null;
+  status: string;
 }
 export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -57,6 +64,20 @@ export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
         ),
         updated_at: Date.now() / 1000,
       });
+      const weights = Array.from({ length: 365 }, (_, i) =>
+        i < 160 || i % 9 < 2 ? 0 : (Math.sin(i * 1.7) + 1.2) * i,
+      );
+      const weightSum = weights.reduce((sum, n) => sum + n, 0);
+      const activityDays = weights.map((weight, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - 364 + i);
+        return {
+          date: date.toLocaleDateString("en-CA"),
+          tokens: Math.floor((weight / weightSum) * 958000),
+        };
+      });
+      activityDays[364].tokens +=
+        958000 - activityDays.reduce((sum, d) => sum + d.tokens, 0);
       setMetrics({
         as_of: Date.now() / 1000,
         total: { ...meter(1), active_sessions: 2 },
@@ -66,6 +87,12 @@ export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
         ),
         unassigned_sessions: 5,
         scan_status: "ready",
+        activity: {
+          today: new Date().toLocaleDateString("en-CA"),
+          days: activityDays,
+          updated_at: Date.now() / 1000,
+          status: "ready",
+        },
       });
       return;
     }
@@ -105,8 +132,28 @@ export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
   }, [token, demo, demoKey]);
   return { metrics, failed };
 }
-export const tokens = (n?: number) =>
-  n == null ? "—" : new Intl.NumberFormat("en-US").format(n);
+const exactNumber = new Intl.NumberFormat("en-US");
+const shortNumber = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 2,
+});
+const tokenUnits = ["", "K", "M", "B"];
+export const exactTokens = (n?: number | null) =>
+  n == null || !Number.isFinite(n) || n < 0 ? "—" : exactNumber.format(n);
+export function tokens(n?: number | null) {
+  if (n == null || !Number.isFinite(n) || n < 0) return "—";
+  let unit = 0;
+  while (n >= 1000 && unit < tokenUnits.length - 1) {
+    n /= 1000;
+    unit++;
+  }
+  n = Math.round(n * 100) / 100;
+  // Promote rounded boundary values so 999,999 becomes 1M, not 1,000K.
+  if (n >= 1000 && unit < tokenUnits.length - 1) {
+    n /= 1000;
+    unit++;
+  }
+  return shortNumber.format(n) + tokenUnits[unit];
+}
 export function TPS({
   meter,
   t,
@@ -183,17 +230,9 @@ export function TPS({
         <span>-3m</span>
         <span>{t("现在", "now")}</span>
       </div>
-      {!compact && (
+      {!compact && stale && (
         <p className="form-hint">
-          {stale
-            ? t(
-                "连接中断，等待更新。",
-                "Connection lost. Waiting for an update.",
-              )
-            : t(
-                "按真实输出 Token 计数观测；当前值为最近 15 秒均值，3m 均值包含空闲时间。批量上报会使曲线延迟，含等待与工具执行耗时。",
-                "Measured from reported output tokens. Current is a 15-second average; the 3-minute average includes idle time. Batched reporting can delay the chart; waiting and tool time are included.",
-              )}
+          {t("连接中断，等待更新。", "Connection lost. Waiting for an update.")}
         </p>
       )}
     </div>

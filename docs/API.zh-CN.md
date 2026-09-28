@@ -21,6 +21,8 @@
 
 `GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`unassigned_sessions`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
 
+`activity` 包含 `today`（服务端本地日期）、`days`（最近 365 天已记录日期的 `date` 与 `tokens`）、`updated_at`（最新源记录时间，无记录时为 null）及 `status`（`pending`、`scanning`、`ready`、`partial` 或 `disabled`）。无记录的日期不产生正用量。Codex 每日活跃首次从历史起点分块补全，独立于累计值及 TPS 的快速扫描；重启后继续索引进度，不请求提供方接口。
+
 独立会话的 `project_id` 为 null，拥有固定 `workspace`。独立 Agent 的队友列表和记忆搜索为空，项目派工与记忆提议被拒绝。
 
 ## 身份认证与请求边界

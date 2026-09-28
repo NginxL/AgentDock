@@ -1249,12 +1249,19 @@ describe("independent agents and usage", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Token 统计" }));
     expect(screen.getByRole("heading", { name: "Token 统计" })).toBeTruthy();
-    expect(screen.getByText("958,000")).toBeTruthy();
+    expect(screen.getByText("958K").getAttribute("title")).toBe("958,000");
+    expect(screen.getByRole("heading", { name: "每日活跃" })).toBeTruthy();
+    expect(screen.queryByText(/未关联 Agent 的历史会话/)).toBeNull();
+    expect(screen.queryByText(/原生会话保留各自上下文/)).toBeNull();
+    expect(screen.queryByText(/K = 千/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     expect(
       screen.getByRole("heading", { name: "Token statistics" }),
     ).toBeTruthy();
     expect(screen.queryByText("累计 Token")).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "DAILY ACTIVITY" }),
+    ).toBeTruthy();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

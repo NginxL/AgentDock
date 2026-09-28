@@ -136,6 +136,8 @@ An agent may have no project. Independent agents without a selected workspace re
 
 `metrics.py` indexes local token logs and accepts live usage events from `providers.py`. Codex stores cumulative native-thread counters; Claude merges repeated blocks by session and message ID. Live events, log scans and archived copies share deduplication keys. Cache counters are not added to input twice. The index stores counters, times and identifiers, not log text. Codex reads bounded cumulative tails; Claude scans incrementally by file offset. Missing log history cannot be reconstructed.
 
+Daily activity groups usage by the server’s local calendar date. Codex maintains cumulative high-water marks per session/day, then takes positive differences against the previous checkpoint, including baselines before the visible year. Claude aggregates deduplicated message counters. A separate persisted file cursor backfills Codex history in 16 MiB chunks, with a 64 MiB budget per pass, without blocking fast totals/TPS updates. Only dates, counters, timestamps and identifiers enter the activity index.
+
 The three-minute chart spreads measured output increments over their reported interval in three-second buckets; current TPS averages the last fifteen seconds. Batched reports and missing measurements cannot establish token-by-token generation speed. Token statistics and quota snapshots are independent datasets, not billing estimates.
 
 ---

@@ -1,5 +1,5 @@
 """Local token accounting. No prompts, credentials or provider requests are stored here."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import math
 import os
@@ -38,6 +38,8 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS token_records(provider TEXT NOT NULL,native_id TEXT NOT NULL,record_id TEXT NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,cache_read_tokens INTEGER NOT NULL,cache_write_tokens INTEGER NOT NULL,total_tokens INTEGER NOT NULL,updated_at REAL NOT NULL,source TEXT NOT NULL,PRIMARY KEY(provider,native_id,record_id));
     CREATE TABLE IF NOT EXISTS token_spans(provider TEXT NOT NULL,native_id TEXT NOT NULL,record_id TEXT NOT NULL,counter INTEGER NOT NULL,started_at REAL NOT NULL,ended_at REAL NOT NULL,tokens INTEGER NOT NULL,PRIMARY KEY(provider,native_id,record_id,counter));
     CREATE TABLE IF NOT EXISTS token_files(path TEXT PRIMARY KEY,inode INTEGER NOT NULL,offset INTEGER NOT NULL,mtime INTEGER NOT NULL,state TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS token_activity_days(native_id TEXT NOT NULL,day TEXT NOT NULL,input_tokens INTEGER NOT NULL,output_tokens INTEGER NOT NULL,updated_at REAL NOT NULL,PRIMARY KEY(native_id,day));
+    CREATE TABLE IF NOT EXISTS token_activity_files(path TEXT PRIMARY KEY,inode INTEGER NOT NULL,offset INTEGER NOT NULL,mtime INTEGER NOT NULL);
     ''')
 
 
@@ -64,6 +66,31 @@ def record(store, provider, native_id, record_id, usage, at, source, span=None):
         store.db.execute('DELETE FROM token_spans WHERE ended_at<?', (time.time()-240,))
 
 
+def daily_activity(store, at):
+    today = datetime.fromtimestamp(at).date()
+    since = (today - timedelta(days=364)).isoformat()
+    with store.lock:
+        checkpoints = store.db.execute('SELECT * FROM token_activity_days ORDER BY native_id,day').fetchall()
+        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND updated_at<=? GROUP BY day", (at,)).fetchall()
+    days = {}; previous = {}; updated = None
+    # Include older checkpoints as baselines before filtering the display window.
+    # Daily cumulative high-water marks deduplicate replayed and archived logs.
+    for row in checkpoints:
+        if row['day'] > today.isoformat(): continue
+        prior = previous.get(row['native_id'], (0, 0))
+        current = tuple(max(prior[i], row[k]) for i, k in enumerate(('input_tokens', 'output_tokens')))
+        delta = sum(current) - sum(prior)
+        previous[row['native_id']] = current
+        if row['day'] >= since:
+            days[row['day']] = days.get(row['day'], 0) + delta
+            updated = max(updated or 0, row['updated_at'])
+    for row in messages:
+        if row['day'] and since <= row['day'] <= today.isoformat():
+            days[row['day']] = days.get(row['day'], 0) + row['tokens']
+            updated = max(updated or 0, row['updated_at'])
+    return {'today': today.isoformat(), 'days': [{'date': day, 'tokens': n} for day, n in sorted(days.items())], 'updated_at': updated}
+
+
 def snapshot(store, at=None):
     at = at or time.time()
     with store.lock:
@@ -88,11 +115,13 @@ def snapshot(store, at=None):
         # Unknown during a run until its first measured usage sample. Idle really is zero.
         current = sum(points[-5:])/5 if recent else None if active else 0
         return {**{k: sum(r[k] for r in chosen) for k in FIELDS}, 'sessions': len(chosen), 'active_sessions': len(observed | {(r['provider'],r['native_session_id'] or r['agent_id']) for r in active}), 'current_tps': round(current,2) if current is not None else None, 'average_tps': round(sum(points)/60,2), 'points': points, 'updated_at': max((r['updated_at'] for r in chosen), default=None)}
-    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in ('codex','claude')}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'unassigned_sessions': sum(r['agent_id'] is None for r in rows)}
+    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in ('codex','claude')}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'unassigned_sessions': sum(r['agent_id'] is None for r in rows), 'activity': daily_activity(store, at)}
 
 
 class LocalUsage:
     """Incremental scanner; Codex cumulative totals need only a bounded tail read."""
+    ACTIVITY_CHUNK = 16 * 1024 * 1024
+    ACTIVITY_BUDGET = 64 * 1024 * 1024
     def __init__(self, store, home=None):
         self.store, self.home = store, Path(home or Path.home())
         self.environment = dict(os.environ) if home is None else {}
@@ -101,6 +130,8 @@ class LocalUsage:
         self.status = 'pending'
         self.scanned = 0
         self.failures = 0
+        self.activity_status = 'pending'
+        self.activity_pending = False
 
     def start(self):
         if self.thread: return
@@ -114,11 +145,14 @@ class LocalUsage:
     def _loop(self):
         while not self.stop.is_set():
             try: self.scan()
-            except Exception: self.status = 'partial'
-            self.stop.wait(10)
+            except Exception:
+                self.status = self.activity_status = 'partial'
+                self.activity_pending = False
+            self.stop.wait(0.2 if self.activity_pending else 10)
 
     def scan(self):
         self.status = 'scanning'; self.failures = 0; pending = False
+        activity_files = []
         codex = Path(self.environment.get('CODEX_HOME') or self.home/'.codex').expanduser()
         claude = Path(self.environment.get('CLAUDE_CONFIG_DIR') or self.home/'.claude').expanduser()
         roots = [('codex', codex/'sessions'), ('codex', codex/'archived_sessions'), ('claude', claude/'projects')]
@@ -127,9 +161,68 @@ class LocalUsage:
             for path in root.rglob('*.jsonl'):
                 if self.stop.is_set(): return
                 if path.is_symlink(): continue
+                if provider == 'codex': activity_files.append(path)
                 try: pending = self._file(provider, path) or pending
                 except (OSError, ValueError, KeyError, TypeError): self.failures += 1
         self.status = 'partial' if self.failures else 'scanning' if pending else 'ready'
+        self.activity_pending = False
+        budget = self.ACTIVITY_BUDGET
+        for path in activity_files:
+            if self.stop.is_set(): return
+            try:
+                consumed, more = self._activity_file(path, max(0, min(budget, self.ACTIVITY_CHUNK)))
+                budget -= consumed
+                self.activity_pending = more or self.activity_pending
+            except (OSError, ValueError, KeyError, TypeError): self.failures += 1
+        self.activity_status = 'partial' if self.failures else 'scanning' if self.activity_pending or pending else 'ready'
+
+    def _activity_file(self, path, budget):
+        """Backfill Codex history from the beginning, separately from fast TPS reads."""
+        stat = path.stat()
+        with self.store.lock:
+            saved = self.store.db.execute('SELECT * FROM token_activity_files WHERE path=?', (str(path),)).fetchone()
+        if saved and saved['inode'] == stat.st_ino and saved['mtime'] == stat.st_mtime_ns and saved['offset'] == stat.st_size:
+            return 0, False
+        if budget <= 0: return 0, True
+        offset = saved['offset'] if saved and saved['inode'] == stat.st_ino and saved['offset'] <= stat.st_size else 0
+        days = {}; consumed = 0
+        with path.open('rb') as src:
+            try:
+                meta = json.loads(src.readline(1024 * 1024))
+                identity = meta.get('payload', {}).get('id') if meta.get('type') == 'session_meta' else None
+            except ValueError: identity = None
+            if not isinstance(identity, str) or not identity or len(identity) > 512: return 0, False
+            src.seek(offset)
+            while consumed < budget and not self.stop.is_set():
+                pos = src.tell(); line = src.readline(1024 * 1024); consumed += len(line)
+                if not line: break
+                if not line.endswith(b'\n'):
+                    if src.tell() >= stat.st_size: src.seek(pos); break
+                    while line and not line.endswith(b'\n') and not self.stop.is_set():
+                        line = src.readline(1024 * 1024); consumed += len(line)
+                    continue
+                if b'"token_count"' not in line: continue
+                try: event = json.loads(line)
+                except ValueError: continue
+                if not isinstance(event, dict) or event.get('type') != 'event_msg': continue
+                payload = event.get('payload')
+                if not isinstance(payload, dict) or payload.get('type') != 'token_count': continue
+                info = payload.get('info')
+                usage = normalize('codex', info.get('total_token_usage')) if isinstance(info, dict) else None
+                stamp = timestamp(event.get('timestamp'))
+                if not usage or stamp is None or not 0 < stamp <= time.time() + 60: continue
+                day = datetime.fromtimestamp(stamp).date().isoformat()
+                prior = days.get(day, (0, 0, 0))
+                days[day] = (max(prior[0], usage['input_tokens']), max(prior[1], usage['output_tokens']), max(prior[2], stamp))
+            offset = src.tell()
+        # Counters and the cursor commit together so a restart cannot skip history.
+        with self.store.transaction():
+            for day, values in days.items():
+                self.store.db.execute('''INSERT INTO token_activity_days VALUES(?,?,?,?,?)
+                    ON CONFLICT(native_id,day) DO UPDATE SET
+                    input_tokens=MAX(input_tokens,excluded.input_tokens),output_tokens=MAX(output_tokens,excluded.output_tokens),updated_at=MAX(updated_at,excluded.updated_at)''', (identity, day, *values))
+            self.store.db.execute('INSERT OR REPLACE INTO token_activity_files VALUES(?,?,?,?)', (str(path), stat.st_ino, offset, stat.st_mtime_ns))
+        return consumed, offset < stat.st_size and consumed >= budget
 
     def _file(self, provider, path):
         stat = path.stat()

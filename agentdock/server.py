@@ -45,6 +45,7 @@ class API:
                 from .metrics import snapshot
                 result=snapshot(self.store)
                 result["scan_status"]=self.usage.status if self.usage else "disabled"
+                result["activity"]["status"]=self.usage.activity_status if self.usage else "disabled"
                 return 200,result
             if method=="GET" and parsed.path=="/api/quotas":
                 return 200,{"quotas":[snapshot for provider in ("codex","claude") if (snapshot:=self.quota.cached(provider)) is not None]}

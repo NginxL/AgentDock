@@ -21,6 +21,8 @@ Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is
 
 `GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `unassigned_sessions`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
 
+`activity` contains `today` (the server’s local calendar date), `days` (`date` and `tokens` per recorded day over the last 365 days), `updated_at` (latest source timestamp, or null) and `status` (`pending`, `scanning`, `ready`, `partial` or `disabled`). Days without recorded usage have no positive count. Initial Codex activity backfill reads bounded chunks from the start of history independently of the fast totals/TPS scan; progress survives restarts. No provider request is made.
+
 Independent sessions have a null `project_id` and fixed `workspace`. Independent agents receive empty teammate/memory searches; project dispatch and memory proposals are denied.
 
 ## Authentication and request boundary

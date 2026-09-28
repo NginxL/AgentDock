@@ -98,7 +98,11 @@ Teammate dispatches and result-return turns execute automatically while executio
 
 ![Token totals and throughput, fictional demo data](docs/images/tokens.en.png)
 
-Token statistics include readable local Codex/Claude Code history and AgentDock sessions. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
+Token statistics include readable local Codex/Claude Code history and AgentDock sessions. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Values use K (thousand), M (million) and B (billion), with up to two decimals; hover for the exact count. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
+
+**Daily activity** shows a calendar heatmap for the last year, six months or three months. Darker squares indicate higher daily token usage. Hover over a square to see its date and count.
+
+![Daily token activity with range selection, fictional demo data](docs/images/activity.en.png)
 
 TPS uses reported output-token increments over their measured intervals, including waiting and tool time. Current TPS is a 15-second average; the three-minute average includes idle time. Batched client reporting can delay the chart. Active tasks without a valid sample show “—”; idle activity shows 0. Unlinked historical sessions contribute to total/provider usage without being attributed to an unrelated agent.
 

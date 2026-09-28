@@ -741,12 +741,6 @@ export default function App() {
               )}
             </>
           )}
-          <footer className="workspace-footer">
-            {t(
-              "原生会话保留各自上下文；已审阅记忆在项目内共享。额度重置与订阅续费分开记录。",
-              "Native sessions keep private context; reviewed memory is shared within the project. Quota resets and renewal dates are separate.",
-            )}
-          </footer>
         </main>
       </div>
     </div>

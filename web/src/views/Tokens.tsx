@@ -1,7 +1,21 @@
 import type { Agent, Translate, Language } from "../types";
 import type { Metrics, Meter } from "../metrics";
-import { TPS, tokens } from "../metrics";
+import { TPS, tokens, exactTokens } from "../metrics";
 import { PageTitle } from "../ui";
+import DailyActivity from "../DailyActivity";
+
+function TokenValue({ value }: { value?: number }) {
+  const exact = exactTokens(value);
+  return (
+    <span
+      className="token-value"
+      title={value == null ? undefined : exact}
+      aria-label={exact}
+    >
+      {tokens(value)}
+    </span>
+  );
+}
 
 export default function Tokens({
   metrics,
@@ -26,8 +40,8 @@ export default function Tokens({
         eyebrow={t("本机用量", "LOCAL USAGE")}
         title={t("Token 统计", "Token statistics")}
         description={t(
-          "累计统计本机 Codex、Claude Code 的可读取用量记录，包含历史会话及 AgentDock 会话，按原生会话与消息标识去重。",
-          "Cumulative usage from readable local Codex and Claude Code records, including history and AgentDock sessions. Deduplicated by native session and message identity.",
+          "查看 Codex 和 Claude Code 的累计用量与每日活跃情况。",
+          "Track total usage and daily activity across Codex and Claude Code.",
         )}
       />
       <div className="token-totals">
@@ -36,10 +50,22 @@ export default function Tokens({
           [t("输入（含缓存）", "Input (including cache)"), total?.input_tokens],
           [t("输出", "Output"), total?.output_tokens],
           [t("已记录会话", "Recorded sessions"), total?.sessions],
-        ].map(([label, n]) => (
+        ].map(([label, n], i) => (
           <div className="panel token-stat" key={label as string}>
             <span>{label}</span>
-            <strong>{total?.sessions ? tokens(n as number) : "—"}</strong>
+            <strong>
+              {i === 3 ? (
+                total?.sessions ? (
+                  exactTokens(n as number)
+                ) : (
+                  "—"
+                )
+              ) : (
+                <TokenValue
+                  value={total?.sessions ? (n as number) : undefined}
+                />
+              )}
+            </strong>
           </div>
         ))}
       </div>
@@ -70,7 +96,9 @@ export default function Tokens({
                   m.cache_read_tokens,
                   m.cache_write_tokens,
                 ].map((v, i) => (
-                  <td key={i}>{m.sessions ? tokens(v) : "—"}</td>
+                  <td key={i}>
+                    <TokenValue value={m.sessions ? v : undefined} />
+                  </td>
                 ))}
               </tr>
             ))}
@@ -94,7 +122,11 @@ export default function Tokens({
               return (
                 <tr key={a.id}>
                   <th>{a.name}</th>
-                  <td>{m?.sessions ? tokens(m.total_tokens) : "—"}</td>
+                  <td>
+                    <TokenValue
+                      value={m?.sessions ? m.total_tokens : undefined}
+                    />
+                  </td>
                   <td>{m?.sessions ?? 0}</td>
                   <td>
                     {m?.updated_at
@@ -117,27 +149,12 @@ export default function Tokens({
           </p>
         )}
       </section>
-      <p className="form-hint" role="status">
-        {metrics?.scan_status === "scanning"
-          ? t(
-              "正在索引本地用量，累计数值会继续补全。",
-              "Indexing local usage. Totals will continue to populate.",
-            )
-          : metrics?.scan_status === "partial"
-            ? t(
-                "部分本地记录暂时无法读取，当前统计不完整。",
-                "Some local records could not be read. Totals are incomplete.",
-              )
-            : t(
-                "本地记录缺失的用量无法回溯，统计不等同于服务商账单。缓存是输入的子集，不重复加总。",
-                "Usage missing from local records cannot be recovered. These totals are not a provider bill. Cache tokens are a subset of input and are not added twice.",
-              )}{" "}
-        {t(
-          "未关联 Agent 的历史会话：",
-          "Historical sessions not linked to an agent: ",
-        )}
-        {metrics?.unassigned_sessions ?? 0}
-      </p>
+      <DailyActivity
+        activity={metrics?.activity}
+        failed={failed}
+        t={t}
+        lang={lang}
+      />
     </>
   );
 }
