@@ -97,6 +97,17 @@ Create a conversation and send a message to your agent. **Task running** changes
 
 **Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
 
+Choose **Access permissions** when adding an agent or opening **Agent settings**. Each local or SSH agent has its own setting:
+
+| Access permissions | Behavior |
+| --- | --- |
+| Ask for approval (default) | Keep controlled execution; operations requiring approval wait in the workbench. Existing agents without a saved permission setting use this default. |
+| Full access | Disable routine CLI permission prompts for file changes, commands and network access in the selected environment. System account and organization policies still apply. |
+
+Changes apply to future messages without clearing the conversation. Wait for queued or running tasks to finish, or cancel them, before changing permissions.
+
+![Choosing access permissions for a new agent, fictional demo data](docs/images/permissions.en.jpg)
+
 Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
 
 ## SSH environments
@@ -161,7 +172,7 @@ Sessions belonging to the same agent, or using equal/overlapping working directo
 
 State is stored in `~/.local/share/agentdock`; only one instance can own the database. History, task records, and shared memory are local. Running an agent sends task context to its configured model service; quota refresh may contact provider services.
 
-This version manages **sessions created by AgentDock**, locally and over SSH. Attaching existing desktop/terminal conversations and multi-user access are not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay on the selected device, and per-run MCP tokens expire and are revoked after execution.
+This version manages **sessions created by AgentDock**, locally and over SSH. Attaching existing desktop/terminal conversations and multi-user access are not implemented. In Ask for approval mode, provider permission requests appear in the UI; the workbench itself is not an OS sandbox. Credentials stay on the selected device, and per-run MCP tokens expire and are revoked after execution.
 
 Remote token statistics use usage events from AgentDock-managed runs, without scanning unrelated remote history. Quotas and billing records are separated by environment and provider. Remote Codex queries its own App Server; remote Claude quota is currently unknown and never substituted with a local snapshot.
 

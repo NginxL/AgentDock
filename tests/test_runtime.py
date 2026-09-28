@@ -39,10 +39,10 @@ class RuntimeTests(unittest.TestCase):
             time.sleep(.005)
         self.fail('Local fixture did not reach its expected state')
 
-    def executor(self, provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900):
+    def executor(self, provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask'):
         token = mcp['env']['AGENTDOCK_CAPABILITY']
         run = self.store.capability_run(token)
-        self.calls.append(dict(provider=provider, native_id=native_id, prompt=prompt, run=run, token=token))
+        self.calls.append(dict(provider=provider, native_id=native_id, prompt=prompt, run=run, token=token, permission_mode=permission_mode))
         bind(native_id or 'native-' + run['session_id'])
         if '<block>' in run['prompt']:
             while not self.gate.wait(.01):
@@ -78,7 +78,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_progress_is_persisted_while_running_and_result_only_completes_after_exit(self):
         entered = threading.Event()
-        def stream(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900):
+        def stream(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask'):
             bind('progress-session')
             emit('reasoning_chunk', {'item_id':'thought','part':0,'text':'Checking the workspace'})
             emit('tool_call', {'item':{'type':'commandExecution','id':'cmd','command':'pwd'}})
@@ -241,8 +241,20 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('Fixture provider unavailable', reply['prompt'])
         self.assertEqual(self.store.state()['messages'][0]['status'], 'failed')
 
+    def test_permission_changes_apply_to_the_next_turn_of_each_agent(self):
+        runtime = self.make_runtime()
+        for agent, session in ((self.a, self.sa), (self.b, self.sb)):
+            self.store.update_agent(agent['id'], {'permission_mode':'full_access'})
+            self.assertEqual(self.finished(runtime.start(session['id'], 'First'))['status'], 'completed')
+            self.assertEqual(self.calls[-1]['permission_mode'], 'full_access')
+            native_id = self.store.get_session(session['id'])['native_session_id']
+            self.store.update_agent(agent['id'], {'permission_mode':'ask'})
+            self.assertEqual(self.finished(runtime.start(session['id'], 'Second'))['status'], 'completed')
+            self.assertEqual(self.calls[-1]['permission_mode'], 'ask')
+            self.assertEqual(self.calls[-1]['native_id'], native_id)
+
     def test_capability_redacted_from_stream_and_final_result(self):
-        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode):
             token = mcp['env']['AGENTDOCK_CAPABILITY']
             self.token = token
             bind('fake-session')
@@ -254,7 +266,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('[redacted]', json.dumps(self.store.state()))
 
     def test_stop_parent_cancels_waiting_delegation(self):
-        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode):
             token = mcp['env']['AGENTDOCK_CAPABILITY']
             self.runtime.respond_tool(token, 'message_send', {'recipient_id': self.b['id'], 'body': 'Child'})
             self.gate.set()

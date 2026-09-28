@@ -230,6 +230,7 @@ describe("user-defined agent roles", () => {
         workspace: null,
         model: null,
         effort: null,
+        permission_mode: "ask",
         name: "My helper",
         provider,
         role: "",
@@ -290,6 +291,7 @@ describe("user-defined agent roles", () => {
       role: "",
       model: null,
       effort: null,
+      permission_mode: "ask",
     });
     expect(current.agents[0].provider).toBe("codex");
     fireEvent.click(screen.getByRole("button", { name: "设置 Custom helper" }));

@@ -78,8 +78,8 @@ if provider == "codex":
     assert request["method"] in ("thread/start", "thread/resume")
     params = request["params"]
     assert params.get("excludeTurns") is True if request["method"] == "thread/resume" else "excludeTurns" not in params
-    assert params["approvalPolicy"] == "untrusted"
-    assert params["sandbox"] == "workspace-write"
+    assert params["approvalPolicy"] == ("never" if scenario == "full_access" else "untrusted")
+    assert params["sandbox"] == ("danger-full-access" if scenario == "full_access" else "workspace-write")
     assert params["approvalsReviewer"] == "user"
     mcp = params["config"]["mcp_servers"]["agentdock"]
     assert "AGENTDOCK_CAPABILITY" in mcp["env_vars"]
@@ -91,6 +91,7 @@ if provider == "codex":
     request = read()
     assert request["method"] == "turn/start"
     assert request["params"]["threadId"] == native_id
+    assert request["params"]["approvalPolicy"] == ("never" if scenario == "full_access" else "untrusted")
     send({"id": request["id"], "result": {"turn": {"id": "turn-1", "status": "inProgress"}}})
     if scenario in ("permission", "permission_slow", "permissions", "duplicate_permission"):
         method = "item/permissions/requestApproval" if scenario == "permissions" else "item/commandExecution/requestApproval"
@@ -133,7 +134,7 @@ if provider == "codex":
 else:
     assert os.environ.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS") == "1"
     assert "--dangerously-skip-permissions" not in args
-    assert args[args.index("--permission-mode") + 1] == "manual"
+    assert args[args.index("--permission-mode") + 1] == ("bypassPermissions" if scenario == "full_access" else "manual")
     assert args[args.index("--permission-prompt-tool") + 1] == "stdio"
     assert "--strict-mcp-config" in args
     assert "private-token" not in " ".join(args)

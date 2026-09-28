@@ -60,8 +60,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
 | `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 Codex／Claude 缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
-| `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
-| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`；模型或目录设置要求无排队及运行任务。只有尚无会话时可更改 `project_id` 和 `workspace`；提供方不可更改。 |
+| `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`、`permission_mode`（默认 `ask`，或 `full_access`）。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
+| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`、`permission_mode`；模型、目录或权限设置要求无排队及运行任务。只有尚无会话时可更改 `project_id` 和 `workspace`；提供方不可更改。 |
 | `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
@@ -86,6 +86,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 | 记录 | 主要字段 |
 | --- | --- |
+| Agent | `id`、`project_id`、`environment_id`、`name`、`provider`、`role`、`workspace`、`model`、`effort`、`permission_mode`。修改权限需要用户访问令牌，MCP 能力令牌不能编辑 Agent。 |
 | 会话 | `id`、`project_id`、`agent_id`、`title`、`status`、`native_session_id`、`created_at`、`updated_at`。首次执行前原生标识为 null，公共 API 不允许指定或修改它。 |
 | 运行 | `id`、`session_id`、`project_id`、`agent_id`、`prompt`、`status`、`origin`、`parent_run_id`、`root_run_id`、`task_run_id`、`depth`、`delivery_id`、`result`、`error`、时间戳。 |
 | 投递（`messages`） | `id`、`project_id`、`sender_id`、`recipient_id`、`sender_session_id`、`recipient_session_id`、`sender_run_id`、`run_id`、`reply_run_id`、`body`、`status`、`result`、`error`、`correlation_id`、`idempotency_key`、时间戳。 |

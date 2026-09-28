@@ -338,11 +338,13 @@ class _Codex:
         elif method == "error" and not params.get("willRetry", False):
             raise ProviderError("Codex reported a run failure; private error details were omitted.")
 
-    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False):
+    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask'):
         self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
                                     "capabilities": {"experimentalApi": False}})
         self.pipe.send({"method": "initialized", "params": {}})
-        params = {"cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "workspace-write",
+        approval_policy = "never" if permission_mode == "full_access" else "untrusted"
+        sandbox = "danger-full-access" if permission_mode == "full_access" else "workspace-write"
+        params = {"cwd": cwd, "approvalPolicy": approval_policy, "sandbox": sandbox,
                   "approvalsReviewer": "user", "config": {
                       "mcp_servers": {"agentdock": {**mcp, "env_vars": list(env), "required": True}}}}
         if inherit_process_cwd:
@@ -368,7 +370,7 @@ class _Codex:
         self.cb.bind_session(self.thread_id)
         self.usage_at = time.time()
         response = self.request("turn/start", {"threadId": self.thread_id,
-            "input": [{"type": "text", "text": prompt}], "approvalPolicy": "untrusted",
+            "input": [{"type": "text", "text": prompt}], "approvalPolicy": approval_policy,
             "approvalsReviewer": "user", "model": model, "effort": effort, "summary": "auto"})
         turn = response.get("turn")
         if not isinstance(turn, dict) or not _identifier(turn.get("id")):
@@ -547,7 +549,7 @@ class _Claude:
 
 
 def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
-            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False):
+            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask'):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -558,6 +560,8 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     """
     if provider not in ("codex", "claude"):
         raise ProviderError("Unsupported native agent provider.")
+    if permission_mode not in ("ask", "full_access"):
+        raise ProviderError("Invalid agent permission mode")
     if (not isinstance(command, list) or not command or any(not isinstance(v, str) or not v
             or "\x00" in v for v in command)):
         raise ProviderError("Configure a native CLI command for this provider.")
@@ -586,7 +590,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
             native_id = str(uuid.uuid4())
         argv += ["--print", "--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
                  "--include-partial-messages", "--permission-prompt-tool", "stdio",
-                 "--permission-mode", "manual", "--strict-mcp-config",
+                 "--permission-mode", "bypassPermissions" if permission_mode == "full_access" else "manual", "--strict-mcp-config",
                  "--mcp-config", json.dumps({"mcpServers": {"agentdock": {"type": "stdio", **mcp}}})]
         if model: argv += ["--model", model]
         if effort: argv += ["--effort", effort]
@@ -597,7 +601,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
-            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode)
         adapter = _Claude(pipe, callbacks, native_id)
         return adapter.run(prompt)
     except (ProviderCancelled, ProviderError):

@@ -60,8 +60,8 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
 | `GET /api/quotas` | Cached Codex/Claude snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
-| `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`. Blank independent workspaces are created privately; project agents use the project path. |
-| `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`. Model/workspace settings require no queued or running tasks. `project_id` and `workspace` may change only before any conversation exists. Provider is immutable. |
+| `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
+| `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`, `permission_mode`. Model, workspace and permission settings require no queued or running tasks. `project_id` and `workspace` may change only before any conversation exists. Provider is immutable. |
 | `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
@@ -86,6 +86,7 @@ Names and roles are user-defined and independent of `provider`. Updates require 
 
 | Record | Relevant fields |
 | --- | --- |
+| Agent | `id`, `project_id`, `environment_id`, `name`, `provider`, `role`, `workspace`, `model`, `effort`, `permission_mode`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
 | Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
 | Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `result`, `error`, timestamps. |
 | Delivery (`messages`) | `id`, `project_id`, `sender_id`, `recipient_id`, `sender_session_id`, `recipient_session_id`, `sender_run_id`, `run_id`, `reply_run_id`, `body`, `status`, `result`, `error`, `correlation_id`, `idempotency_key`, timestamps. |

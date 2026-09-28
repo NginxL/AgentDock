@@ -96,6 +96,32 @@ class RemoteTests(unittest.TestCase):
                 self.assertTrue(all('cwd' not in message['params'] for message in starts))
         self.assertNotIn('AGENTDOCK_CAPABILITY', json.dumps(self.requests))
 
+    def test_runtime_forwards_explicit_permissions_and_resets_them_on_resume(self):
+        self.runtime = Runtime(self.store, {'execution_enabled':True, 'commands':{},
+            'python':sys.executable, 'package_root':str(self.home), 'base_url':'http://127.0.0.1:1', 'run_timeout':8})
+        self.runtime.remote = self.manager
+        for provider in ('codex', 'claude'):
+            agent, session = self.make_agent(provider)
+            native_id = None
+            for mode, scenario in (('full_access', 'full_access'), ('ask', 'progress')):
+                self.scenario = scenario
+                self.store.update_agent(agent['id'], {'permission_mode':mode})
+                run = self.runtime.start(session['id'], 'Offline permission fixture')
+                deadline = time.monotonic() + 8
+                while self.store.get_run(run['id'])['status'] in ('queued', 'running') and time.monotonic() < deadline:
+                    time.sleep(.03)
+                self.assertEqual(self.store.get_run(run['id'])['status'], 'completed')
+                requests = [r for r in self.requests if r['op'] == 'start' and r['run_id'] == run['id']]
+                self.assertEqual(requests[0]['spec']['permission_mode'], mode)
+                bound = self.store.get_session(session['id'])['native_session_id']
+                if native_id: self.assertEqual(bound, native_id)
+                native_id = bound
+            if provider == 'codex':
+                contract = Path(session['workspace'].replace('~', str(self.home), 1))/'fake-contract.jsonl'
+                starts = [json.loads(line) for line in contract.read_text().splitlines() if json.loads(line).get('method') in ('thread/start', 'thread/resume')]
+                self.assertEqual(len(starts), 2)
+                self.assertTrue(all('cwd' not in m['params'] for m in starts))
+
     def test_wrong_remote_directory_rejected_before_user_prompt(self):
         self.scenario='wrong_cwd'
         _, session=self.make_agent()

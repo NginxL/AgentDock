@@ -1,5 +1,6 @@
 export type Language = "zh" | "en";
 export type Provider = "codex" | "claude";
+export type PermissionMode = "ask" | "full_access";
 export interface Environment {
   id: string;
   name: string;
@@ -28,6 +29,7 @@ export interface Agent {
   workspace?: string;
   model?: string | null;
   effort?: string | null;
+  permission_mode?: PermissionMode;
 }
 export interface Session {
   environment_id?: string;

@@ -10,6 +10,9 @@ import type {
 
 export function errorMessage(message: string, t: Translate): string {
   const translations: Record<string, string> = {
+    "Invalid agent permission mode": "请选择有效的 Agent 访问权限。",
+    "Wait for active tasks before changing agent settings":
+      "请等待排队或执行中的任务结束后再修改 Agent 设置。",
     "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.":
       "SSH 连接失败，请检查连接权限、远端 Python 3.9+ 及 CLI 安装情况。",
     "Connect this SSH environment before starting an agent.":

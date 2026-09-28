@@ -64,6 +64,17 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.call('POST','/api/agents/missing',{'role':'Research'})[0],404)
         self.assertEqual(self.call('POST',route,{'role':'Unauthorized'},headers={**self.h,'Authorization':'Bearer invalid'})[0],401)
         self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
+
+    def test_permission_settings_require_admin_and_never_start_execution(self):
+        for provider in ('codex', 'claude'):
+            status, agent = self.call('POST', '/api/agents', {'name':'Helper', 'provider':provider, 'permission_mode':'full_access'})
+            self.assertEqual((status, agent['permission_mode']), (200, 'full_access'))
+            route = '/api/agents/' + agent['id']
+            self.assertEqual(self.call('POST', route, {'permission_mode':'ask'})[1]['permission_mode'], 'ask')
+            for value in (None, '', 'full', True, {}):
+                self.assertEqual(self.call('POST', route, {'permission_mode':value})[0], 400)
+                self.assertEqual(self.call('POST', '/api/agents', {'name':'Invalid', 'provider':provider, 'permission_mode':value})[0], 400)
+        self.assertEqual(self.runtime.mock_calls, [])
     def test_scoped_tools_cannot_call_human_approval_endpoints(self):
         _,p=self.call('POST','/api/projects',{'name':'P','path':self.tmp.name})
         _,a=self.call('POST','/api/agents',{'project_id':p['id'],'name':'A','provider':'codex'})
@@ -74,6 +85,8 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.call('GET','/api/state',headers=h)[0],401)
         self.assertEqual(self.call('POST','/api/agents/'+a['id'],{'role':'Self-assigned authority'},h)[0],401)
         self.assertEqual(self.store.get_agent(a['id'])['role'],'')
+        self.assertEqual(self.call('POST','/api/agents/'+a['id'],{'permission_mode':'full_access'},h)[0],401)
+        self.assertEqual(self.store.get_agent(a['id'])['permission_mode'],'ask')
         route='/api/proposals/'+proposal['id']+'/approve'
         self.assertEqual(self.call('POST',route,{'expected_version':0},h)[0],401)
         self.assertEqual(self.call('POST',route,{'expected_version':0})[0],200)

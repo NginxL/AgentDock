@@ -261,7 +261,8 @@ def work(path):
         result = execute(spec['provider'], command, cwd, spec['prompt'], spec.get('native_session_id'), mcp, stop,
             emit, lambda native_id: control('remote_bind', {'native_id': native_id}),
             lambda request, options: control('remote_approval', {'request': request, 'options': options}),
-            timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'), inherit_process_cwd=True)
+            timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'),
+            inherit_process_cwd=True, permission_mode=spec.get('permission_mode', 'ask'))
         state = {'status': 'completed', 'result': result}
     except ProviderCancelled:
         state = {'status': 'cancelled'}

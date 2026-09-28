@@ -9,6 +9,7 @@ import type {
   DockState,
   Language,
   Mutate,
+  PermissionMode,
   Project,
   Provider,
   Session,
@@ -69,6 +70,7 @@ export default function Workspace({
   const [agentProject, setAgentProject] = useState(project?.id ?? "");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
   const [models, setModels] = useState<
     { id: string; name: string; efforts: string[] }[]
   >([]);
@@ -257,6 +259,7 @@ export default function Workspace({
                 setAgentProject(selectedAgent.project_id ?? "");
                 setModel(selectedAgent.model ?? "");
                 setEffort(selectedAgent.effort ?? "");
+                setPermissionMode(selectedAgent.permission_mode ?? "ask");
                 setAgentForm(true);
               }}
             >
@@ -276,6 +279,7 @@ export default function Workspace({
               setAgentProject(project?.id ?? "");
               setModel("");
               setEffort("");
+              setPermissionMode("ask");
               setAgentForm(true);
             }}
           >
@@ -343,6 +347,7 @@ export default function Workspace({
                       role: role.trim(),
                       model: model || null,
                       effort: effort || null,
+                      permission_mode: permissionMode,
                       ...(!sessions.some((s) => s.agent_id === editingAgentID)
                         ? {
                             project_id: agentProject || null,
@@ -355,6 +360,7 @@ export default function Workspace({
                       workspace: workspace || null,
                       model: model || null,
                       effort: effort || null,
+                      permission_mode: permissionMode,
                       name: agentName.trim(),
                       provider,
                       environment_id: environment,
@@ -528,9 +534,45 @@ export default function Workspace({
                       "Model list unavailable. Keep client settings and reopen this panel to retry.",
                     )
                   : t(
-                      "模型与思考强度对后续消息生效。已有会话保持上下文；建立会话后，工作目录及项目固定。",
-                      "Model and effort apply to future messages. Conversations keep their context; workspace and project stay fixed once a conversation exists.",
+                      "模型、思考强度与访问权限对后续消息生效。已有会话保持上下文；建立会话后，工作目录及项目固定。",
+                      "Model, effort and permissions apply to future messages. Conversations keep their context; workspace and project stay fixed once a conversation exists.",
                     )}
+            </p>
+            <label>
+              {t("访问权限", "Access permissions")}
+              <select
+                value={permissionMode}
+                aria-describedby="agent-permission-description"
+                disabled={
+                  !!editingAgentID &&
+                  state.runs?.some(
+                    (run) =>
+                      run.agent_id === editingAgentID &&
+                      ["queued", "running"].includes(run.status),
+                  )
+                }
+                onChange={(e) =>
+                  setPermissionMode(e.target.value as PermissionMode)
+                }
+              >
+                <option value="ask">
+                  {t("需要确认（默认）", "Ask for approval (default)")}
+                </option>
+                <option value="full_access">
+                  {t("完全访问", "Full access")}
+                </option>
+              </select>
+            </label>
+            <p className="form-hint" id="agent-permission-description">
+              {permissionMode === "full_access"
+                ? t(
+                    "Agent 可在所选环境中读写文件、执行命令和联网，无需常规权限确认。系统账户和组织策略仍然有效。",
+                    "The agent can read and write files, run commands and access the network in the selected environment without routine permission prompts. System account and organization policies still apply.",
+                  )
+                : t(
+                    "需要授权的操作会在此等待你确认。",
+                    "Operations that need approval wait for your confirmation here.",
+                  )}
             </p>
             <label>
               {t("角色说明（可选）", "Role (optional)")}

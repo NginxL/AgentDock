@@ -137,7 +137,7 @@ class Store:
                     self.db.execute(f"DROP TABLE {table}")
                     self.db.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
                     for index in indexes: self.db.execute(index)
-                for table, fields in {"agents": {"workspace": "TEXT", "model": "TEXT", "effort": "TEXT"}, "sessions": {"workspace": "TEXT"}}.items():
+                for table, fields in {"agents": {"workspace": "TEXT", "model": "TEXT", "effort": "TEXT", "permission_mode": "TEXT NOT NULL DEFAULT 'ask' CHECK(permission_mode IN ('ask','full_access'))"}, "sessions": {"workspace": "TEXT"}}.items():
                     existing = {r[1] for r in self.db.execute("PRAGMA table_info(" + table + ")")}
                     for name, definition in fields.items():
                         if name not in existing: self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
@@ -146,6 +146,12 @@ class Store:
                 if self.db.execute("PRAGMA foreign_key_check").fetchone(): raise Conflict("Database migration failed integrity validation")
         finally:
             self.db.execute("PRAGMA foreign_keys=ON")
+
+    @staticmethod
+    def _permission_mode(value):
+        if value not in ("ask", "full_access"):
+            raise Invalid("Invalid agent permission mode")
+        return value
 
     @staticmethod
     def _settings(model, effort):
@@ -329,30 +335,32 @@ class Store:
             self.db.execute("INSERT INTO projects VALUES(:id,:name,:path,:created_at,:environment_id)",item)
         return item
 
-    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local'):
+    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask'):
         if provider not in ("codex", "claude"): raise Invalid("Unsupported provider")
         model, effort = self._settings(model, effort)
+        permission_mode = self._permission_mode(permission_mode)
         environment_id=environment_id or 'local'
         self.get_environment(environment_id)
-        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id)
+        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode)
         with self.transaction():
             item["workspace"] = self._workspace(project_id, workspace, item["id"],environment_id)
-            self.db.execute("INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id) VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id)",item)
+            self.db.execute("INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode) VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode)",item)
         return item
 
     def update_agent(self, agent_id, changes):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id"}:
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode"}:
             raise Invalid("Only agent settings can be updated")
         with self.transaction():
             agent = self._one("agents", agent_id)
             if set(changes) - {"name", "role"} and self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone(): raise Conflict("Wait for active tasks before changing agent settings")
             model, effort = self._settings(changes.get("model", agent["model"]), changes.get("effort", agent["effort"]))
+            permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
             workspace = changes.get("workspace", agent["workspace"])
             moved = project_id != agent["project_id"] or workspace != agent["workspace"]
             if moved and self.db.execute("SELECT 1 FROM sessions WHERE agent_id=?", (agent_id,)).fetchone(): raise Conflict("Create a new agent to change the workspace after a conversation exists")
             workspace = self._workspace(project_id, workspace, agent_id,agent['environment_id']) if moved else workspace
-            self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, agent_id))
+            self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=?,permission_mode=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, permission_mode, agent_id))
             return self._one("agents", agent_id)
 
     def _add_session(self, agent_id, title):

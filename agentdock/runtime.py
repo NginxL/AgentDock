@@ -231,6 +231,7 @@ class Runtime:
                     'provider': agent['provider'], 'cwd': workspace, 'prompt': prompt,
                     'native_session_id': session.get('native_session_id'),
                     'model': agent.get('model'), 'effort': agent.get('effort'),
+                    'permission_mode': agent['permission_mode'],
                     'timeout': self.config.get('run_timeout', 900)}, run.stop,
                     lambda kind, payload: self._event(run, kind, payload),
                     lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
@@ -243,7 +244,7 @@ class Runtime:
                 lambda kind, payload: self._event(run, kind, payload),
                 lambda native_id: self.store.bind_native_session(session["id"], native_id, run_id=record["id"]),
                 lambda request, options: self._request_approval(run, request, options),
-                timeout=self.config.get("run_timeout", 900), **({"model": agent["model"], "effort": agent["effort"]} if agent.get("model") or agent.get("effort") else {}))
+                timeout=self.config.get("run_timeout", 900), permission_mode=agent['permission_mode'], **({"model": agent["model"], "effort": agent["effort"]} if agent.get("model") or agent.get("effort") else {}))
             if not isinstance(result, str):
                 raise RuntimeFailure("Native CLI did not return a valid result.")
             result = result.replace(run.capability, "[redacted]").replace("\x00", "")[:64000]

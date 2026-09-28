@@ -24,6 +24,37 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(empty['role'], '')
             self.assertEqual(custom['role'], 'Research requirements, then propose a plan.')
             self.assertEqual(self.store.get_agent(custom['id'])['provider'], provider)
+
+    def test_permission_defaults_updates_and_persistence(self):
+        self.assertEqual(self.a['permission_mode'], 'ask')
+        agent = self.store.add_agent(None, 'Autonomous', 'claude', permission_mode='full_access')
+        self.assertEqual(agent['permission_mode'], 'full_access')
+        self.store.update_agent(self.a['id'], {'permission_mode': 'full_access'})
+        self.store.update_agent(self.a['id'], {'name': 'Renamed'})
+        self.store.close(); self.store = Store(self.root/'state.sqlite3')
+        self.assertEqual(self.store.get_agent(self.a['id'])['permission_mode'], 'full_access')
+        self.assertEqual(self.store.get_agent(agent['id'])['permission_mode'], 'full_access')
+        self.assertEqual(self.store.update_agent(self.a['id'], {'permission_mode': 'ask'})['permission_mode'], 'ask')
+
+    def test_invalid_permission_modes_leave_agent_unchanged(self):
+        for value in (None, '', 'full', 'FULL_ACCESS', True, {}, []):
+            with self.subTest(value=value):
+                with self.assertRaises(Invalid):
+                    self.store.add_agent(None, 'Invalid', 'codex', permission_mode=value)
+                with self.assertRaises(Invalid):
+                    self.store.update_agent(self.a['id'], {'permission_mode': value})
+                self.assertEqual(self.store.get_agent(self.a['id']), self.a)
+
+    def test_cannot_change_permissions_for_queued_or_running_tasks(self):
+        run = self.store.enqueue_run(self.s['id'], 'Queued task')
+        for status in ('queued', 'running'):
+            with self.subTest(status=status):
+                if status == 'running': self.store.claim_next_run()
+                with self.assertRaises(Conflict):
+                    self.store.update_agent(self.a['id'], {'permission_mode': 'full_access'})
+                self.assertEqual(self.store.get_agent(self.a['id'])['permission_mode'], 'ask')
+        self.store.finish_run(run['id'], 'completed')
+        self.assertEqual(self.store.update_agent(self.a['id'], {'permission_mode': 'full_access'})['permission_mode'], 'full_access')
     def test_agent_edits_persist_and_preserve_native_session_and_history(self):
         r,t = self.token()
         self.store.bind_native_session(self.s['id'], 'native-session-1', r['id'])

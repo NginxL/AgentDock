@@ -21,11 +21,13 @@ AgentDock 0.3 由 React 界面、Python 标准库服务和 SQLite 存储组成�
 | 提供商 | 本地核对版本 | 使用的协议契约 |
 | --- | --- | --- |
 | Codex | `codex-cli 0.154.0` | 导出的应用服务 JSON 模式及官方文档：`initialize`、`thread/start`、`thread/resume`、`turn/start`、审批请求、事件通知和 `turn/interrupt`。 |
-| Claude Code | `2.1.268` | 原生命令行帮助与 Anthropic 公开的控制协议定义：`--print`、`--input-format stream-json`、`--output-format stream-json`、`--resume`、`--session-id`，以及标准输入输出上的权限请求。 |
+| Claude Code | `2.1.283` | 原生命令行帮助与 Anthropic 公开的控制协议定义：`--print`、`--input-format stream-json`、`--output-format stream-json`、`--resume`、`--session-id`，以及标准输入输出上的权限请求。 |
 
-以上是**协议契约核对版本**，不代表已完成端到端兼容性验收，也不代表所有版本通用的最低版本要求。Claude 适配器使用 `--permission-mode manual` 和 `--permission-prompt-tool stdio`；如果客户端不接受这些参数，将报错，不会降级为绕过权限检查。认证由原生命令行客户端按其支持的本地配置处理。AgentDock 不强制要求 API 密钥，不导出提供商凭据，不修改登录状态，也不安装 Agent SDK。
+以上是**协议契约核对版本**，不代表已完成端到端兼容性验收，也不代表所有版本通用的最低版本要求。Claude 适配器默认使用 `--permission-mode manual`，用户选择完全访问时使用 `bypassPermissions`，并保留 `--permission-prompt-tool stdio`。不支持参数时会报错，适配器不会自动扩大权限重试。认证由原生命令行客户端按其支持的本地配置处理。AgentDock 不强制要求 API 密钥，不导出提供商凭据，不修改登录状态，也不安装 Agent SDK。
 
-Codex 使用本次运行拥有的应用服务进程，配置为 `workspace-write`、`untrusted` 命令审批和用户审核；仅新建或恢复 AgentDock 拥有的会话。Claude 使用人工审批权限模式，将权限提示发送给工作台；批准后只返回该次工具调用的原始输入，拒绝时不授予权限。原生客户端已有的策略和受管限制仍然生效。AgentDock 自身不提供独立的操作系统沙箱。
+“需要确认”模式下，Codex 使用本次运行拥有的应用服务进程，配置为 `workspace-write`、`untrusted` 命令审批和用户审核；仅新建或恢复 AgentDock 拥有的会话。Claude 使用人工审批权限模式，将权限提示发送给工作台；批准后只返回该次工具调用的原始输入，拒绝时不授予权限。原生客户端已有的策略和受管限制仍然生效。AgentDock 自身不提供独立的操作系统沙箱。
+
+完全访问使用 Codex `danger-full-access` 与 `never`，或 Claude `bypassPermissions`。离线测试覆盖双提供方、本机和 SSH 传递、降低权限后续接原生会话、无效值、迁移默认值，以及模型不能修改权限。隔离的本机 CLI 初始化接受两种模式；Codex 返回的沙箱与审批策略符合设置。生产主机上的完全访问模型工具执行不属于该验证范围。
 
 每轮前台任务结束后原生进程退出，原生对话保留供下次恢复。Claude 子进程环境设置 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，按[官方环境变量说明](https://code.claude.com/docs/en/env-vars)禁用原生后台任务；此设置不修改用户全局环境，也不影响其他 Claude 进程。已登记 Agent 通过 AgentDock 调度器协作。这是会话续接，不是附加到已经运行的桌面或终端进程。额度展示与执行认证彼此独立：能读取额度快照，不代表已经确认该提供商可以执行任务。
 

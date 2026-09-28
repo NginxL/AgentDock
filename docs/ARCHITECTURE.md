@@ -90,7 +90,14 @@ Cancellation stops queued/running descendants, revokes scoped tools, and termina
 
 ## Permission handling and process limits
 
-Codex uses `untrusted` approval policy and `workspace-write` sandbox requests, with human approval review. Claude uses manual permission mode and stdio control requests. Its child process receives `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so shell and subagent work stays in the foreground and finishes within the managed turn; user-wide settings are unchanged. Permissions appear as human-only, single-use options in the UI. Unknown control requests are rejected; Codex's unsupported elicitation forms are declined. The provider's own permission behavior still applies; the UI does not guarantee every upstream action will prompt.
+Each agent stores `permission_mode`: `ask` by default (including migrated records), or `full_access`. The authenticated human API validates the enum; queued/running tasks prevent changes. The dispatcher passes the setting to the local adapter or remote worker on every turn, including native resumes. Model output and MCP capabilities cannot change it.
+
+| Mode | Codex | Claude Code |
+| --- | --- | --- |
+| `ask` | `approvalPolicy: untrusted`, `sandbox: workspace-write`, user review | `--permission-mode manual`, stdio permission requests |
+| `full_access` | `approvalPolicy: never`, `sandbox: danger-full-access` | `--permission-mode bypassPermissions` |
+
+Invalid values are rejected before starting a native CLI. Full access removes routine CLI approval prompts, subject to system account permissions and upstream managed policies; it does not widen AgentDock MCP capabilities. The Claude child process receives `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so shell and subagent work stays in the foreground and finishes within the managed turn; user-wide settings are unchanged. Permissions appear as human-only, single-use options in the UI. Unknown control requests are rejected; Codex's unsupported elicitation forms are declined. The provider's own permission behavior still applies; the UI does not guarantee every upstream action will prompt.
 
 Runs have a 15-minute deadline. An unanswered permission request expires after 120 seconds. The native transport bounds stdout/stderr to 8 MiB combined, each JSON line to 512 KiB, protocol messages to 10,000 and permission/control requests to 64. The dispatcher separately caps stored events to 5,000 and 8 MiB per run. Stderr is drained but not persisted; stable errors omit raw provider details. Shared process-group cleanup handles native CLIs and quota probes.
 

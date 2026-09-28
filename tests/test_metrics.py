@@ -140,6 +140,7 @@ class MeterTests(unittest.TestCase):
         migrated=Store(path)
         try:
             self.assertEqual(migrated.get_session('s')['native_session_id'],'native-old')
+            self.assertEqual(migrated.get_agent('a')['permission_mode'], 'ask')
             self.assertEqual(migrated.get_session('s')['workspace'],str(self.root))
             self.assertEqual(migrated.db.execute('PRAGMA foreign_key_check').fetchall(),[])
             migrated.add_agent(None,'Independent','claude')

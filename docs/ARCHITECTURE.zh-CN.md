@@ -90,7 +90,14 @@ sequenceDiagram
 
 ## 权限处理与进程限制
 
-Codex 请求 `untrusted` 审批策略、`workspace-write` 沙箱和人工审批。Claude 使用手动权限模式，通过标准输入输出交换控制请求。仅为该子进程设置 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，使命令与子 Agent 在受管轮次内以前台方式完成，不修改用户全局设置。界面提供仅用户可处理的一次性权限选项。未知控制请求会被拒绝，暂不支持的 Codex 交互表单会被拒绝提交。上游 CLI 自身的权限行为仍然生效，不能保证每个上游动作都会弹出审批。
+每个 Agent 保存 `permission_mode`：默认为 `ask`（含迁移的既有记录），或由用户选择 `full_access`。经过用户身份认证的 API 校验枚举；排队或运行中的任务会阻止修改。调度器在每轮执行及原生会话续接时，将该设置传给本机适配器或远端执行组件。模型输出与 MCP 能力令牌不能修改它。
+
+| 模式 | Codex | Claude Code |
+| --- | --- | --- |
+| `ask` | `approvalPolicy: untrusted`、`sandbox: workspace-write`、用户审批 | `--permission-mode manual`、标准输入输出权限请求 |
+| `full_access` | `approvalPolicy: never`、`sandbox: danger-full-access` | `--permission-mode bypassPermissions` |
+
+无效值在启动原生 CLI 前被拒绝。完全访问取消 CLI 的常规审批，仍受系统账户权限和上游受管策略限制，不扩大 AgentDock MCP 能力令牌的权限。仅为 Claude 子进程设置 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`，使命令与子 Agent 在受管轮次内以前台方式完成，不修改用户全局设置。界面提供仅用户可处理的一次性权限选项。未知控制请求会被拒绝，暂不支持的 Codex 交互表单会被拒绝提交。上游 CLI 自身的权限行为仍然生效，不能保证每个上游动作都会弹出审批。
 
 每轮最多执行 15 分钟。未处理的审批在 120 秒后过期。原生通信层限制标准输出和错误输出合计 8 MiB、单条 JSON 行 512 KiB、协议消息 10,000 条、权限或控制请求 64 次。调度器另将持久事件限制为每轮 5,000 条及 8 MiB。错误输出持续排空但不保存；稳定错误提示不包含服务商原始详情。原生 CLI 和额度查询共用进程组清理逻辑。
 

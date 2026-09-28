@@ -25,7 +25,7 @@ class NativeProvidersTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_provider(self, provider, scenario="success", native_id=None, approve=None, timeout=3):
+    def run_provider(self, provider, scenario="success", native_id=None, approve=None, timeout=3, permission_mode='ask'):
         def permission(request, options):
             self.approvals.append((request, options))
             return options[0]["optionId"]
@@ -34,7 +34,28 @@ class NativeProvidersTest(unittest.TestCase):
             {"command": sys.executable, "args": ["-m", "agentdock.mcp"],
              "env": {"AGENTDOCK_CAPABILITY": "private-token", "AGENTDOCK_URL": "http://127.0.0.1:1"}},
             self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
-            approve or permission, timeout=timeout)
+            approve or permission, timeout=timeout, permission_mode=permission_mode)
+
+    def test_full_access_is_explicit_and_can_be_revoked_on_native_resume(self):
+        for provider in ('codex', 'claude'):
+            with self.subTest(provider=provider):
+                self.assertEqual(self.run_provider(provider, 'full_access', permission_mode='full_access'), 'hello world')
+                native_id = self.bound[-1]
+                self.assertEqual(self.run_provider(provider, 'full_access', native_id, permission_mode='full_access'), 'hello world')
+                self.assertEqual(self.bound[-1], native_id)
+                self.assertEqual(self.run_provider(provider, 'permission', native_id, permission_mode='ask'), 'hello world')
+                self.assertEqual(self.bound[-1], native_id)
+                self.assertTrue(self.approvals)
+                self.approvals.clear()
+
+    def test_invalid_permissions_never_start_a_native_process(self):
+        for provider in ('codex', 'claude'):
+            for value in (None, '', 'full', 'FULL_ACCESS', True, {}):
+                with self.subTest(provider=provider, value=value):
+                    with patch('agentdock.providers._Pipe') as pipe:
+                        with self.assertRaisesRegex(ProviderError, 'Invalid agent permission mode'):
+                            self.run_provider(provider, permission_mode=value)
+                        pipe.assert_not_called()
 
     def test_live_progress_precedes_final_reply_and_excludes_private_fields(self):
         for provider in ('codex', 'claude'):
