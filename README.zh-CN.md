@@ -101,7 +101,7 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 ## SSH 运行环境
 
-![本机与 SSH 环境，图中为虚构演示数据](docs/images/environments.zh-CN.png)
+![本机与 SSH 环境，图中为虚构演示数据](docs/images/environments.zh-CN.jpg)
 
 打开 **运行环境 → 添加 SSH 环境**，填写系统 SSH Host 别名或 `user@host`，再点击 **连接 / 检查**。远端需要 Python 3.9+，以及已安装并登录的 Agent CLI。执行组件安装在远端用户的私有数据目录中，不安装系统服务，不传送本机登录凭据。
 

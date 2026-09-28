@@ -101,7 +101,7 @@ Teammate dispatches and result-return turns execute automatically while executio
 
 ## SSH environments
 
-![Local and SSH environments, fictional demo data](docs/images/environments.en.png)
+![Local and SSH environments, fictional demo data](docs/images/environments.en.jpg)
 
 Open **Environments → Add SSH environment**, enter a system SSH Host alias or `user@host`, then choose **Connect / check**. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
 
