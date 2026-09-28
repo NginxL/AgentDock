@@ -2270,3 +2270,11 @@ input[readonly] {
     animation: none;
   }
 }
+
+.environment-actions { margin-bottom: 24px; }
+.environment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+.environment-card { padding: 28px; }
+.environment-card h2 { margin: 8px 0; }
+.environment-card .button-row { margin-top: 24px; }
+.environment-providers { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+.environment-name { display: block; margin: 4px 0; }

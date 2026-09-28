@@ -5,6 +5,22 @@ export function demoState(lang: Language): DockState {
   const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
   const date = "2026-09-26T09:32:00Z";
   return {
+    environments: [
+      { id: "local", name: "This Mac", kind: "local", status: "connected" },
+      {
+        id: "demo-remote",
+        name: "Devbox",
+        kind: "ssh",
+        ssh_host: "developer@devbox.example",
+        status: "connected",
+        payload: {
+          providers: {
+            codex: { available: true, version: "codex-cli" },
+            claude: { available: true, version: "Claude Code" },
+          },
+        },
+      },
+    ],
     projects: [
       { id: "demo-project", name: "Orbit", path: "/demo/projects/orbit" },
     ],
@@ -18,6 +34,7 @@ export function demoState(lang: Language): DockState {
       },
       {
         id: "demo-claude",
+        environment_id: "demo-remote",
         project_id: "demo-project",
         provider: "claude",
         name: "Agent B",
@@ -300,6 +317,7 @@ export function demoState(lang: Language): DockState {
       },
       {
         provider: "claude",
+        environment_id: "demo-remote",
         plan: "Max",
         status: "ok",
         source: "demo",
@@ -329,6 +347,7 @@ export function demoState(lang: Language): DockState {
       },
       {
         provider: "claude",
+        environment_id: "demo-remote",
         plan: "Max",
         renewal_date: "2026-10-18",
         monthly_cost: null,

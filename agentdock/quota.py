@@ -63,12 +63,13 @@ class QuotaService:
         self._processes = set()
         self._auto_stop = threading.Event()
         self._auto_thread = None
+        self.remote = None
 
     def start_auto_refresh(self) -> None:
         """One service-owned timer, independent of visible windows or browser tabs."""
         with self._lifecycle:
             self._ensure_open()
-            if not self.execution_enabled or not self.command or self._auto_thread is not None:
+            if not self.execution_enabled or not (self.command or self.remote) or self._auto_thread is not None:
                 return
             self._auto_thread = threading.Thread(target=self._auto_refresh, name="quota-refresh", daemon=True)
             self._auto_thread.start()
@@ -76,11 +77,12 @@ class QuotaService:
     def _auto_refresh(self):
         deadline = time.monotonic() + self.AUTO_REFRESH_INTERVAL
         while not self._auto_stop.wait(max(0, deadline - time.monotonic())):
-            for provider in self.store.configured_providers():
+            for provider, environment_id in self.store.configured_connections():
                 if self._auto_stop.is_set():
                     return
                 try:
-                    self.refresh(provider)  # Non-interactive; never request Keychain authorization.
+                    if environment_id == 'local': self.refresh(provider)
+                    else: self.refresh(provider, environment_id=environment_id)
                 except Forbidden:
                     return
                 except Exception:
@@ -91,10 +93,10 @@ class QuotaService:
             if deadline <= now:
                 deadline = now + self.AUTO_REFRESH_INTERVAL  # No catch-up burst after suspension.
 
-    def refresh(self, provider: str, authorize=False) -> dict:
+    def refresh(self, provider: str, authorize=False, environment_id='local') -> dict:
         if provider not in ("codex", "claude"):
             raise ValueError("Only codex and claude quota providers are supported.")
-        if provider not in self.store.configured_providers():
+        if provider not in self.store.configured_providers(environment_id):
             raise ValueError("Add an agent for this provider before reading usage.")
         if authorize:
             raise ValueError("Quota reads do not access Keychain credentials.")
@@ -102,6 +104,7 @@ class QuotaService:
             self._ensure_open()
             self._inflight += 1
         try:
+            if environment_id != 'local': return self._remote_refresh(provider, environment_id)
             return self._refresh(provider)
         finally:
             with self._lifecycle:
@@ -164,13 +167,33 @@ class QuotaService:
             self._save(provider, quota)
             return quota
 
-    def cached(self, provider: str):
+    def _remote_refresh(self, provider, environment_id):
+        with self._lock:
+            key = (provider, environment_id)
+            if time.monotonic() - self._last_attempt.get(key, -60) < 60:
+                cached = self.cached(provider, environment_id)
+                if cached: return cached
+            self._last_attempt[key] = time.monotonic()
+            try:
+                if not self.execution_enabled or not self.remote: raise ValueError('disabled')
+                raw = self.remote.rpc(environment_id, {'op': 'quota', 'provider': provider})
+                value = self._normalize(provider, raw)
+            except Exception:
+                value = self.cached(provider, environment_id) or {'provider': provider, 'windows': [], 'fetched_at': None}
+                value.update(status='stale' if value.get('fetched_at') else 'unknown', error_code='remote_unavailable')
+            value.update(environment_id=environment_id, source='ssh')
+            with self._lifecycle:
+                self._ensure_open()
+                self.store.set_quota(provider, value, environment_id)
+            return value
+
+    def cached(self, provider: str, environment_id='local'):
         """Age a saved snapshot for display without starting a process or reading credentials."""
         if provider not in ("codex", "claude"):
             raise ValueError("Unsupported quota provider.")
         with self._lifecycle:
             self._ensure_open()
-            snapshot = self.store.get_quota(provider)
+            snapshot = self.store.get_quota(provider, environment_id)
         return self._expire(snapshot) if snapshot else None
 
     def _probe(self, provider):

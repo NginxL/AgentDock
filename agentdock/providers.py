@@ -338,19 +338,27 @@ class _Codex:
         elif method == "error" and not params.get("willRetry", False):
             raise ProviderError("Codex reported a run failure; private error details were omitted.")
 
-    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None):
+    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False):
         self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
                                     "capabilities": {"experimentalApi": False}})
         self.pipe.send({"method": "initialized", "params": {}})
         params = {"cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "workspace-write",
                   "approvalsReviewer": "user", "config": {
                       "mcp_servers": {"agentdock": {**mcp, "env_vars": list(env), "required": True}}}}
+        if inherit_process_cwd:
+            # An explicit thread/start cwd can persist project trust in Codex.
+            # The owned process already starts in this directory; inherit it and
+            # verify the resolved directory before submitting any user prompt.
+            params.pop("cwd")
         if model: params["model"] = model
         if native_session_id:
             params["threadId"] = native_session_id
             # Restore state without returning potentially unbounded turn history.
             params["excludeTurns"] = True
         response = self.request("thread/resume" if native_session_id else "thread/start", params)
+        if inherit_process_cwd and (not isinstance(response.get("cwd"), str)
+                or os.path.realpath(response["cwd"]) != os.path.realpath(cwd)):
+            raise ProviderError("Codex selected a different working directory; no prompt was sent.")
         thread = response.get("thread")
         if not isinstance(thread, dict) or not _identifier(thread.get("id")):
             raise ProviderError("Codex did not return a valid native session.")
@@ -539,7 +547,7 @@ class _Claude:
 
 
 def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
-            emit, bind_session, approve, timeout=900, model=None, effort=None):
+            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -589,7 +597,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
-            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd)
         adapter = _Claude(pipe, callbacks, native_id)
         return adapter.run(prompt)
     except (ProviderCancelled, ProviderError):

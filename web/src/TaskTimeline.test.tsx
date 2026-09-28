@@ -223,8 +223,49 @@ it("does not report a declined command as completed", () => {
 });
 
 it("does not infer a tool success from a completed task when its result is missing", () => {
-  render(<TaskTimeline {...props} runs={[{ ...run, status: "completed" }]}
-    events={[event(1, "tool_call", { item: { id: "cmd", command: "pwd" } })]} />);
+  render(
+    <TaskTimeline
+      {...props}
+      runs={[{ ...run, status: "completed" }]}
+      events={[event(1, "tool_call", { item: { id: "cmd", command: "pwd" } })]}
+    />,
+  );
   fireEvent.click(screen.getByText("任务已完成"));
   expect(screen.getByText("已中断")).toBeTruthy();
+});
+
+it("can stay collapsed while remote progress continues and shows the final reply outside the disclosure", () => {
+  const view = render(
+    <TaskTimeline
+      {...props}
+      runs={[run]}
+      events={[event(1, "transport_status", { status: "reconnecting" })]}
+    />,
+  );
+  const details = screen.getByText("连接中断 · 正在重连").closest("details")!;
+  expect(details.open).toBe(false);
+  view.rerender(
+    <TaskTimeline
+      {...props}
+      runs={[run]}
+      events={[
+        event(2, "transport_status", { status: "connected" }),
+        event(3, "reasoning_chunk", {
+          item_id: "a",
+          text: "Progress after reconnect",
+        }),
+      ]}
+    />,
+  );
+  expect(screen.getByText("任务执行中")).toBeTruthy();
+  expect(details.open).toBe(false);
+  view.rerender(
+    <TaskTimeline
+      {...props}
+      runs={[{ ...run, status: "completed", result: "Remote final result" }]}
+      events={[]}
+    />,
+  );
+  expect(screen.getByText("任务已完成")).toBeTruthy();
+  expect(screen.getByText("Remote final result").closest("details")).toBeNull();
 });

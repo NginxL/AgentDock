@@ -64,14 +64,21 @@ def record(store, provider, native_id, record_id, usage, at, source, span=None):
             if isinstance(start, (int,float)) and math.isfinite(start) and 0 < at-start <= 3600 and count(delta) is not None and 0 < delta <= usage['output_tokens'] and at > time.time()-180:
                 store.db.execute('INSERT OR IGNORE INTO token_spans VALUES(?,?,?,?,?,?,?)', (provider, native_id, record_id, usage['output_tokens'], start, at, delta))
         store.db.execute('DELETE FROM token_spans WHERE ended_at<?', (time.time()-240,))
+        if provider == 'codex' and source == 'managed' and ':' in native_id:
+            day = datetime.fromtimestamp(stamp).date().isoformat()
+            store.db.execute('''INSERT INTO token_activity_days VALUES(?,?,?,?,?)
+                ON CONFLICT(native_id,day) DO UPDATE SET input_tokens=MAX(input_tokens,excluded.input_tokens),
+                output_tokens=MAX(output_tokens,excluded.output_tokens),updated_at=MAX(updated_at,excluded.updated_at)''',
+                (native_id, day, values[0], values[1], stamp))
 
 
 def daily_activity(store, at):
     today = datetime.fromtimestamp(at).date()
     since = (today - timedelta(days=364)).isoformat()
     with store.lock:
-        checkpoints = store.db.execute("SELECT * FROM token_activity_days WHERE native_id IN (SELECT native_session_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='codex') ORDER BY native_id,day").fetchall()
-        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND native_id IN (SELECT native_session_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='claude') AND updated_at<=? GROUP BY day", (at,)).fetchall()
+        identity = "CASE WHEN sessions.environment_id='local' THEN native_session_id ELSE sessions.environment_id||':'||native_session_id END"
+        checkpoints = store.db.execute("SELECT * FROM token_activity_days WHERE native_id IN (SELECT " + identity + " FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='codex') ORDER BY native_id,day").fetchall()
+        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND native_id IN (SELECT " + identity + " FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='claude') AND updated_at<=? GROUP BY day", (at,)).fetchall()
     days = {}; previous = {}; updated = None
     # Include older checkpoints as baselines before filtering the display window.
     # Daily cumulative high-water marks deduplicate replayed and archived logs.
@@ -97,9 +104,11 @@ def snapshot(store, at=None):
         bindings = store.usage_bindings()
         rows = [dict(r) for r in store.db.execute('SELECT provider,native_id,SUM(input_tokens) input_tokens,SUM(output_tokens) output_tokens,SUM(cache_read_tokens) cache_read_tokens,SUM(cache_write_tokens) cache_write_tokens,SUM(total_tokens) total_tokens,MAX(updated_at) updated_at FROM token_records GROUP BY provider,native_id')]
         spans = [dict(r) for r in store.db.execute('SELECT * FROM token_spans WHERE ended_at>? AND ended_at<=?', (at-180, at))]
-        running = [dict(r) for r in store.db.execute("SELECT runs.agent_id,agents.provider,sessions.native_session_id FROM runs JOIN agents ON runs.agent_id=agents.id JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running'")]
+        running = [dict(r) for r in store.db.execute("SELECT runs.agent_id,agents.provider,sessions.native_session_id,sessions.environment_id FROM runs JOIN agents ON runs.agent_id=agents.id JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running'")]
         agent_ids = [r[0] for r in store.db.execute('SELECT id FROM agents')]
         providers = store.configured_providers()
+    for row in running:
+        if row['native_session_id']: row['native_session_id'] = store.metric_identity(row['environment_id'], row['native_session_id'])
     rows = [r for r in rows if (r['provider'], r['native_id']) in bindings]
     spans = [r for r in spans if (r['provider'], r['native_id']) in bindings]
     for row in rows: row['agent_id'] = bindings.get((row['provider'], row['native_id']))
@@ -155,7 +164,7 @@ class LocalUsage:
 
     def scan(self):
         self.status = 'scanning'; self.failures = 0; pending = False
-        bindings = self.store.usage_bindings()
+        bindings = self.store.usage_bindings(local_only=True)
         if not bindings:
             self.status = self.activity_status = 'ready'
             self.activity_pending = False

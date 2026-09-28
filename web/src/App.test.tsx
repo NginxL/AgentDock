@@ -225,6 +225,7 @@ describe("user-defined agent roles", () => {
         ([path]) => path === "/api/agents",
       )!;
       expect(JSON.parse(call[1].body)).toEqual({
+        environment_id: "local",
         project_id: "project-a",
         workspace: null,
         model: null,

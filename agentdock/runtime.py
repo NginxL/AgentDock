@@ -45,6 +45,14 @@ class Runtime:
         self._closed = False
         self._wake = threading.Event()
         self._scheduler = None
+        from .remote import RemoteManager
+        self.remote = RemoteManager(store, self.enabled)
+
+    def _agent_command(self, agent):
+        if agent.get('environment_id', 'local') != 'local':
+            self.remote.check(agent)
+            return None
+        return self._command(agent['provider'])
 
     def _check_enabled(self):
         if not self.enabled:
@@ -71,7 +79,7 @@ class Runtime:
         with self._lock:
             self._check_enabled()
             session = self.store.get_session(session_id)
-            self._command(self.store.get_agent(session["agent_id"])["provider"])
+            self._agent_command(self.store.get_agent(session["agent_id"]))
             record = self.store.enqueue_run(session_id, prompt)
             self._notify()
             return record
@@ -80,7 +88,7 @@ class Runtime:
                      idempotency_key=None, recipient_session_id=None):
         with self._lock:
             self._check_enabled()
-            self._command(self.store.get_agent(recipient_id)["provider"])
+            self._agent_command(self.store.get_agent(recipient_id))
             message = self.store.enqueue_message(
                 project_id, "human", recipient_id, body, correlation_id, idempotency_key,
                 recipient_session_id=recipient_session_id)
@@ -101,7 +109,7 @@ class Runtime:
             caller = self.store.capability_run(token)
             if name == "message_send":
                 if caller["project_id"] is None: raise Forbidden("Agent collaboration requires a project")
-                self._command(self.store.get_agent(arguments.get("recipient_id"))["provider"])
+                self._agent_command(self.store.get_agent(arguments.get("recipient_id")))
                 message = self.store.enqueue_message(
                     caller["project_id"], caller["agent_id"], arguments.get("recipient_id"),
                     arguments.get("body"), arguments.get("correlation_id"), arguments.get("idempotency_key"),
@@ -130,7 +138,7 @@ class Runtime:
                     if record is None:
                         break
                     try:
-                        self._command(self.store.get_agent(record["agent_id"])["provider"])
+                        self._agent_command(self.store.get_agent(record["agent_id"]))
                         capability = self.store.issue_capability(record["id"])
                         run = _Run(record, capability)
                         run.thread = threading.Thread(target=self._worker, args=(run,), daemon=True,
@@ -150,7 +158,8 @@ class Runtime:
             agent = self.store.get_agent(run.record["agent_id"])
             session = self.store.get_session(run.record["session_id"])
             if payload.get("native_id") != session.get("native_session_id"): return
-            record(self.store, agent["provider"], payload["native_id"], payload.get("record_id"), payload.get("usage"), payload.get("at"), "managed",
+            native_id = self.store.metric_identity(session['environment_id'], payload['native_id'])
+            record(self.store, agent["provider"], native_id, payload.get("record_id"), payload.get("usage"), payload.get("at"), "managed",
                    (payload.get("started_at"), payload.get("output_delta")))
             return
         if kind == "assistant_delta":
@@ -217,7 +226,18 @@ class Runtime:
                           "env": {"AGENTDOCK_URL": self.config["base_url"],
                                   "AGENTDOCK_CAPABILITY": run.capability,
                                   "PYTHONPATH": self.config["package_root"]}}
-            result = self._execute(
+            if agent['environment_id'] != 'local':
+                result = self.remote.run(agent['environment_id'], record['id'], {
+                    'provider': agent['provider'], 'cwd': workspace, 'prompt': prompt,
+                    'native_session_id': session.get('native_session_id'),
+                    'model': agent.get('model'), 'effort': agent.get('effort'),
+                    'timeout': self.config.get('run_timeout', 900)}, run.stop,
+                    lambda kind, payload: self._event(run, kind, payload),
+                    lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
+                    lambda request, options: self._request_approval(run, request, options),
+                    lambda name, arguments: self.respond_tool(run.capability, name, arguments))
+            else:
+                result = self._execute(
                 agent["provider"], self._command(agent["provider"]), workspace, prompt,
                 session.get("native_session_id"), mcp_config, run.stop,
                 lambda kind, payload: self._event(run, kind, payload),
@@ -316,3 +336,6 @@ class Runtime:
         for run in runs:
             if run.thread:
                 run.thread.join(timeout=4)
+        self.remote.close()
+        for run in runs:
+            if run.thread: run.thread.join(timeout=2)

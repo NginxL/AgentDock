@@ -13,7 +13,8 @@ AgentDock 0.3 combines a React interface, a Python standard-library service, and
 | Collaboration | Automatic dispatch, workspace-aware queuing, native-session continuation, result return, retry deduplication, depth and run limits, and cancellation of task descendants. | Real model behavior during delegation and long-running collaboration requires live acceptance. |
 | Shared memory | Project isolation, literal keyword search, version conflicts, agent proposals, human approval, soft archive, and database history. | Vector search, automatic extraction, a complete history browser, and cross-project sharing are not implemented. |
 | Quotas | Built-in usage helpers for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Local Codex quota queries and Claude Desktop snapshot reads passed; additional accounts and comparison with official usage pages remain unverified. |
-| Recovery | Additive database migration, historical mailbox preservation, one owner per native session, overlapping-workspace exclusion, database instance locking, and no automatic task replay after restart. | Existing Codex App or unrelated terminal sessions cannot be imported. Remote devices, automatic worktrees, and remote multi-user access are not implemented. |
+| Recovery | Additive database migration, historical mailbox preservation, one owner per native session and environment, overlapping-workspace exclusion, database instance locking, and no automatic task replay after restart. | Existing Codex App or unrelated terminal sessions cannot be imported. Automatic worktrees and remote multi-user access are not implemented. |
+| SSH environments | Remote CLI execution, model discovery, ordered progress, native continuation, permission/MCP round trips, idempotent submission, cancellation and a 90-second lease. | Two-turn Linux conversations passed for both providers. Extended outages, host reboot and complex tool workflows require deployment-specific acceptance. |
 
 ## Provider compatibility
 
@@ -62,6 +63,8 @@ swift run --package-path native DesktopChecks
 [CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, absence of Keychain authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
 ## Code review map
+
+SSH tests execute the actual bootstrap and detached runner under an isolated home directory with fake CLIs. They cover lost acknowledgments, event-read retries, permission responses, shared-memory calls, cancellation, expired leases, final-result persistence and environment isolation. A separate live Linux check exercised Codex 0.155.1 and Claude Code 2.1.277 model discovery, two-turn continuation and usage events. Existing Codex, Claude and SSH configuration files were compared against pre-test hashes. See [SSH verification scope](SSH.md#verification-scope).
 
 | Area | Review focus |
 | --- | --- |

@@ -16,10 +16,13 @@ class QuotaStore:
         self.quotas = {}
         self.providers = ["codex", "claude"]
 
-    def configured_providers(self):
+    def configured_connections(self):
+        return [(p, "local") for p in self.configured_providers()]
+
+    def configured_providers(self, environment_id=None):
         return self.providers
 
-    def get_quota(self, provider):
+    def get_quota(self, provider, environment_id="local"):
         return self.quotas.get(provider)
 
     def set_quota(self, provider, quota):

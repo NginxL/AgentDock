@@ -2,6 +2,7 @@ import { useState } from "react";
 import { remainingPercent } from "../api";
 import type {
   Agent,
+  Environment,
   Language,
   Mutate,
   Provider,
@@ -17,6 +18,7 @@ export default function Usage({
   quotas,
   subscriptions,
   agents,
+  environments = [],
   onAddAgent,
   refreshing,
   refreshFailed,
@@ -28,20 +30,28 @@ export default function Usage({
   quotas: Quota[];
   subscriptions: Subscription[];
   agents: Agent[];
+  environments?: Environment[];
   onAddAgent: () => void;
   refreshing: boolean;
   refreshFailed: boolean;
   busy: boolean;
   mutate: Mutate;
 }) {
-  const [editing, setEditing] = useState<Provider | null>(null);
+  const [editing, setEditing] = useState<{
+    provider: Provider;
+    environment: string;
+  } | null>(null);
   const [plan, setPlan] = useState("");
   const [renewal, setRenewal] = useState("");
   const [cost, setCost] = useState("");
   const [currency, setCurrency] = useState("USD");
-  function edit(provider: Provider) {
-    const record = subscriptions.find((s) => s.provider === provider);
-    setEditing(provider);
+  function edit(provider: Provider, environment: string) {
+    const record = subscriptions.find(
+      (s) =>
+        s.provider === provider &&
+        (s.environment_id ?? "local") === environment,
+    );
+    setEditing({ provider, environment });
     setPlan(record?.plan ?? "");
     setRenewal(record?.renewal_date ?? "");
     setCost(record?.monthly_cost == null ? "" : String(record.monthly_cost));
@@ -77,21 +87,47 @@ export default function Usage({
         </p>
       )}
       <div className="usage-grid">
-        {[...new Set(agents.map((agent) => agent.provider))].map((provider) => {
-          const quota = quotas.find((q) => q.provider === provider);
-          const billing = subscriptions.find((s) => s.provider === provider);
+        {[
+          ...new Map(
+            agents.map((agent) => [
+              `${agent.environment_id ?? "local"}:${agent.provider}`,
+              agent,
+            ]),
+          ).values(),
+        ].map((agent) => {
+          const provider = agent.provider;
+          const environment = agent.environment_id ?? "local";
+          const quota = quotas.find(
+            (q) =>
+              q.provider === provider &&
+              (q.environment_id ?? "local") === environment,
+          );
+          const billing = subscriptions.find(
+            (s) =>
+              s.provider === provider &&
+              (s.environment_id ?? "local") === environment,
+          );
           const available =
             quota?.status === "ok" ||
             quota?.status === "available" ||
             quota?.status === "success";
           return (
-            <section className="panel quota-card" key={provider}>
+            <section
+              className="panel quota-card"
+              key={`${environment}:${provider}`}
+            >
               <header>
                 <div className={`provider-symbol ${provider}`}>
                   {provider === "codex" ? "C" : "✳"}
                 </div>
                 <div>
                   <h2>{provider === "codex" ? "Codex" : "Claude"}</h2>
+                  <span className="environment-name">
+                    {environment === "local"
+                      ? t("本机", "This Mac")
+                      : (environments.find((e) => e.id === environment)?.name ??
+                        t("远端", "Remote"))}
+                  </span>
                   <span>
                     {quota?.plan ||
                       billing?.plan ||
@@ -110,7 +146,11 @@ export default function Usage({
               </header>
               <p className="quota-agents">
                 {agents
-                  .filter((a) => a.provider === provider)
+                  .filter(
+                    (a) =>
+                      a.provider === provider &&
+                      (a.environment_id ?? "local") === environment,
+                  )
                   .map((a) => a.name)
                   .join(" · ")}
               </p>
@@ -154,7 +194,7 @@ export default function Usage({
                   <h3>{t("手动订阅记录", "Manual billing record")}</h3>
                   <button
                     className="text-button"
-                    onClick={() => edit(provider)}
+                    onClick={() => edit(provider, environment)}
                   >
                     {t("编辑", "Edit")}
                   </button>
@@ -185,7 +225,7 @@ export default function Usage({
           <div className="panel-heading">
             <h2>
               {t("编辑订阅记录", "Edit billing record")} ·{" "}
-              {editing === "codex" ? "Codex" : "Claude"}
+              {editing.provider === "codex" ? "Codex" : "Claude"}
             </h2>
             <button
               className="icon-button"
@@ -201,7 +241,8 @@ export default function Usage({
               await mutate(
                 "/api/subscriptions",
                 {
-                  provider: editing,
+                  provider: editing.provider,
+                  environment_id: editing.environment,
                   plan: plan.trim(),
                   renewal_date: renewal,
                   monthly_cost: cost.trim() === "" ? null : Number(cost),
@@ -256,8 +297,8 @@ export default function Usage({
             </div>
             <p className="form-hint">
               {t(
-                "仅登记信息，不会购买、续费或更改任何订阅。实际计费由本机 CLI 使用的账户与服务方案决定。",
-                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows the account and plan used by the local CLI.",
+                "仅登记信息，不会购买、续费或更改任何订阅。实际计费由所选环境 CLI 使用的账户与服务方案决定。",
+                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows the account and plan used by the selected environment’s CLI.",
               )}
             </p>
             <button className="primary" disabled={busy}>
@@ -283,6 +324,8 @@ export function QuotaWindow({
   const labels: Record<string, string> = {
     主要窗口: t("主要窗口", "Primary window"),
     次要窗口: t("次要窗口", "Secondary window"),
+    "300m": t("5 小时", "5 hours"),
+    "10080m": t("7 天", "7 days"),
     "5 小时": t("5 小时", "5 hours"),
     "7 天": t("7 天", "7 days"),
     Weekly: t("每周额度", "Weekly"),

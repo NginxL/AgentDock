@@ -39,6 +39,22 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 ## 用户操作接口
 
+### 运行环境路由
+
+`environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话继承 Agent 的环境，Agent 环境不可更改。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。只有本机模型列表缓存五分钟。
+
+额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照还包含 `environment_name`。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
+
+| 方法与路径 | JSON 字段与返回结果 |
+| --- | --- |
+| `POST /api/environments` | `name`、`ssh_host`；可选 `python`，默认为 `python3`。只创建 SSH 记录，不连接主机。 |
+| `POST /api/environments/{id}/connect` | 空对象。要求启用执行；安装私有执行组件，返回 Python 和 CLI 版本元信息，不发送模型提示词。 |
+| `POST /api/environments/{id}/remove` | 空对象。移除未使用的 SSH 记录；关联项目或 Agent 时拒绝移除，不删除远端文件。 |
+
+显式远端工作目录必须是 POSIX 绝对路径，并在任务开始时存在。Agent 目录留空则在首次执行时创建私有目录；只有同环境项目才会自动继承项目路径。详见 [SSH 协议说明](SSH.zh-CN.md)。
+
+### 工作台操作
+
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |

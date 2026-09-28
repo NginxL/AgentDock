@@ -39,6 +39,22 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 
 ## Human routes
 
+### Environment routing
+
+`environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions inherit their agent's environment. Agent environments cannot change. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Only local model catalogs are cached for five minutes.
+
+Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID; menu snapshots also include `environment_name`. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
+
+| Method / route | JSON fields / result |
+| --- | --- |
+| `POST /api/environments` | `name`, `ssh_host`; optional `python` (default `python3`). Creates an SSH record without contacting the host. |
+| `POST /api/environments/{id}/connect` | Empty object. Requires execution enabled; installs the private runner and returns Python/CLI version metadata. Does not send a model prompt. |
+| `POST /api/environments/{id}/remove` | Empty object. Removes an unused SSH record. Rejects environments linked to projects or agents; leaves remote files intact. |
+
+Remote explicit workspaces must be absolute POSIX paths and exist when a task starts. A blank agent workspace uses a private directory created on first execution. A project path is inherited only within the same environment. See [SSH contract](SSH.md).
+
+### Workbench operations
+
 | Method / route | JSON fields / result |
 | --- | --- |
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
@@ -62,7 +78,7 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.
 
-Names and roles are user-defined and independent of `provider`. Updates require the workbench administrator token and are allowed in review mode; a run capability cannot change roles. Each turn reads the latest role when building its prompt; prompts already submitted to a native CLI are unchanged. Updating does not recreate sessions or clear history. `provider` and `project_id` cannot be changed through this endpoint, preserving native-session ownership.
+Names and roles are user-defined and independent of `provider`. Updates require the workbench administrator token and are allowed in review mode; a run capability cannot change roles. Each turn reads the latest role when building its prompt; prompts already submitted to a native CLI are unchanged. Updating does not recreate sessions or clear history. Provider and environment are immutable; project and workspace are fixed once conversations exist.
 
 ## State and task records
 

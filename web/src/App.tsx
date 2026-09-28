@@ -6,17 +6,31 @@ import {
   type FormEvent,
 } from "react";
 import { ApiError, listOf, request } from "./api";
-import type { DockState, Language, Mutate, Quota, Translate } from "./types";
-import { Brand, Empty, Icon } from "./ui";
+import type {
+  DockState,
+  Environment,
+  Language,
+  Mutate,
+  Quota,
+  Translate,
+} from "./types";
+import { Brand, Empty, Icon, errorMessage } from "./ui";
 import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
 import Messages from "./views/Messages";
 import Memories from "./views/Memories";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
+import Environments from "./views/Environments";
 import { useMetrics } from "./metrics";
 
-type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
+type Tab =
+  | "workspace"
+  | "messages"
+  | "memory"
+  | "usage"
+  | "tokens"
+  | "environments";
 
 declare global {
   interface Window {
@@ -150,7 +164,11 @@ export default function App() {
   }, [token, canRefreshQuota]);
 
   const quotaProviders = [
-    ...new Set(state?.agents.map((a) => a.provider) ?? []),
+    ...new Set(
+      state?.agents.map(
+        (a) => `${a.environment_id ?? "local"}:${a.provider}`,
+      ) ?? [],
+    ),
   ]
     .sort()
     .reverse()
@@ -165,15 +183,19 @@ export default function App() {
     quotaEpoch.current += 1;
     try {
       const results = await Promise.allSettled(
-        quotaProviders.split(",").map(async (provider) => {
+        quotaProviders.split(",").map(async (connection) => {
+          const [environment_id, provider] = connection.split(":");
           const snapshot = await request<Quota>(
             credential,
             "/api/quotas/refresh",
-            { provider },
+            environment_id === "local"
+              ? { provider }
+              : { provider, environment_id },
             controller.signal,
           );
           if (
             snapshot.provider !== provider ||
+            (snapshot.environment_id ?? "local") !== environment_id ||
             !Array.isArray(snapshot.windows)
           )
             throw new Error("Invalid quota snapshot");
@@ -187,7 +209,9 @@ export default function App() {
                 ...current,
                 quotas: [
                   ...listOf(current.quotas).filter(
-                    (q) => q.provider !== provider,
+                    (q) =>
+                      q.provider !== provider ||
+                      (q.environment_id ?? "local") !== environment_id,
                   ),
                   snapshot,
                 ],
@@ -315,7 +339,11 @@ export default function App() {
       }
       return true;
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409)
+      if (
+        e instanceof ApiError &&
+        e.status === 409 &&
+        errorMessage(e.message, t) === e.message
+      )
         setError(
           t(
             "版本或状态发生冲突，操作未应用。已保留草稿；请刷新并核对最新记录。",
@@ -325,7 +353,7 @@ export default function App() {
       else
         setError(
           e instanceof Error
-            ? e.message
+            ? errorMessage(e.message, t)
             : t("操作失败，请重试。", "The action failed. Please retry."),
         );
       return false;
@@ -504,6 +532,7 @@ export default function App() {
       en: "Shared memory",
       badge: proposals.length,
     },
+    { key: "environments", icon: "dock", zh: "运行环境", en: "Environments" },
     { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
   ];
@@ -650,6 +679,7 @@ export default function App() {
           )}
           {projectForm && (
             <ProjectForm
+              environments={state.environments ?? []}
               t={t}
               busy={!!busy || demo}
               mutate={mutate}
@@ -722,6 +752,14 @@ export default function App() {
                   mutate={mutate}
                 />
               )}
+              {tab === "environments" && (
+                <Environments
+                  state={state}
+                  t={t}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                />
+              )}
               {tab === "tokens" && (
                 <Tokens
                   metrics={metrics}
@@ -735,6 +773,7 @@ export default function App() {
                 <Usage
                   t={t}
                   lang={lang}
+                  environments={state.environments ?? []}
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
                   agents={state.agents}
@@ -754,6 +793,7 @@ export default function App() {
 }
 
 function ProjectForm({
+  environments,
   t,
   busy,
   mutate,
@@ -765,9 +805,11 @@ function ProjectForm({
   mutate: Mutate;
   close: () => void;
   onCreated: (id: string) => void;
+  environments: Environment[];
 }) {
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
+  const [environment, setEnvironment] = useState("local");
   return (
     <section className="panel inset-form">
       <div className="panel-heading">
@@ -785,7 +827,11 @@ function ProjectForm({
           e.preventDefault();
           await mutate(
             "/api/projects",
-            { name: name.trim(), path: path.trim() },
+            {
+              name: name.trim(),
+              path: path.trim(),
+              environment_id: environment,
+            },
             (result) => {
               onCreated(result.id);
               close();
@@ -793,6 +839,22 @@ function ProjectForm({
           );
         }}
       >
+        <label>
+          {t("运行环境", "Environment")}
+          <select
+            value={environment}
+            onChange={(e) => setEnvironment(e.target.value)}
+          >
+            <option value="local">{t("本机", "This Mac")}</option>
+            {environments
+              .filter((e) => e.kind === "ssh")
+              .map((e) => (
+                <option value={e.id} key={e.id}>
+                  {e.name}
+                </option>
+              ))}
+          </select>
+        </label>
         <div className="form-grid">
           <label>
             {t("项目名称", "Project name")}

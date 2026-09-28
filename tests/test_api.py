@@ -78,6 +78,30 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.call('POST',route,{'expected_version':0},h)[0],401)
         self.assertEqual(self.call('POST',route,{'expected_version':0})[0],200)
     def test_human_cannot_impersonate_agent(self): self.assertEqual(self.call('POST','/api/messages',{'sender_id':'agent'})[0],403)
+    def test_ssh_management_does_not_connect_in_review_mode(self):
+        status,env=self.call('POST','/api/environments',{'name':'Test host','ssh_host':'test-host'})
+        self.assertEqual(status,200)
+        self.assertEqual(self.call('POST','/api/environments/'+env['id']+'/connect')[0],403)
+        self.assertEqual(self.call('GET','/api/models/codex?environment_id='+env['id'])[0],403)
+        self.assertEqual(self.runtime.mock_calls,[])
+        self.api.execution_enabled=True
+        self.runtime.remote.connect.return_value={'status':'connected'}
+        self.assertEqual(self.call('POST','/api/environments/'+env['id']+'/connect')[0],200)
+        self.runtime.remote.connect.assert_called_once_with(env['id'])
+
+    def test_remote_quota_routes_never_substitute_local_snapshot(self):
+        env=self.store.add_environment('Remote','test-host')
+        self.store.add_agent(None,'Remote Codex','codex',environment_id=env['id'])
+        self.quota.cached.return_value={'provider':'codex','status':'unknown','windows':[]}
+        status,result=self.call('GET','/api/quotas')
+        self.assertEqual(status,200)
+        self.quota.cached.assert_called_once_with('codex',env['id'])
+        self.assertEqual(result['quotas'][0]['environment_name'],'Remote')
+        self.api.execution_enabled=True
+        self.quota.refresh.return_value={'status':'unknown'}
+        self.assertEqual(self.call('POST','/api/quotas/refresh',{'provider':'codex','environment_id':env['id']})[0],200)
+        self.quota.refresh.assert_called_once_with('codex',environment_id=env['id'])
+
     def test_content_type_json_size_and_nan(self):
         self.assertEqual(self.call('POST','/api/projects',headers={**self.h,'Content-Type':'text/plain'})[0],400)
         for body in (b'{bad',b' '*262145,b'{"monthly_cost": NaN}'):

@@ -10,6 +10,8 @@ public struct MenuQuotaResponse: Decodable {
 }
 
 public struct MenuQuota: Decodable {
+    public let environment_id: String?
+    public let environment_name: String?
     public let provider: String
     public let plan: String?
     public let status: String

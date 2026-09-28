@@ -23,6 +23,16 @@ def read():
     return value
 
 
+def shared_tool():
+    if scenario != 'mcp': return
+    import urllib.request
+    request = urllib.request.Request(os.environ['AGENTDOCK_URL']+'/mcp/tool',
+        data=json.dumps({'name':'memory_search','arguments':{'query':'fixture'}}).encode(),
+        headers={'Content-Type':'application/json','Authorization':'Bearer '+os.environ['AGENTDOCK_CAPABILITY']})
+    with urllib.request.urlopen(request,timeout=10) as response:
+        Path('fake-tool-result.json').write_bytes(response.read())
+
+
 def hang():
     if scenario == "descendant":
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
@@ -77,7 +87,7 @@ if provider == "codex":
     native_id = params.get("threadId", "native-codex-1")
     if scenario == "resume_mismatch":
         native_id = "different-native-thread"
-    send({"id": request["id"], "result": {"thread": {"id": native_id}}})
+    send({"id": request["id"], "result": {"thread": {"id": native_id}, "cwd": "/different-workspace" if scenario == "wrong_cwd" else os.getcwd()}})
     request = read()
     assert request["method"] == "turn/start"
     assert request["params"]["threadId"] == native_id
@@ -93,6 +103,7 @@ if provider == "codex":
         if scenario == "duplicate_permission":
             send({"id": "permission-1", "method": method, "params": params})
             hang()
+    shared_tool()
     if scenario == "usage":
         assert request["params"]["model"] == "fixture-model"
         assert request["params"]["effort"] == "high"
@@ -138,6 +149,7 @@ else:
     if scenario == "wrong_session":
         native_id = "e0c5852b-f3ac-4115-8e03-5de5f76127f0"
     send({"type": "system", "subtype": "init", "session_id": native_id})
+    shared_tool()
     if scenario in ("permission", "permission_slow", "duplicate_permission"):
         permission = {"type": "control_request", "request_id": "permission-1", "request": {
             "subtype": "can_use_tool", "tool_name": "Write", "input": {"file_path": "/tmp/reviewed-file", "content": "approved input"},

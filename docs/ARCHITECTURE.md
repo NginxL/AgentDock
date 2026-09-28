@@ -94,6 +94,16 @@ Codex uses `untrusted` approval policy and `workspace-write` sandbox requests, w
 
 Runs have a 15-minute deadline. An unanswered permission request expires after 120 seconds. The native transport bounds stdout/stderr to 8 MiB combined, each JSON line to 512 KiB, protocol messages to 10,000 and permission/control requests to 64. The dispatcher separately caps stored events to 5,000 and 8 MiB per run. Stderr is drained but not persisted; stable errors omit raw provider details. Shared process-group cleanup handles native CLIs and quota probes.
 
+## SSH execution environments
+
+`environments` stores local and SSH connections. Agents, projects and sessions carry `environment_id`, defaulting existing records to `local`. The migration backs up existing databases before adding environment ownership. An agent's environment is immutable; native identity, workspace exclusion, quota snapshots and subscription records are scoped by environment.
+
+`remote.py` submits turns through system SSH. `ssh_worker.py` installs under a content-addressed private directory and runs the existing remote CLI. Run requests are persisted with a fingerprint before acknowledgment; retrying the same Run ID does not launch another worker. Ordered events carry progress and control requests. Final state is returned only after prior events have been consumed. The SSH transport does not expose the local API or forward local credentials.
+
+Permission and MCP requests return to the local controller with a request ID. Responses return to the same remote worker; terminal replies are stored separately from progress. Short disconnections resume from an event cursor. A 90-second lease, explicit cancellation and process-group cleanup bound unattended execution. Controller restart does not replay unfinished work. Remote records currently have no automatic retention cleanup. See [SSH lifecycle and identity](SSH.md).
+
+The local history scanner excludes remote bindings. Remote token/TPS counters come from managed live events and use environment-prefixed identities. Remote Codex quota reads use its own App Server; remote Claude returns unknown. Remote readings never fall back to local accounts.
+
 ## Shared memory
 
 Approved memory is keyed by `(project_id, key)` and records content, version, author, source, archive state and timestamps. Every accepted change creates a history row. `expected_version` provides transactional compare-and-swap semantics.

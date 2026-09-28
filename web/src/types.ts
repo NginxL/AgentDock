@@ -1,11 +1,25 @@
 export type Language = "zh" | "en";
 export type Provider = "codex" | "claude";
+export interface Environment {
+  id: string;
+  name: string;
+  kind: "local" | "ssh";
+  ssh_host?: string;
+  python?: string;
+  status: string;
+  updated_at?: string;
+  payload?: {
+    providers?: Record<string, { available: boolean; version?: string }>;
+  };
+}
 export interface Project {
+  environment_id?: string;
   id: string;
   name: string;
   path: string;
 }
 export interface Agent {
+  environment_id?: string;
   id: string;
   project_id: string | null;
   name: string;
@@ -16,6 +30,7 @@ export interface Agent {
   effort?: string | null;
 }
 export interface Session {
+  environment_id?: string;
   id: string;
   project_id: string | null;
   agent_id: string;
@@ -108,6 +123,7 @@ export interface Approval {
   created_at: string;
 }
 export interface Quota {
+  environment_id?: string;
   provider: Provider;
   plan?: string | null;
   windows: {
@@ -122,6 +138,7 @@ export interface Quota {
   error_code?: string;
 }
 export interface Subscription {
+  environment_id?: string;
   provider: string;
   plan: string;
   renewal_date: string | null;
@@ -129,6 +146,7 @@ export interface Subscription {
   currency: string;
 }
 export interface DockState {
+  environments?: Environment[];
   projects: Project[];
   agents: Agent[];
   sessions: Session[];

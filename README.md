@@ -4,13 +4,13 @@
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 <p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/version-0.3.0_preview-6366f1" alt="0.3.0 preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
 
-AgentDock is a local AI agent manager for conversations, task handoffs, shared project memory, and usage monitoring. Connect installed agent CLIs, such as Codex and Claude Code, in one workspace. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
+AgentDock is an AI agent manager for conversations, task handoffs, shared project memory, and usage monitoring. Connect agent CLIs installed locally or on an SSH host, such as Codex and Claude Code, in one workspace. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
 
 The interface defaults to Chinese and supports English throughout. A Python standard-library service and SQLite store power the React workspace.
 
 > **Developer preview.** Execution is off by default. Automated checks cover simulated native CLI protocols and task handoffs; local two-turn conversations and usage events have been verified for both providers; additional accounts, permission actions and long-running collaboration require acceptance testing.
 
-[Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
+[SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Workspace
 
@@ -39,7 +39,8 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 | Capability | What it does |
 | --- | --- |
-| Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the local client. |
+| Local and SSH environments | Assign each agent a device, reuse its native CLI login, and keep sessions, models and quotas separated by environment. |
+| Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the selected environment. |
 | TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Shows live task status, expandable thinking summaries and tool execution, the final reply, and permission requests. |
@@ -88,7 +89,7 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Choose **Workspace → Add agent**, select a local provider, and name your agent. No project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder. Associate a project when you need shared memory or task handoffs.
+Choose **Workspace → Add agent**, select an environment and provider, and name your agent. No project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
 
 Create a conversation and send a message to your agent. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
@@ -97,6 +98,14 @@ Create a conversation and send a message to your agent. **Task running** changes
 **Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
 
 Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
+
+## SSH environments
+
+![Local and SSH environments, fictional demo data](docs/images/environments.en.png)
+
+Open **Environments → Add SSH environment**, enter a system SSH Host alias or `user@host`, then choose **Connect / check**. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
+
+Select the environment when creating an agent. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
 
 ## Tokens and throughput
 
@@ -152,7 +161,9 @@ Sessions belonging to the same agent, or using equal/overlapping working directo
 
 State is stored in `~/.local/share/agentdock`; only one instance can own the database. History, task records, and shared memory are local. Running an agent sends task context to its configured model service; quota refresh may contact provider services.
 
-This version manages **sessions created by AgentDock**. Attaching existing desktop/terminal conversations, remote devices, and multiple users is not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay in the providers’ local stores, and per-run MCP tokens expire and are revoked after execution.
+This version manages **sessions created by AgentDock**, locally and over SSH. Attaching existing desktop/terminal conversations and multi-user access are not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay on the selected device, and per-run MCP tokens expire and are revoked after execution.
+
+Remote token statistics use usage events from AgentDock-managed runs, without scanning unrelated remote history. Quotas and billing records are separated by environment and provider. Remote Codex queries its own App Server; remote Claude quota is currently unknown and never substituted with a local snapshot.
 
 When upgrading from 0.1, replace ACP commands with the native commands above. Historical messages remain readable as legacy records and are never dispatched automatically. Sessions without a native binding start a new provider conversation; old stored text is not silently replayed as native history.
 

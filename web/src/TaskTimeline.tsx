@@ -4,6 +4,7 @@ import {
   eventDescription,
   eventLabel,
   eventText,
+  errorMessage,
   statusLabel,
 } from "./ui";
 
@@ -168,13 +169,22 @@ export default function TaskTimeline({
           const waiting =
             runEvents.filter((e) => e.kind === "approval_required").length >
             runEvents.filter((e) => e.kind === "approval_resolved").length;
+          const connection = runEvents
+            .filter((e) => e.kind === "transport_status")
+            .at(-1);
+          const reconnecting =
+            active &&
+            connection &&
+            payload(connection).status === "reconnecting";
           const label =
             run.status === "completed"
               ? t("任务已完成", "Task completed")
               : run.status === "running"
-                ? waiting
-                  ? t("等待授权", "Awaiting approval")
-                  : t("任务执行中", "Task running")
+                ? reconnecting
+                  ? t("连接中断 · 正在重连", "Connection lost · reconnecting")
+                  : waiting
+                    ? t("等待授权", "Awaiting approval")
+                    : t("任务执行中", "Task running")
                 : run.status === "queued"
                   ? t("任务排队中", "Task queued")
                   : run.status === "failed"
@@ -240,7 +250,12 @@ export default function TaskTimeline({
                             </span>
                             <small>
                               {step.status === "running" && !active
-                                ? statusLabel(run.status === "completed" ? "interrupted" : run.status, t)
+                                ? statusLabel(
+                                    run.status === "completed"
+                                      ? "interrupted"
+                                      : run.status,
+                                    t,
+                                  )
                                 : statusLabel(step.status ?? "running", t)}
                             </small>
                           </summary>
@@ -278,7 +293,7 @@ export default function TaskTimeline({
               </div>
               {run.error && (
                 <p className="inline-error" role="status">
-                  {run.error}
+                  {errorMessage(run.error, t)}
                 </p>
               )}
               {(answer || streaming) && (

@@ -15,7 +15,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let openItem = NSMenuItem()
     private let quitItem = NSMenuItem()
     private let stateItem = NSMenuItem()
-    private var providerItems: [String: (header: NSMenuItem, lines: [NSMenuItem], separator: NSMenuItem)] = [:]
+    private var quotaItems: [NSMenuItem] = []
     private let openWorkbench: () -> Void
     private let origin: URL
     private var token: String?
@@ -51,17 +51,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(withTitle: "AgentDock", action: nil, keyEquivalent: "").isEnabled = false
         configure(openItem, action: #selector(openWindow)); menu.addItem(openItem)
         menu.addItem(.separator())
-        for provider in ["codex", "claude"] {
-            let header = NSMenuItem(); header.isEnabled = false; menu.addItem(header)
-            var lines: [NSMenuItem] = []
-            for _ in 0..<12 {
-                let item = NSMenuItem(); item.isEnabled = false; item.indentationLevel = 1
-                menu.addItem(item); lines.append(item)
-            }
-            let separator = NSMenuItem.separator()
-            providerItems[provider] = (header, lines, separator)
-            menu.addItem(separator)
-        }
         stateItem.isEnabled = false; menu.addItem(stateItem)
         menu.addItem(.separator())
         configure(quitItem, action: #selector(quit)); menu.addItem(quitItem)
@@ -94,18 +83,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         quitItem.title = t("退出 AgentDock", "Quit AgentDock")
         stateItem.title = connectionFailed ? t("本地服务不可用 · 请重新打开应用", "Local service unavailable · reopen the app") : token == nil ? t("正在启动本地服务…", "Starting local service…") : t("添加 Agent 以查看额度", "Add an agent to view usage")
         stateItem.isHidden = !connectionFailed && token != nil && !snapshots.isEmpty
-        for provider in ["codex", "claude"] {
-            guard let items = providerItems[provider] else { continue }
-            let snapshot = snapshots.first { $0.provider == provider }
-            items.header.isHidden = snapshot == nil
-            items.separator.isHidden = snapshot == nil
-            let name = provider == "codex" ? "Codex" : "Claude"
-            items.header.title = name + (snapshot?.plan.map { " · " + $0 } ?? "")
-            let lines = snapshot?.lines(language: language) ?? [t("尚未读取额度", "Usage not fetched yet")]
-            for (index, item) in items.lines.enumerated() {
-                item.isHidden = snapshot == nil || index >= lines.count
-                item.title = index < lines.count ? lines[index] : ""
+        for item in quotaItems { menu.removeItem(item) }
+        quotaItems.removeAll()
+        var index = 3
+        for snapshot in snapshots {
+            let name = snapshot.provider == "codex" ? "Codex" : "Claude"
+            let environment = snapshot.environment_id == nil || snapshot.environment_id == "local" ? t("本机", "This Mac") : snapshot.environment_name ?? t("远端", "Remote")
+            let header = NSMenuItem(title: name + " · " + environment + (snapshot.plan.map { " · " + $0 } ?? ""), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            var group = [header]
+            for text in snapshot.lines(language: language).prefix(12) {
+                let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+                item.isEnabled = false; item.indentationLevel = 1; group.append(item)
             }
+            group.append(.separator())
+            for item in group { menu.insertItem(item, at: index); index += 1; quotaItems.append(item) }
         }
     }
 

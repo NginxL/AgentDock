@@ -4,13 +4,13 @@
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 <p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="自动检查" /></a> <img src="https://img.shields.io/badge/version-0.3.0_preview-6366f1" alt="0.3.0 预览版" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9 及以上" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT 许可证" /></a></p>
 
-AgentDock 是一个本地 AI Agent 管理器，将已安装的 Agent CLI（例如 Codex、Claude Code）接入同一个工作台，统一管理会话、任务交接、项目共享记忆与可用额度。智能体通过原生 CLI 执行，后续对话沿用各自的原生会话。发送给同伴的任务会进入执行队列，结果自动回到发起任务的会话。
+AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 Agent CLI（例如 Codex、Claude Code）接入同一个工作台，统一管理会话、任务交接、项目共享记忆与可用额度。智能体通过原生 CLI 执行，后续对话沿用各自的原生会话。发送给同伴的任务会进入执行队列，结果自动回到发起任务的会话。
 
 界面默认中文，支持完整切换为英文。后端采用 Python 标准库与 SQLite，前端使用 React。
 
 > **开发者预览版。** 默认关闭执行。自动检查已覆盖模拟原生 CLI 协议和任务交接；本机已验证双提供方连续对话及用量事件，其他账号、权限操作和长时间协作仍需验收。
 
-[架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
+[SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
 ## 工作台
 
@@ -39,7 +39,8 @@ AgentDock 是一个本地 AI Agent 管理器，将已安装的 Agent CLI（例�
 
 | 能力 | 说明 |
 | --- | --- |
-| 独立 Agent | 无需项目即可创建、指定工作目录、聊天与续接上下文；模型和思考强度从本机客户端发现。 |
+| 本机与 SSH 环境 | 每个 Agent 选择运行设备，复用该设备的原生 CLI 登录；会话、模型与额度按环境区分。 |
+| 独立 Agent | 无需项目即可创建、指定工作目录、聊天与续接上下文；模型和思考强度从所选环境发现。 |
 | TPS 与 Token | 总计及每个 Agent 的三分钟输出吞吐曲线；单独页面查看已配置 Agent 关联会话的累计 Token、输入、输出和缓存明细，按原生标识去重。 |
 | 自定义角色 | 自行定义 Agent 名称和职责，支持创建后编辑或清空角色；Codex／Claude 均可承担任意用户定义的分工。 |
 | 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
@@ -88,15 +89,23 @@ python3 -m agentdock --config config.local.json
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-在**协作工作台 → 添加 Agent**选择本机服务并命名，即可创建独立 Agent，无需项目。工作目录可指定可信目录，留空则在私有数据目录下自动创建。需要项目共享记忆或派工时，再选择关联项目。
+在**协作工作台 → 添加 Agent**选择运行环境、服务并命名，即可创建独立 Agent，无需项目。工作目录可指定可信目录，留空则在所选设备的私有数据目录下自动创建。需要项目共享记忆或派工时，再选择关联项目。
 
 创建会话后即可向 Agent 发送消息。任务运行时显示“任务执行中”，CLI 确认结束后显示“任务已完成”。点击状态可展开实时思考摘要、工具调用和执行输出，最终回复显示在下方。失败、取消和等待授权分别显示对应状态。执行过程只展示 CLI 实际提供的内容，不生成额外的推理记录。
 
 ![可展开的执行过程与最终回复，虚构演示数据](docs/images/conversation.zh-CN.png)
 
-在 **Agent 设置**中选择本机客户端返回的模型和思考强度，或沿用客户端／会话设置。名称和角色完全自定义。新设置用于后续消息；模型设置须等待当前任务完成。已有会话保留上下文，工作目录和项目在建立会话后固定；更换目录时创建新的 Agent。
+在 **Agent 设置**中选择所选环境客户端返回的模型和思考强度，或沿用客户端／会话设置。名称和角色完全自定义。新设置用于后续消息；模型设置须等待当前任务完成。已有会话保留上下文，工作目录和项目在建立会话后固定；更换目录时创建新的 Agent。
 
 开启执行期间，同伴派工和结果回传轮次会自动执行；配置额度组件后，服务每 10 分钟自动刷新额度，首次定时刷新在启动 10 分钟后执行；点击“额度与订阅”会立即发起刷新。
+
+## SSH 运行环境
+
+![本机与 SSH 环境，图中为虚构演示数据](docs/images/environments.zh-CN.png)
+
+打开 **运行环境 → 添加 SSH 环境**，填写系统 SSH Host 别名或 `user@host`，再点击 **连接 / 检查**。远端需要 Python 3.9+，以及已安装并登录的 Agent CLI。执行组件安装在远端用户的私有数据目录中，不安装系统服务，不传送本机登录凭据。
+
+创建 Agent 时选择环境。任务执行时可展开查看过程，也可保持收起；最终回复独立显示。短暂断线后按事件游标接续，取消请求与 90 秒租约负责停止失去控制端的远端任务。详见 [SSH 配置与恢复](docs/SSH.zh-CN.md)。
 
 ## Token 与吞吐统计
 
@@ -152,7 +161,9 @@ sequenceDiagram
 
 状态保存在 `~/.local/share/agentdock`，同一数据库只允许一个实例占用。历史、任务记录和共享记忆存储在本地。执行智能体会将任务上下文发送到其配置的模型服务；刷新额度也可能访问提供方服务。
 
-当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 管理，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
+当前版本管理**由 AgentDock 创建的本机和 SSH 会话**，尚未接入已有桌面或终端会话及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据保留在所选设备上，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
+
+远端 Token 统计来自 AgentDock 托管任务的用量事件，不扫描远端其他历史会话。额度与订阅按环境和提供方分开保存；远端 Codex 查询自己的 App Server，远端 Claude 额度当前显示未知，不使用本机快照代替。
 
 从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 

@@ -59,6 +59,11 @@ export default function Workspace({
   const [editingAgentID, setEditingAgentID] = useState<string | null>(null);
   const [agentName, setAgentName] = useState("");
   const [provider, setProvider] = useState<Provider>("codex");
+  const [environment, setEnvironment] = useState("local");
+  const environmentName = (id?: string) =>
+    !id || id === "local"
+      ? t("本机", "This Mac")
+      : (state.environments?.find((e) => e.id === id)?.name ?? id);
   const [role, setRole] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [agentProject, setAgentProject] = useState(project?.id ?? "");
@@ -88,7 +93,7 @@ export default function Workspace({
     setCatalogLoading(true);
     void request<{ models: { id: string; name: string; efforts: string[] }[] }>(
       token,
-      `/api/models/${provider}`,
+      `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}`,
       undefined,
       abort.signal,
     )
@@ -103,7 +108,7 @@ export default function Workspace({
         if (!abort.signal.aborted) setCatalogLoading(false);
       });
     return () => abort.abort();
-  }, [agentForm, provider, token, demo, runtimeEnabled]);
+  }, [agentForm, provider, environment, token, demo, runtimeEnabled]);
   const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
   const [sessionID, setSessionID] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
@@ -228,8 +233,8 @@ export default function Workspace({
             {project?.path ??
               selectedAgent?.workspace ??
               t(
-                "无需项目，直接连接本机 Agent 开始对话",
-                "Chat with a local agent — no project required",
+                "无需项目，连接本机或 SSH Agent 开始对话",
+                "Chat with a local or SSH agent — no project required",
               )}
           </p>
         </div>
@@ -246,6 +251,7 @@ export default function Workspace({
                 setEditingAgentID(selectedAgent.id);
                 setAgentName(selectedAgent.name);
                 setProvider(selectedAgent.provider);
+                setEnvironment(selectedAgent.environment_id ?? "local");
                 setRole(selectedAgent.role);
                 setWorkspace(selectedAgent.workspace ?? "");
                 setAgentProject(selectedAgent.project_id ?? "");
@@ -264,6 +270,7 @@ export default function Workspace({
               setEditingAgentID(null);
               setAgentName("");
               setProvider("codex");
+              setEnvironment(project?.environment_id ?? "local");
               setRole("");
               setWorkspace("");
               setAgentProject(project?.id ?? "");
@@ -350,6 +357,7 @@ export default function Workspace({
                       effort: effort || null,
                       name: agentName.trim(),
                       provider,
+                      environment_id: environment,
                       role: role.trim(),
                     },
                 (result) => {
@@ -392,6 +400,28 @@ export default function Workspace({
                 </select>
               </label>
             </div>
+            <label>
+              {t("运行环境", "Environment")}
+              <select
+                value={environment}
+                disabled={!!editingAgentID}
+                onChange={(e) => {
+                  setEnvironment(e.target.value);
+                  setWorkspace("");
+                  setModel("");
+                  setEffort("");
+                }}
+              >
+                <option value="local">{t("本机", "This Mac")}</option>
+                {(state.environments ?? [])
+                  .filter((e) => e.kind === "ssh")
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name} · SSH
+                    </option>
+                  ))}
+              </select>
+            </label>
             <div className="form-grid">
               <label>
                 {t("关联项目（可选）", "Project (optional)")}
@@ -413,7 +443,9 @@ export default function Workspace({
                   ))}
                 </select>
               </label>
-              {!agentProject && (
+              {(!agentProject ||
+                (state.projects.find((p) => p.id === agentProject)
+                  ?.environment_id ?? "local") !== environment) && (
                 <label>
                   {t("工作目录（可留空）", "Working directory (optional)")}
                   <input
@@ -487,8 +519,8 @@ export default function Workspace({
             <p className="settings-note">
               {catalogLoading
                 ? t(
-                    "正在读取本机可用模型…",
-                    "Reading locally available models…",
+                    "正在读取所选环境的模型…",
+                    "Reading models from the selected environment…",
                   )
                 : catalogError
                   ? t(
@@ -526,8 +558,8 @@ export default function Workspace({
                     "The provider stays unchanged to preserve session bindings. Add a new agent to use another provider.",
                   )
                 : t(
-                    "使用服务端配置的本机 Codex / Claude CLI 与其登录凭据。",
-                    "Uses server-configured local Codex / Claude CLIs and their credentials.",
+                    "使用所选环境中的原生 CLI 与已有登录状态。",
+                    "Uses the native CLI and existing login on the selected environment.",
                   )}
             </p>
             <button className="primary" disabled={busy || !agentName.trim()}>
@@ -562,7 +594,7 @@ export default function Workspace({
                 <strong>{agent.name}</strong>
                 <span>
                   {agent.provider === "codex" ? "Codex" : "Claude"} ·{" "}
-                  {t("原生会话", "Native session")}
+                  {environmentName(agent.environment_id)}
                 </span>
                 <p>
                   {agent.role ||
@@ -577,7 +609,10 @@ export default function Workspace({
                 </span>
                 {(() => {
                   const quota = listOf(state.quotas).find(
-                    (q) => q.provider === agent.provider,
+                    (q) =>
+                      q.provider === agent.provider &&
+                      (q.environment_id ?? "local") ===
+                        (agent.environment_id ?? "local"),
                   );
                   const value =
                     quota &&
@@ -632,7 +667,10 @@ export default function Workspace({
             <div className="panel-heading">
               <div>
                 <h2>{t("会话", "Sessions")}</h2>
-                <p>{selectedAgent?.name}</p>
+                <p>
+                  {selectedAgent?.name} ·{" "}
+                  {environmentName(selectedAgent?.environment_id)}
+                </p>
               </div>
               <span className="count-badge">{relevantSessions.length}</span>
             </div>

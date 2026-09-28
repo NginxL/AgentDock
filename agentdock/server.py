@@ -48,24 +48,40 @@ class API:
                 result["activity"]["status"]=self.usage.activity_status if self.usage else "disabled"
                 return 200,result
             if method=="GET" and parsed.path=="/api/quotas":
-                return 200,{"quotas":[self.quota.cached(provider) or {"provider":provider,"status":"unknown","windows":[]} for provider in self.store.configured_providers()]}
+                quotas=[]
+                for provider,env in self.store.configured_connections():
+                    value=self._quota(provider,env) or {"provider":provider,"status":"unknown","windows":[]}
+                    if env!='local': value={**value,'environment_id':env,'environment_name':self.store.get_environment(env)['name']}
+                    quotas.append(value)
+                return 200,{'quotas':quotas}
             if method=="GET" and parsed.path=="/api/state":
                 state=self.store.state()
-                providers={a["provider"] for a in state["agents"]}
-                state["quotas"]=[self.quota.cached(q["provider"]) or q for q in state["quotas"] if q["provider"] in providers]
-                state["subscriptions"]=[s for s in state["subscriptions"] if s["provider"] in providers]
+                connections=set(self.store.configured_connections())
+                state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
+                state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
                 state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
             if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
+                environment_id=parse_qs(parsed.query).get('environment_id',['local'])[0]
+                if environment_id!='local':
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    return 200,self.runtime.remote.models(environment_id,parts[2])
                 return 200,self.catalog.read(parts[2])
             if method=="GET" and len(parts)==4 and parts[:2]==["api","sessions"] and parts[3]=="events":
                 query=parse_qs(parsed.query)
                 return 200,{"events":self.store.session_events(parts[2],int(query.get("after",[0])[0]))}
             if method!="POST": return 404,{"error":"Route not found"}
             p=self._json(headers,body)
-            if parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"))
-            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"))
+            if parsed.path=="/api/environments": result=self.store.add_environment(p.get('name'),p.get('ssh_host'),p.get('python','python3'))
+            elif len(parts)==4 and parts[:2]==['api','environments']:
+                if parts[3]=='connect':
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    result=self.runtime.remote.connect(parts[2])
+                elif parts[3]=='remove': self.store.remove_environment(parts[2]); result={'ok':True}
+                else: raise Missing('Route not found')
+            elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
+            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
             elif parsed.path=="/api/messages":
@@ -73,10 +89,11 @@ class API:
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 result=self.runtime.send_message(p.get("project_id"),p.get("recipient_id"),p.get("body"),p.get("correlation_id"),p.get("idempotency_key"),p.get("recipient_session_id"))
             elif parsed.path=="/api/memories": result=self.store.put_memory(p.get("project_id"),p.get("key"),p.get("content"),p.get("expected_version"))
-            elif parsed.path=="/api/subscriptions": result=self.store.save_subscription(p.get("provider"),p.get("plan",""),p.get("renewal_date"),p.get("monthly_cost"),p.get("currency","USD"))
+            elif parsed.path=="/api/subscriptions": result=self.store.save_subscription(p.get("provider"),p.get("plan",""),p.get("renewal_date"),p.get("monthly_cost"),p.get("currency","USD"),p.get('environment_id','local'))
             elif parsed.path=="/api/quotas/refresh":
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                result=self.quota.refresh(p.get("provider"))
+                if p.get('environment_id','local')=='local': result=self.quota.refresh(p.get("provider"))
+                else: result=self.quota.refresh(p.get("provider"),environment_id=p['environment_id'])
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
@@ -100,6 +117,9 @@ class API:
         except Conflict as error: return 409,{"error":str(error)}
         except (Invalid,ValueError,TypeError) as error: return 400,{"error":str(error)[:300]}
         except Exception: return 500,{"error":"Operation failed. No successful result was recorded; inspect local configuration."}
+
+    def _quota(self, provider, environment_id):
+        return self.quota.cached(provider) if environment_id=='local' else self.quota.cached(provider,environment_id)
 
     def _boundary(self, headers):
         expected="127.0.0.1:"+str(self.port)
@@ -192,6 +212,7 @@ def main(argv=None):
     runtime_config={"execution_enabled":args.enable_execution,"commands":commands,"base_url":"http://127.0.0.1:"+str(args.port),"python":sys.executable,"package_root":str(Path(__file__).resolve().parent.parent),"approval_timeout":120,"run_timeout":900}
     runtime=Runtime(store,runtime_config)
     quota=QuotaService(store,command,args.enable_execution,source="AgentMeter" if "agentmeter_command" in config and "quota_command" not in config else "AgentDock")
+    quota.remote=runtime.remote
     api=API(store,runtime,quota,token,args.port,args.enable_execution)
     server.RequestHandlerClass=handler_for(api,Path(__file__).resolve().parent.parent/"web/dist")
     def stop(*_): threading.Thread(target=server.shutdown,daemon=True).start()
