@@ -615,7 +615,7 @@ class Store:
             if run["status"]!="running": raise Conflict("Run is no longer active")
             a=dict(id=str(uuid.uuid4()),run_id=run_id,session_id=run["session_id"],project_id=run["project_id"],request=json.dumps(request),options=json.dumps(options),status="pending",picked_option_id=None,created_at=now())
             self.db.execute("INSERT INTO approvals VALUES(:id,:run_id,:session_id,:project_id,:request,:options,:status,:picked_option_id,:created_at)",a)
-            self._event(run["project_id"],run["session_id"],"approval_required",{"approval_id":a["id"]})
+            self._event(run["project_id"],run["session_id"],"approval_required",{"approval_id":a["id"],"run_id":run_id})
             return self._one("approvals",a["id"])
 
     def resolve_approval(self, identifier, option_id):
@@ -624,7 +624,7 @@ class Store:
             if a["status"]!="pending" or self._one("runs",a["run_id"])["status"]!="running": raise Conflict("Permission request is no longer pending")
             if option_id not in [x["optionId"] for x in a["options"]]: raise Invalid("Unknown permission option")
             self.db.execute("UPDATE approvals SET status='resolved',picked_option_id=? WHERE id=?",(option_id,identifier))
-            self._event(a["project_id"],a["session_id"],"approval_resolved",{"approval_id":identifier,"option_id":option_id})
+            self._event(a["project_id"],a["session_id"],"approval_resolved",{"approval_id":identifier,"option_id":option_id,"run_id":a["run_id"]})
             return self._one("approvals",identifier)
 
     def issue_capability(self, run_id):
@@ -703,6 +703,15 @@ class Store:
         item=dict(provider=provider,plan=plan,renewal_date=renewal_date or None,monthly_cost=monthly_cost,currency=currency.upper())
         with self.transaction(): self.db.execute("INSERT OR REPLACE INTO subscriptions VALUES(:provider,:plan,:renewal_date,:monthly_cost,:currency)",item)
         return item
+
+    def configured_providers(self):
+        with self.lock:
+            return [r[0] for r in self.db.execute("SELECT DISTINCT provider FROM agents ORDER BY provider DESC")]
+
+    def usage_bindings(self):
+        with self.lock:
+            return {(r['provider'], r['native_session_id']): r['agent_id'] for r in self.db.execute(
+                'SELECT agents.provider,sessions.native_session_id,sessions.agent_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE native_session_id IS NOT NULL')}
 
     def state(self):
         with self.lock:

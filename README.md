@@ -4,7 +4,7 @@
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 <p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/version-0.3.0_preview-6366f1" alt="0.3.0 preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
 
-AgentDock brings Codex and Claude Code into a local workspace for conversations, task handoffs, shared project memory, and usage monitoring. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
+AgentDock is a local AI agent manager for conversations, task handoffs, shared project memory, and usage monitoring. Connect installed agent CLIs, such as Codex and Claude Code, in one workspace. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
 
 The interface defaults to Chinese and supports English throughout. A Python standard-library service and SQLite store power the React workspace.
 
@@ -29,7 +29,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 ![Task dispatch and returned results](docs/images/dispatch.en.png)
 
-**Usage:** view quota windows and reset times separately from subscription renewal records. These are fictional demo readings.
+**Usage:** view quota windows for configured agents and reset times separately from subscription renewal records. These are fictional demo readings.
 
 ![Codex and Claude usage and subscriptions](docs/images/usage.en.png)
 
@@ -40,12 +40,12 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Capability | What it does |
 | --- | --- |
 | Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the local client. |
-| TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows local historical input, output and cache counters, deduplicated by native identity. |
+| TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
-| Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
+| Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Shows live task status, expandable thinking summaries and tool execution, the final reply, and permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
-| Usage & subscriptions | Automatic usage updates for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
+| Usage & subscriptions | Remaining quotas and reset times follow configured agents, with automatic updates and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
 | macOS menu bar | A persistent entry for opening the workbench, viewing Codex/Claude remaining quotas and reset times, and quitting. Language follows the workbench. |
 
@@ -59,7 +59,7 @@ python3 scripts/install-macos.py
 
 The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. Its stacked-layers icon in the menu bar opens usage summaries and the workbench. Closing the main window hides it while the app and active tasks keep running. Choose **Quit AgentDock** or press `⌘Q` to stop the local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
 
-The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes Codex/Claude automatically. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
+The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes the providers of configured agents automatically. With no agents, usage pages stay empty and no quota probes run. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
 
 Claude quota reads use only the snapshot saved by Claude Desktop, without Keychain or credential access. **Data updated** shows the source sample time; rereading the file does not advance it. The current format has no reset timestamps, so resets remain unknown. Signing into Claude Code alone does not guarantee a Desktop snapshot exists. Codex queries its local App Server, which handles its own authentication.
 
@@ -90,6 +90,10 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 Choose **Workspace → Add agent**, select a local provider, and name your agent. No project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder. Associate a project when you need shared memory or task handoffs.
 
+Create a conversation and send a message to your agent. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
+
+![Expandable execution details and final response, fictional demo data](docs/images/conversation.en.png)
+
 **Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
 
 Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
@@ -98,13 +102,13 @@ Teammate dispatches and result-return turns execute automatically while executio
 
 ![Token totals and throughput, fictional demo data](docs/images/tokens.en.png)
 
-Token statistics include readable local Codex/Claude Code history and AgentDock sessions. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Values use K (thousand), M (million) and B (billion), with up to two decimals; hover for the exact count. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
+Token statistics include only native conversations linked to registered agents. Total, provider, per-agent, TPS and daily activity views use the same scope. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Values use K (thousand), M (million) and B (billion), with up to two decimals; hover for the exact count. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
 
 **Daily activity** shows a calendar heatmap for the last year, six months or three months. Darker squares indicate higher daily token usage. Hover over a square to see its date and count.
 
 ![Daily token activity with range selection, fictional demo data](docs/images/activity.en.png)
 
-TPS uses reported output-token increments over their measured intervals, including waiting and tool time. Current TPS is a 15-second average; the three-minute average includes idle time. Batched client reporting can delay the chart. Active tasks without a valid sample show “—”; idle activity shows 0. Unlinked historical sessions contribute to total/provider usage without being attributed to an unrelated agent.
+TPS uses reported output-token increments over their measured intervals, including waiting and tool time. Current TPS is a 15-second average; the three-minute average includes idle time. Batched client reporting can delay the chart. Active tasks without a valid sample show “—”; idle activity shows 0. Unlinked local conversations are excluded; adding an agent does not import a provider’s entire history.
 
 ## Configuration
 

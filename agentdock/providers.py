@@ -225,6 +225,7 @@ class _Codex:
         self.permission_ids = set()
         self.finished = None
         self.final_messages = {}
+        self.final_reply = None
         self.deltas = {}
         self.usage_output = None
         self.usage_at = None
@@ -287,6 +288,16 @@ class _Codex:
             if sum(len(v.encode()) for v in self.deltas.values()) > _MAX_RESULT:
                 raise ProviderError("Codex response exceeded the text limit.")
             self.cb.text(params["delta"])
+        elif method in ("item/reasoning/summaryTextDelta", "item/commandExecution/outputDelta", "item/fileChange/outputDelta"):
+            item, delta = params.get("itemId"), params.get("delta")
+            if not _identifier(item) or not isinstance(delta, str):
+                raise ProviderError("Codex returned an invalid progress event.")
+            reasoning = method == "item/reasoning/summaryTextDelta"
+            part = params.get("summaryIndex", 0)
+            if reasoning and (not isinstance(part, int) or isinstance(part, bool) or part < 0):
+                raise ProviderError("Codex returned an invalid reasoning summary index.")
+            self.cb.emit("reasoning_chunk" if reasoning else "tool_output", {
+                "provider": "codex", "item_id": item, "part": part, "text": delta})
         elif method in ("item/started", "item/completed"):
             item = params.get("item")
             if not isinstance(item, dict):
@@ -296,8 +307,16 @@ class _Codex:
                 if not _identifier(identifier) or not isinstance(text, str):
                     raise ProviderError("Codex returned an invalid assistant message.")
                 self.final_messages[identifier] = text
+                if item.get("phase") == "final_answer": self.final_reply = text
                 if identifier not in self.deltas:
                     self.cb.text(text)
+            elif item.get("type") == "reasoning":
+                if method == "item/completed":
+                    summary = item.get("summary", [])
+                    if not isinstance(summary, list) or any(not isinstance(s, str) for s in summary):
+                        raise ProviderError("Codex returned an invalid reasoning summary.")
+                    for index, text in enumerate(summary):
+                        self.cb.emit("reasoning_message", {"provider": "codex", "item_id": item.get("id"), "part": index, "text": text})
             elif item.get("type") not in ("agentMessage", "reasoning", "userMessage"):
                 self.cb.emit("tool_call" if method == "item/started" else "tool_result", {"provider": "codex", "item": item})
         elif method == "thread/tokenUsage/updated":
@@ -342,7 +361,7 @@ class _Codex:
         self.usage_at = time.time()
         response = self.request("turn/start", {"threadId": self.thread_id,
             "input": [{"type": "text", "text": prompt}], "approvalPolicy": "untrusted",
-            "approvalsReviewer": "user", "model": model, "effort": effort})
+            "approvalsReviewer": "user", "model": model, "effort": effort, "summary": "auto"})
         turn = response.get("turn")
         if not isinstance(turn, dict) or not _identifier(turn.get("id")):
             raise ProviderError("Codex did not return a valid turn.")
@@ -356,7 +375,7 @@ class _Codex:
             raise ProviderCancelled()
         if status != "completed":
             raise ProviderError("Codex stopped before completing the turn.")
-        result = "\n".join(self.final_messages.values() or self.deltas.values())
+        result = self.final_reply if self.final_reply is not None else "\n".join(self.final_messages.values() or self.deltas.values())
         if len(result.encode()) > _MAX_RESULT:
             raise ProviderError("Codex response exceeded the text limit.")
         return self.cb.clean(result)
@@ -373,6 +392,8 @@ class _Claude:
         self.permission_ids = set()
         self.bound = False
         self.saw_delta = False
+        self.thinking_blocks = set()
+        self.message_number = 0
         self.message_id = None
         self.messages = []
         self.usage_messages = {}
@@ -448,6 +469,8 @@ class _Claude:
                     raise ProviderError("Claude returned an invalid stream event.")
                 if event.get("type") == "message_start":
                     self.saw_delta = False
+                    self.message_number += 1
+                    self.thinking_blocks = set()
                     body = event.get("message", {})
                     self.usage_id = body.get("id")
                     if _identifier(self.usage_id):
@@ -460,6 +483,16 @@ class _Claude:
                     if isinstance(delta, dict) and delta.get("type") == "text_delta":
                         self.saw_delta = True
                         self.cb.text(delta.get("text"))
+                    elif isinstance(delta, dict) and delta.get("type") == "thinking_delta":
+                        text, index = delta.get("thinking"), event.get("index", 0)
+                        if not isinstance(text, str) or not isinstance(index, int) or isinstance(index, bool) or index < 0:
+                            raise ProviderError("Claude returned an invalid thinking event.")
+                        self.thinking_blocks.add(index)
+                        self.cb.emit("reasoning_chunk", {"provider": "claude", "item_id": self.usage_id or str(self.message_number), "part": index, "text": text})
+                if event.get("type") == "content_block_start":
+                    block = event.get("content_block", {})
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        self.cb.emit("tool_call", {"provider": "claude", "item": block})
             elif kind in ("assistant", "user"):
                 if kind == "assistant" and message.get("error"):
                     raise ProviderError("Claude reported a provider error; private error details were omitted.")
@@ -468,7 +501,7 @@ class _Claude:
                 content = body.get("content", []) if isinstance(body, dict) else []
                 if not isinstance(content, list):
                     raise ProviderError("Claude returned invalid message content.")
-                for block in content:
+                for index, block in enumerate(content):
                     if not isinstance(block, dict):
                         raise ProviderError("Claude returned an invalid content block.")
                     if block.get("type") == "text" and kind == "assistant" and not message.get("parent_tool_use_id"):
@@ -480,6 +513,11 @@ class _Claude:
                             raise ProviderError("Claude response exceeded the text limit.")
                         if not self.saw_delta:
                             self.cb.text(text)
+                    elif block.get("type") == "thinking" and kind == "assistant" and not message.get("parent_tool_use_id"):
+                        text = block.get("thinking")
+                        if not isinstance(text, str): raise ProviderError("Claude returned an invalid thinking block.")
+                        if index not in self.thinking_blocks:
+                            self.cb.emit("reasoning_message", {"provider": "claude", "item_id": body.get("id") or str(self.message_number), "part": index, "text": text})
                     elif block.get("type") in ("tool_use", "tool_result"):
                         self.cb.emit("tool_call" if block["type"] == "tool_use" else "tool_result",
                                      {"provider": "claude", "item": block})

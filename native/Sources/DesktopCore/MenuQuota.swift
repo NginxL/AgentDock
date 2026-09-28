@@ -30,7 +30,7 @@ public struct MenuQuota: Decodable {
         var result: [String] = []
         if stale { result.append(t("待自动更新 · 显示上次数据", "Update pending · showing previous data")) }
         if error_code == "authorization_required" {
-            result.append(t("请在工作台连接 Claude", "Connect Claude in the workbench"))
+            result.append(t("等待 Claude 本地快照", "Waiting for the Claude local snapshot"))
         } else if let error_code, error_code != "outdated_cache" {
             result.append(t("读取失败 · 请在工作台查看详情", "Read failed · see workbench for details"))
         } else if status == "unavailable" || status == "disabled" {

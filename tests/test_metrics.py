@@ -13,6 +13,46 @@ class MeterTests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
         self.store=Store(self.root/'state.sqlite3')
     def tearDown(self): self.store.close();self.tmp.cleanup()
+    def bind(self, provider, native):
+        a = self.store.add_agent(None, provider, provider)
+        session = self.store.add_session(a['id'], 'Chat')
+        self.store.bind_native_session(session['id'], native)
+        return a
+
+    def test_only_registered_agent_sessions_contribute_to_every_metric(self):
+        at = time.time()
+        u = normalize('claude', {'input_tokens': 10, 'output_tokens': 20})
+        record(self.store, 'claude', 'unrelated', 'm', u, at, 'local', (at-2,20))
+        empty = snapshot(self.store, at)
+        self.assertEqual(empty['total']['total_tokens'], 0)
+        self.assertEqual(empty['total']['current_tps'], 0)
+        self.assertEqual(empty['providers'], {})
+        self.assertEqual(empty['activity']['days'], [])
+        a = self.bind('claude', 'managed')
+        record(self.store, 'claude', 'managed', 'm', u, at, 'managed', (at-2,20))
+        result = snapshot(self.store, at)
+        self.assertEqual(set(result['providers']), {'claude'})
+        self.assertEqual(result['total']['total_tokens'], 30)
+        self.assertEqual(result['total']['sessions'], 1)
+        self.assertEqual(result['agents'][a['id']]['total_tokens'], 30)
+        self.assertEqual(sum(day['tokens'] for day in result['activity']['days']), 30)
+        self.assertAlmostEqual(result['total']['average_tps'], round(20/180, 2))
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM token_records').fetchone()[0], 2)
+
+    def test_scanner_ignores_unbound_files_and_starts_after_binding(self):
+        path = self.root / '.claude/projects/p/unrelated.jsonl'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps({'timestamp': datetime.now(timezone.utc).isoformat(), 'type':'assistant', 'sessionId':'unrelated', 'message':{'id':'m','usage':{'input_tokens':1,'output_tokens':2}}}) + '\n')
+        scan = LocalUsage(self.store, self.root)
+        scan.scan()
+        self.assertEqual(scan.scanned, 0)
+        self.bind('claude', 'managed')
+        scan.scan()
+        self.assertEqual(scan.scanned, 0)
+        self.bind('claude', 'unrelated')
+        scan.scan()
+        self.assertEqual(snapshot(self.store)['total']['total_tokens'], 3)
+
     def test_independent_agent_runs_without_project_and_stays_isolated(self):
         a=self.store.add_agent(None,'Personal','codex',model='test-model',effort='high')
         self.assertEqual(self.store.state()['projects'],[])
@@ -52,6 +92,7 @@ class MeterTests(unittest.TestCase):
         record(self.store,'claude','native','message',normalize('claude',{'input_tokens':10,'output_tokens':12}),at+1,'local')
         self.assertEqual(snapshot(self.store)['total']['total_tokens'],22)
     def test_codex_cumulative_and_partial_log_tail(self):
+        self.bind("codex", "x")
         path=self.root/'.codex/sessions/log.jsonl';path.parent.mkdir(parents=True)
         def event(n):return {'timestamp':datetime.now(timezone.utc).isoformat(),'type':'event_msg','payload':{'type':'token_count','info':{'total_token_usage':{'input_tokens':100,'output_tokens':n}}}}
         lines=[{'type':'session_meta','payload':{'id':'x'}},event(5),event(15)]
@@ -72,7 +113,8 @@ class MeterTests(unittest.TestCase):
             observed=self.store.db.execute('SELECT SUM(tokens) FROM token_spans WHERE native_id=?',(identity,)).fetchone()[0]
             self.assertEqual(observed,10)
     def test_claude_repeated_content_blocks_incremental_and_rotation(self):
-        path=self.root/'.claude/projects/p/log.jsonl';path.parent.mkdir(parents=True)
+        self.bind("claude", "c")
+        path=self.root/'.claude/projects/p/c.jsonl';path.parent.mkdir(parents=True)
         event={'timestamp':datetime.now(timezone.utc).isoformat(),'type':'assistant','sessionId':'c','message':{'id':'m','usage':{'input_tokens':2,'output_tokens':7},'content':'private conversation'}}
         path.write_text((json.dumps(event)+'\n')*2);scan=LocalUsage(self.store,self.root);scan.scan();scan.scan()
         self.assertEqual(snapshot(self.store)['total']['total_tokens'],9)

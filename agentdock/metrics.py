@@ -70,8 +70,8 @@ def daily_activity(store, at):
     today = datetime.fromtimestamp(at).date()
     since = (today - timedelta(days=364)).isoformat()
     with store.lock:
-        checkpoints = store.db.execute('SELECT * FROM token_activity_days ORDER BY native_id,day').fetchall()
-        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND updated_at<=? GROUP BY day", (at,)).fetchall()
+        checkpoints = store.db.execute("SELECT * FROM token_activity_days WHERE native_id IN (SELECT native_session_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='codex') ORDER BY native_id,day").fetchall()
+        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND native_id IN (SELECT native_session_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='claude') AND updated_at<=? GROUP BY day", (at,)).fetchall()
     days = {}; previous = {}; updated = None
     # Include older checkpoints as baselines before filtering the display window.
     # Daily cumulative high-water marks deduplicate replayed and archived logs.
@@ -94,11 +94,14 @@ def daily_activity(store, at):
 def snapshot(store, at=None):
     at = at or time.time()
     with store.lock:
-        bindings = {(r['provider'], r['native_session_id']): r['agent_id'] for r in store.db.execute('SELECT agents.provider,sessions.native_session_id,sessions.agent_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE native_session_id IS NOT NULL')}
+        bindings = store.usage_bindings()
         rows = [dict(r) for r in store.db.execute('SELECT provider,native_id,SUM(input_tokens) input_tokens,SUM(output_tokens) output_tokens,SUM(cache_read_tokens) cache_read_tokens,SUM(cache_write_tokens) cache_write_tokens,SUM(total_tokens) total_tokens,MAX(updated_at) updated_at FROM token_records GROUP BY provider,native_id')]
         spans = [dict(r) for r in store.db.execute('SELECT * FROM token_spans WHERE ended_at>? AND ended_at<=?', (at-180, at))]
         running = [dict(r) for r in store.db.execute("SELECT runs.agent_id,agents.provider,sessions.native_session_id FROM runs JOIN agents ON runs.agent_id=agents.id JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running'")]
         agent_ids = [r[0] for r in store.db.execute('SELECT id FROM agents')]
+        providers = store.configured_providers()
+    rows = [r for r in rows if (r['provider'], r['native_id']) in bindings]
+    spans = [r for r in spans if (r['provider'], r['native_id']) in bindings]
     for row in rows: row['agent_id'] = bindings.get((row['provider'], row['native_id']))
     def group(provider=None, agent_id=None):
         chosen = [r for r in rows if (not provider or r['provider']==provider) and (not agent_id or r['agent_id']==agent_id)]
@@ -115,7 +118,7 @@ def snapshot(store, at=None):
         # Unknown during a run until its first measured usage sample. Idle really is zero.
         current = sum(points[-5:])/5 if recent else None if active else 0
         return {**{k: sum(r[k] for r in chosen) for k in FIELDS}, 'sessions': len(chosen), 'active_sessions': len(observed | {(r['provider'],r['native_session_id'] or r['agent_id']) for r in active}), 'current_tps': round(current,2) if current is not None else None, 'average_tps': round(sum(points)/60,2), 'points': points, 'updated_at': max((r['updated_at'] for r in chosen), default=None)}
-    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in ('codex','claude')}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'unassigned_sessions': sum(r['agent_id'] is None for r in rows), 'activity': daily_activity(store, at)}
+    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in providers}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'activity': daily_activity(store, at)}
 
 
 class LocalUsage:
@@ -152,15 +155,32 @@ class LocalUsage:
 
     def scan(self):
         self.status = 'scanning'; self.failures = 0; pending = False
+        bindings = self.store.usage_bindings()
+        if not bindings:
+            self.status = self.activity_status = 'ready'
+            self.activity_pending = False
+            return
         activity_files = []
         codex = Path(self.environment.get('CODEX_HOME') or self.home/'.codex').expanduser()
         claude = Path(self.environment.get('CLAUDE_CONFIG_DIR') or self.home/'.claude').expanduser()
         roots = [('codex', codex/'sessions'), ('codex', codex/'archived_sessions'), ('claude', claude/'projects')]
         for provider, root in roots:
+            identities = {native for (p, native) in bindings if p == provider}
+            if not identities: continue
             if not root.is_dir(): continue
             for path in root.rglob('*.jsonl'):
                 if self.stop.is_set(): return
                 if path.is_symlink(): continue
+                # Native Claude files use the session UUID as their basename.
+                # Codex includes that UUID in its rollout filename. Check metadata
+                # for older/custom names before deciding whether to read the log.
+                if provider == 'claude' and path.stem not in identities: continue
+                if provider == 'codex':
+                    try:
+                        with path.open('rb') as src:
+                            meta = json.loads(src.readline(1024 * 1024))
+                        if meta.get('type') != 'session_meta' or meta.get('payload', {}).get('id') not in identities: continue
+                    except (OSError, ValueError, AttributeError): continue
                 if provider == 'codex': activity_files.append(path)
                 try: pending = self._file(provider, path) or pending
                 except (OSError, ValueError, KeyError, TypeError): self.failures += 1

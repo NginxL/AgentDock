@@ -15,7 +15,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let openItem = NSMenuItem()
     private let quitItem = NSMenuItem()
     private let stateItem = NSMenuItem()
-    private var providerItems: [String: (header: NSMenuItem, lines: [NSMenuItem])] = [:]
+    private var providerItems: [String: (header: NSMenuItem, lines: [NSMenuItem], separator: NSMenuItem)] = [:]
     private let openWorkbench: () -> Void
     private let origin: URL
     private var token: String?
@@ -58,8 +58,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
                 let item = NSMenuItem(); item.isEnabled = false; item.indentationLevel = 1
                 menu.addItem(item); lines.append(item)
             }
-            providerItems[provider] = (header, lines)
-            menu.addItem(.separator())
+            let separator = NSMenuItem.separator()
+            providerItems[provider] = (header, lines, separator)
+            menu.addItem(separator)
         }
         stateItem.isEnabled = false; menu.addItem(stateItem)
         menu.addItem(.separator())
@@ -91,15 +92,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let t = language.text
         openItem.title = t("打开工作台", "Open workbench")
         quitItem.title = t("退出 AgentDock", "Quit AgentDock")
-        stateItem.title = connectionFailed ? t("本地服务不可用 · 请重新打开应用", "Local service unavailable · reopen the app") : token == nil ? t("正在启动本地服务…", "Starting local service…") : t("每 10 分钟自动更新", "Updates automatically every 10 minutes")
+        stateItem.title = connectionFailed ? t("本地服务不可用 · 请重新打开应用", "Local service unavailable · reopen the app") : token == nil ? t("正在启动本地服务…", "Starting local service…") : t("添加 Agent 以查看额度", "Add an agent to view usage")
+        stateItem.isHidden = !connectionFailed && token != nil && !snapshots.isEmpty
         for provider in ["codex", "claude"] {
             guard let items = providerItems[provider] else { continue }
             let snapshot = snapshots.first { $0.provider == provider }
+            items.header.isHidden = snapshot == nil
+            items.separator.isHidden = snapshot == nil
             let name = provider == "codex" ? "Codex" : "Claude"
             items.header.title = name + (snapshot?.plan.map { " · " + $0 } ?? "")
             let lines = snapshot?.lines(language: language) ?? [t("尚未读取额度", "Usage not fetched yet")]
             for (index, item) in items.lines.enumerated() {
-                item.isHidden = index >= lines.count
+                item.isHidden = snapshot == nil || index >= lines.count
                 item.title = index < lines.count ? lines[index] : ""
             }
         }

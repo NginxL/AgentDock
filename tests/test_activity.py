@@ -24,6 +24,10 @@ class ActivityTests(unittest.TestCase):
                 'payload': {'type': 'token_count', 'info': {'total_token_usage': {'input_tokens': inp, 'output_tokens': out}}}}
 
     def log(self, events):
+        if not self.store.usage_bindings():
+            a = self.store.add_agent(None, "A", "codex")
+            session = self.store.add_session(a["id"], "S")
+            self.store.bind_native_session(session["id"], "native")
         path = self.root / '.codex/sessions/log.jsonl'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('\n'.join(json.dumps(e) for e in [{'type': 'session_meta', 'payload': {'id': 'native'}}] + events) + '\n')
@@ -76,6 +80,9 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual(self.days(), expected)
 
     def test_claude_message_dedup_and_cache_counts_use_the_local_calendar(self):
+        a = self.store.add_agent(None, "A", "claude")
+        session = self.store.add_session(a["id"], "S")
+        self.store.bind_native_session(session["id"], "c")
         usage = normalize('claude', {'input_tokens': 10, 'output_tokens': 5, 'cache_read_input_tokens': 20, 'cache_creation_input_tokens': 30})
         stamp = (self.today - timedelta(days=1) + timedelta(seconds=1)).timestamp()
         for source in ('managed', 'local', 'local'):

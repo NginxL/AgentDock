@@ -164,6 +164,7 @@ export function statusLabel(status: string, t: Translate) {
       pending: t("待处理", "Pending"),
       running: t("运行中", "Running"),
       completed: t("完成", "Completed"),
+      declined: t("已拒绝", "Declined"),
       failed: t("失败", "Failed"),
       cancelled: t("已取消", "Cancelled"),
       interrupted: t("已中断", "Interrupted"),
@@ -361,7 +362,7 @@ export function PageTitle({
 }: {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
@@ -369,7 +370,7 @@ export function PageTitle({
       <div>
         <span className="eyebrow">{eyebrow}</span>
         <h1>{title}</h1>
-        <p>{description}</p>
+        {description && <p>{description}</p>}
       </div>
       {action}
     </div>

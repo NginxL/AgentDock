@@ -48,9 +48,13 @@ class API:
                 result["activity"]["status"]=self.usage.activity_status if self.usage else "disabled"
                 return 200,result
             if method=="GET" and parsed.path=="/api/quotas":
-                return 200,{"quotas":[snapshot for provider in ("codex","claude") if (snapshot:=self.quota.cached(provider)) is not None]}
+                return 200,{"quotas":[self.quota.cached(provider) or {"provider":provider,"status":"unknown","windows":[]} for provider in self.store.configured_providers()]}
             if method=="GET" and parsed.path=="/api/state":
-                state=self.store.state(); state["quotas"]=[self.quota.cached(q["provider"]) or q for q in state["quotas"]]; state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
+                state=self.store.state()
+                providers={a["provider"] for a in state["agents"]}
+                state["quotas"]=[self.quota.cached(q["provider"]) or q for q in state["quotas"] if q["provider"] in providers]
+                state["subscriptions"]=[s for s in state["subscriptions"] if s["provider"] in providers]
+                state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
             if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:

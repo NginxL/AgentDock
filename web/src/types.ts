@@ -42,6 +42,7 @@ export interface Message {
   error?: string | null;
 }
 export interface Run {
+  result?: string | null;
   id: string;
   session_id: string;
   agent_id: string;

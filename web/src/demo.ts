@@ -178,12 +178,53 @@ export function demoState(lang: Language): DockState {
     ],
     events: [
       {
+        id: "demo-thought",
+        seq: 0,
+        project_id: "demo-project",
+        session_id: "demo-session-1",
+        kind: "reasoning_message",
+        payload: {
+          run_id: "demo-run-1",
+          item_id: "thought",
+          part: 0,
+          text: t(
+            "先检查搜索组件的键盘事件与焦点管理，再补充方向键、Esc 和空结果测试。",
+            "Check keyboard events and focus handling in the search component, then cover arrow keys, Escape and empty results.",
+          ),
+        },
+        created_at: date,
+      },
+      {
+        id: "demo-tool",
+        seq: 0,
+        project_id: "demo-project",
+        session_id: "demo-session-1",
+        kind: "tool_result",
+        payload: {
+          run_id: "demo-run-1",
+          item: {
+            id: "tool-1",
+            type: "commandExecution",
+            command: "npm test -- search",
+            status: "completed",
+            exitCode: 0,
+            aggregatedOutput: t(
+              "测试文件  1 通过\n测试用例  8 通过",
+              "Test files  1 passed\nTests       8 passed",
+            ),
+          },
+        },
+        created_at: date,
+      },
+
+      {
         id: "demo-event-1",
         seq: 1,
         project_id: "demo-project",
         session_id: "demo-session-1",
         kind: "user_message",
         payload: {
+          run_id: "demo-run-1",
           text: t(
             "为搜索加入键盘导航，沿用项目的可访问性约定。完成后请 Agent B 独立审阅。",
             "Add keyboard navigation to search following the project accessibility conventions. Ask Agent B for an independent review when ready.",
@@ -196,8 +237,9 @@ export function demoState(lang: Language): DockState {
         seq: 2,
         project_id: "demo-project",
         session_id: "demo-session-1",
-        kind: "agent_message",
+        kind: "assistant_message",
         payload: {
+          run_id: "demo-run-1",
           text: t(
             "已完成键盘导航和焦点恢复。\n\n• ↑ / ↓ 在结果中移动，Enter 打开所选项\n• Esc 关闭搜索并恢复焦点\n• 空结果不会触发无效选择\n\n已将审阅任务派给 Agent B，沿用独立的审阅会话。",
             "Keyboard navigation and focus restoration are complete.\n\n• ↑ / ↓ move through results; Enter opens the selection\n• Escape closes search and restores focus\n• Empty results cannot trigger invalid selections\n\nThe review was dispatched to Agent B in its own review session.",
@@ -212,6 +254,7 @@ export function demoState(lang: Language): DockState {
         session_id: "demo-session-1",
         kind: "message_sent",
         payload: {
+          run_id: "demo-run-1",
           text: t(
             "Agent A → Agent B · 审阅搜索变更",
             "Agent A → Agent B · Review search changes",
@@ -224,8 +267,9 @@ export function demoState(lang: Language): DockState {
         seq: 4,
         project_id: "demo-project",
         session_id: "demo-session-1",
-        kind: "agent_message",
+        kind: "assistant_message",
         payload: {
+          run_id: "demo-run-3",
           text: t(
             "审阅结果已回传：3 个边界场景与相关测试均通过。变更已准备好供你查看。",
             "The review returned: all three edge cases and related tests pass. The change is ready for your review.",

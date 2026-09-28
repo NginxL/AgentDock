@@ -149,8 +149,14 @@ export default function App() {
     };
   }, [token, canRefreshQuota]);
 
+  const quotaProviders = [
+    ...new Set(state?.agents.map((a) => a.provider) ?? []),
+  ]
+    .sort()
+    .reverse()
+    .join(",");
   const refreshQuotas = useCallback(async () => {
-    if (!canRefreshQuota || quotaRequest.current) return;
+    if (!canRefreshQuota || !quotaProviders || quotaRequest.current) return;
     const credential = tokenRef.current;
     const controller = new AbortController();
     quotaRequest.current = controller;
@@ -159,7 +165,7 @@ export default function App() {
     quotaEpoch.current += 1;
     try {
       const results = await Promise.allSettled(
-        (["codex", "claude"] as const).map(async (provider) => {
+        quotaProviders.split(",").map(async (provider) => {
           const snapshot = await request<Quota>(
             credential,
             "/api/quotas/refresh",
@@ -199,7 +205,7 @@ export default function App() {
         setQuotaRefreshing(false);
       }
     }
-  }, [canRefreshQuota, token]);
+  }, [canRefreshQuota, token, quotaProviders]);
 
   useEffect(() => {
     if (tab === "usage") void refreshQuotas();
@@ -731,10 +737,10 @@ export default function App() {
                   lang={lang}
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
-                  runtimeEnabled={state.runtime.enabled}
+                  agents={state.agents}
+                  onAddAgent={() => setTab("workspace")}
                   refreshing={quotaRefreshing}
                   refreshFailed={quotaRefreshFailed}
-                  demo={demo}
                   busy={!!busy || demo}
                   mutate={mutate}
                 />

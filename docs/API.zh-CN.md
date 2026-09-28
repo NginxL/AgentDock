@@ -19,11 +19,15 @@
 
 `GET /api/models/{codex|claude}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟；只保留白名单字段，不返回账户信息。
 
-`GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`unassigned_sessions`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
+`GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
+
+所有统计只包含已配置 Agent 绑定的原生会话。没有 Agent 时，总量为零，提供方、Agent 和每日活跃集合为空。`GET /api/state` 和 `GET /api/quotas` 只返回已配置 Agent 使用的服务；菜单接口对尚无快照的服务返回 `status: "unknown"` 和空窗口。未配置服务的额度刷新请求会被拒绝。
 
 `activity` 包含 `today`（服务端本地日期）、`days`（最近 365 天已记录日期的 `date` 与 `tokens`）、`updated_at`（最新源记录时间，无记录时为 null）及 `status`（`pending`、`scanning`、`ready`、`partial` 或 `disabled`）。无记录的日期不产生正用量。Codex 每日活跃首次从历史起点分块补全，独立于累计值及 TPS 的快速扫描；重启后继续索引进度，不请求提供方接口。
 
 独立会话的 `project_id` 为 null，拥有固定 `workspace`。独立 Agent 的队友列表和记忆搜索为空，项目派工与记忆提议被拒绝。
+
+任务事件包含 `reasoning_chunk`、`reasoning_message`（替换同一 `item_id`、`part` 的最终摘要）、`tool_call`、`tool_output` 和 `tool_result`，均携带 `run_id`，工具输出增量使用 `item_id`。Codex 提供思考摘要，Claude 提供公开输出的 thinking 块。`run_finished.status` 表示最终状态，`runs.result` 保留最终回复。可见会话每秒读取事件并连续读取完整游标页。
 
 ## 身份认证与请求边界
 

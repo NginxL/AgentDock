@@ -42,7 +42,7 @@ do {
     let scoped = try lines(["windows": [["label": "Sonnet · 7 天", "remaining_percent": 100]]], .en)
     expect(scoped.contains("Sonnet · 7 days · 100% left"), "Scoped model windows translate duration labels")
     let failure = try lines(["status": "unavailable", "error_code": "authorization_required", "error": "private-token-fixture"])
-    expect(failure.contains("请在工作台连接 Claude"), "Authorization guidance directs users to the explicit connection action")
+    expect(failure.contains("等待 Claude 本地快照"), "Legacy authorization errors wait for a local snapshot without requesting Keychain access")
     expect(!failure.joined().contains("private-token"), "Raw provider errors are never rendered in the menu")
     let many = try lines(["windows": Array(repeating: ["label": "Quota", "remaining_percent": 80], count: 6)])
     expect(many.filter { $0.contains("80%") }.count == 4 && many.last == "更多额度请打开工作台", "Long provider lists are bounded with a workbench link hint")

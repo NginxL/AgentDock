@@ -98,13 +98,23 @@ if provider == "codex":
         assert request["params"]["effort"] == "high"
         usage = {"inputTokens": 10, "outputTokens": 5, "cachedInputTokens": 4}
         send({"method": "thread/tokenUsage/updated", "params": {"threadId": native_id, "turnId": "turn-1", "tokenUsage": {"total": usage, "last": usage}}})
+    if scenario == "progress":
+        assert request["params"]["summary"] == "auto"
+        base = {"threadId":native_id,"turnId":"turn-1"}
+        send({"method":"item/reasoning/summaryTextDelta","params":{**base,"itemId":"thought-1","summaryIndex":0,"delta":"Inspect "}})
+        send({"method":"item/reasoning/summaryTextDelta","params":{**base,"itemId":"thought-1","summaryIndex":0,"delta":"private-token"}})
+        send({"method":"item/completed","params":{**base,"item":{"type":"reasoning","id":"thought-1","summary":["Inspect private-token"],"content":["do not forward encrypted/raw reasoning"]}}})
+        send({"method":"item/started","params":{**base,"item":{"type":"commandExecution","id":"tool-1","command":"pwd","status":"inProgress"}}})
+        send({"method":"item/commandExecution/outputDelta","params":{**base,"itemId":"tool-1","delta":"/fixture/workspace"}})
+        send({"method":"item/completed","params":{**base,"item":{"type":"commandExecution","id":"tool-1","command":"pwd","status":"completed","exitCode":0,"aggregatedOutput":"/fixture/workspace"}}})
+        send({"method":"item/completed","params":{**base,"item":{"type":"agentMessage","id":"commentary-1","phase":"commentary","text":"Working on the task"}}})
     params = {"threadId": "wrong-thread" if scenario == "wrong_session" else native_id,
               "turnId": "wrong-turn" if scenario == "wrong_turn" else "turn-1", "itemId": "answer-1", "delta": "hello "}
     send({"method": "item/agentMessage/delta", "params": params})
     params["delta"] = os.environ.get("AGENTDOCK_CAPABILITY", "missing") if scenario == "redact" else "world"
     send({"method": "item/agentMessage/delta", "params": params})
     send({"method": "item/completed", "params": {"threadId": native_id, "turnId": "turn-1", "item": {
-        "id": "answer-1", "type": "agentMessage", "text": "hello " + params["delta"]}}})
+        "id": "answer-1", "type": "agentMessage", "phase": "final_answer", "text": "hello " + params["delta"]}}})
     send({"method": "turn/completed", "params": {"threadId": native_id, "turn": {
         "id": "turn-1", "status": "failed" if scenario == "failed" else "completed",
         "error": {"message": "private-token"} if scenario == "failed" else None}}})
@@ -141,6 +151,14 @@ else:
             send(permission)
             hang()
     send({"type": "stream_event", "session_id": native_id, "event": {"type": "message_start"}})
+    if scenario == "progress":
+        send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Inspect private-token"}}})
+        send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"do not forward signatures"}}})
+        send({"type":"assistant","session_id":native_id,"message":{"content":[{"type":"thinking","thinking":"Inspect private-token","signature":"do not forward signatures"}]}})
+        tool = {"type":"tool_use","id":"tool-1","name":"Read","input":{"file_path":"/fixture/file"}}
+        send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_start","content_block":tool}})
+        send({"type":"assistant","session_id":native_id,"message":{"content":[tool]}})
+        send({"type":"user","session_id":native_id,"message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":"fixture content"}]}})
     for text in ("hello ", os.environ.get("AGENTDOCK_CAPABILITY", "missing") if scenario == "redact" else "world"):
         send({"type": "stream_event", "session_id": native_id, "event": {
             "type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}})

@@ -2132,3 +2132,141 @@ input[readonly] {
 .model-summary {
   overflow-wrap: anywhere;
 }
+
+.quota-agents {
+  margin: 0 28px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.task-turn {
+  padding: 18px 0 26px;
+  border-bottom: 1px solid var(--line);
+}
+.task-turn:last-child {
+  border-bottom: 0;
+}
+.task-turn pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.65;
+}
+.task-prompt {
+  padding: 16px 20px;
+  background: var(--soft);
+  border-radius: 14px;
+}
+.task-progress-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 18px;
+}
+.task-progress {
+  flex: 1;
+  min-width: 0;
+}
+.task-progress > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 7px 2px;
+  border-radius: 5px;
+}
+.task-progress summary::-webkit-details-marker {
+  display: none;
+}
+.task-progress > summary:hover {
+  color: var(--ink);
+}
+.task-progress > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.task-indicator {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+}
+.task-progress.completed .task-indicator {
+  color: #198259;
+}
+.task-progress.failed .task-indicator {
+  color: #b54a40;
+}
+.task-chevron {
+  margin-left: 4px;
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.task-progress[open] > summary .task-chevron {
+  transform: rotate(90deg);
+}
+.task-steps {
+  margin: 12px 0 8px 10px;
+  padding: 0 0 0 22px;
+  border-left: 2px solid var(--line);
+  max-height: 420px;
+  overflow: auto;
+}
+.task-step {
+  padding: 8px 0 18px;
+}
+.task-step small {
+  color: var(--muted);
+}
+.task-step pre {
+  font-size: 13px;
+}
+.task-step.reasoning {
+  color: var(--muted);
+}
+.task-tool {
+  margin: 8px 0 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.task-tool > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.task-tool small {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.task-tool pre {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.task-cancel {
+  margin-top: 5px;
+}
+.task-answer {
+  padding: 18px 4px 0;
+}
+.spinning {
+  animation: task-spin 1.3s linear infinite;
+}
+@keyframes task-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinning {
+    animation: none;
+  }
+}

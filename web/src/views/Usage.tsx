@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { remainingPercent } from "../api";
 import type {
+  Agent,
   Language,
   Mutate,
   Provider,
@@ -8,17 +9,17 @@ import type {
   Subscription,
   Translate,
 } from "../types";
-import { DateText, Icon, PageTitle } from "../ui";
+import { DateText, Empty, Icon, PageTitle } from "../ui";
 
 export default function Usage({
   t,
   lang,
   quotas,
   subscriptions,
-  runtimeEnabled,
+  agents,
+  onAddAgent,
   refreshing,
   refreshFailed,
-  demo,
   busy,
   mutate,
 }: {
@@ -26,10 +27,10 @@ export default function Usage({
   lang: Language;
   quotas: Quota[];
   subscriptions: Subscription[];
-  runtimeEnabled: boolean;
+  agents: Agent[];
+  onAddAgent: () => void;
   refreshing: boolean;
   refreshFailed: boolean;
-  demo: boolean;
   busy: boolean;
   mutate: Mutate;
 }) {
@@ -51,39 +52,32 @@ export default function Usage({
       <PageTitle
         eyebrow={t("账户概览", "ACCOUNT OVERVIEW")}
         title={t("额度与订阅", "Usage & billing")}
-        description={t(
-          "进入此页时自动更新额度，应用运行期间每 10 分钟刷新一次。订阅续费信息由你登记。",
-          "Usage updates when you open this page and every 10 minutes while the app runs. Enter billing details separately.",
-        )}
       />
-      <p className="form-hint" role="status">
-        {demo
-          ? t(
-              "演示数据，不会读取实际额度。",
-              "Demo data. No live usage requests.",
-            )
-          : !runtimeEnabled
-            ? t(
-                "执行未启用，自动刷新已暂停。",
-                "Execution is disabled. Automatic refresh is paused.",
-              )
-            : refreshing
-              ? t("正在更新额度…", "Updating usage…")
-              : refreshFailed
-                ? t(
-                    "暂时无法更新，保留上次数据；系统会自动重试。",
-                    "Update unavailable. Keeping previous data and retrying automatically.",
-                  )
-                : t("自动刷新已开启", "Automatic refresh is on")}
-      </p>
-      <p className="form-hint">
-        {t(
-          "Claude 读取客户端保存的本地额度快照；Codex 通过本机客户端查询。刷新时间不等于源数据更新时间，重置时间缺失时显示未知。",
-          "Claude reads its client’s local quota snapshot; Codex queries through its local client. Refreshing does not change the source timestamp. Missing reset times remain unknown.",
-        )}
-      </p>
+      {!agents.length && (
+        <section className="panel">
+          <Empty icon="dock" title={t("暂无 Agent", "No agents yet")}>
+            {t(
+              "添加 Agent 后查看额度与订阅。",
+              "Add an agent to view usage and billing.",
+            )}
+            <div>
+              <button className="primary" onClick={onAddAgent}>
+                {t("添加 Agent", "Add agent")}
+              </button>
+            </div>
+          </Empty>
+        </section>
+      )}
+      {refreshFailed && !!agents.length && (
+        <p className="inline-error" role="status">
+          {t(
+            "额度更新失败，稍后自动重试。",
+            "Usage update failed. Retrying automatically.",
+          )}
+        </p>
+      )}
       <div className="usage-grid">
-        {(["codex", "claude"] as Provider[]).map((provider) => {
+        {[...new Set(agents.map((agent) => agent.provider))].map((provider) => {
           const quota = quotas.find((q) => q.provider === provider);
           const billing = subscriptions.find((s) => s.provider === provider);
           const available =
@@ -114,6 +108,12 @@ export default function Usage({
                         : t("未知 / 不可用", "Unknown / unavailable")}
                 </span>
               </header>
+              <p className="quota-agents">
+                {agents
+                  .filter((a) => a.provider === provider)
+                  .map((a) => a.name)
+                  .join(" · ")}
+              </p>
               <div className="quota-windows">
                 {quota?.windows?.length ? (
                   quota.windows.map((window, index) => (
@@ -266,18 +266,6 @@ export default function Usage({
           </form>
         </section>
       )}
-      <div className="usage-explainer">
-        <Icon name="shield" size={22} />
-        <div>
-          <h3>{t("只展示有来源的数据", "Show only data with a source")}</h3>
-          <p>
-            {t(
-              "内置读取组件使用提供方的本机登录，账户凭据不传入浏览器。当前工作台不估算 token 费用，也不会把额度重置当作续费时间。",
-              "The built-in reader uses existing provider logins; account credentials never enter the browser. This workspace does not estimate token costs or treat quota reset as subscription renewal.",
-            )}
-          </p>
-        </div>
-      </div>
     </>
   );
 }

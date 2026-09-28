@@ -76,7 +76,7 @@ class QuotaService:
     def _auto_refresh(self):
         deadline = time.monotonic() + self.AUTO_REFRESH_INTERVAL
         while not self._auto_stop.wait(max(0, deadline - time.monotonic())):
-            for provider in ("codex", "claude"):
+            for provider in self.store.configured_providers():
                 if self._auto_stop.is_set():
                     return
                 try:
@@ -94,6 +94,8 @@ class QuotaService:
     def refresh(self, provider: str, authorize=False) -> dict:
         if provider not in ("codex", "claude"):
             raise ValueError("Only codex and claude quota providers are supported.")
+        if provider not in self.store.configured_providers():
+            raise ValueError("Add an agent for this provider before reading usage.")
         if authorize:
             raise ValueError("Quota reads do not access Keychain credentials.")
         with self._lifecycle:

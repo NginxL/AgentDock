@@ -36,6 +36,21 @@ class NativeProvidersTest(unittest.TestCase):
             self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
             approve or permission, timeout=timeout)
 
+    def test_live_progress_precedes_final_reply_and_excludes_private_fields(self):
+        for provider in ('codex', 'claude'):
+            with self.subTest(provider=provider):
+                self.events = []
+                self.assertEqual(self.run_provider(provider, 'progress'), 'hello world')
+                kinds = [k for k, p in self.events]
+                self.assertIn('reasoning_chunk', kinds)
+                self.assertIn('tool_call', kinds)
+                self.assertIn('tool_result', kinds)
+                self.assertLess(kinds.index('reasoning_chunk'), kinds.index('agent_message_chunk'))
+                if provider == 'codex': self.assertIn('tool_output', kinds)
+                self.assertNotIn('private-token', json.dumps(self.events))
+                self.assertNotIn('do not forward', json.dumps(self.events))
+                if provider == 'claude': self.assertNotIn('reasoning_message', kinds)
+
     def test_model_effort_and_real_usage_event_are_forwarded(self):
         execute("codex", [sys.executable, FAKE, "codex", "usage"], str(self.cwd), "hello", None,
             {"command": sys.executable, "args": [], "env": {"AGENTDOCK_CAPABILITY":"private-token"}},

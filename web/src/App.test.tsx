@@ -147,6 +147,7 @@ describe("desktop connection and built-in usage", () => {
     fetchMock.mockImplementation(async () =>
       response({
         ...state,
+        agents: [{ ...state.agents[0], provider: "claude" }],
         quotas: [
           {
             provider: "claude",
@@ -276,7 +277,10 @@ describe("user-defined agent roles", () => {
       expect(screen.queryByRole("button", { name: "保存设置" })).toBeNull(),
     );
     expect(screen.getByText("未设置角色 · 按任务要求执行")).toBeTruthy();
-    expect(screen.getByText("existing-native-session")).toBeTruthy();
+    expect(current.sessions[0].native_session_id).toBe(
+      "existing-native-session",
+    );
+    expect(screen.getByRole("heading", { name: "First task" })).toBeTruthy();
     const call = fetchMock.mock.calls.find(
       ([path]) => path === "/api/agents/agent-a",
     )!;
@@ -581,7 +585,7 @@ describe("connection boundaries", () => {
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
     expect(screen.queryByRole("button", { name: "读取额度" })).toBeNull();
-    expect(screen.getByText("执行未启用，自动刷新已暂停。")).toBeTruthy();
+    expect(screen.queryByText("执行未启用，自动刷新已暂停。")).toBeNull();
     expect(
       fetchMock.mock.calls.some(([path]) => /quotas|\/run$/.test(String(path))),
     ).toBe(false);
@@ -747,6 +751,75 @@ describe("reviewed memory and messages", () => {
 });
 
 describe("usage semantics and transport", () => {
+  it("hides unconfigured providers and unrelated historical usage, and performs no quota probes", async () => {
+    fetchMock.mockImplementation(async (path: string) =>
+      response(
+        path === "/api/metrics"
+          ? {
+              providers: { codex: { total_tokens: 99000000 } },
+              total: { total_tokens: 99000000, sessions: 172 },
+              agents: {},
+            }
+          : {
+              ...state,
+              projects: [],
+              agents: [],
+              sessions: [],
+              runtime: { enabled: true, version: "0.3.0" },
+              quotas: [
+                {
+                  provider: "claude",
+                  windows: [],
+                  status: "available",
+                  source: "local",
+                },
+              ],
+            },
+      ),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(screen.getByText("暂无 Agent")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Codex" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Claude" })).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(([p]) => p === "/api/quotas/refresh"),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Token 统计" }));
+    expect(screen.getByText("暂无 Agent")).toBeTruthy();
+    expect(screen.queryByText("99M")).toBeNull();
+  });
+  it("only refreshes the provider of a configured agent", async () => {
+    fetchMock.mockImplementation(
+      async (path: string, options?: RequestInit) => {
+        if (path === "/api/quotas/refresh")
+          return response({
+            provider: JSON.parse(String(options?.body)).provider,
+            windows: [],
+            status: "unknown",
+          });
+        return response({
+          ...state,
+          runtime: { enabled: true, version: "0.3.0" },
+        });
+      },
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([p]) => p === "/api/quotas/refresh"),
+      ).toHaveLength(1),
+    );
+    const refresh = fetchMock.mock.calls.find(
+      ([p]) => p === "/api/quotas/refresh",
+    )!;
+    expect(JSON.parse(String(refresh[1].body))).toEqual({ provider: "codex" });
+    expect(screen.queryByRole("heading", { name: "Claude" })).toBeNull();
+  });
+
   it("refreshes both quotas on every usage navigation without exposing refresh or connection buttons", async () => {
     fetchMock.mockImplementation(
       async (path: string, options?: RequestInit) => {
@@ -766,6 +839,15 @@ describe("usage semantics and transport", () => {
         }
         return response({
           ...state,
+          agents: [
+            ...state.agents,
+            {
+              ...state.agents[0],
+              id: "agent-b",
+              provider: "claude",
+              name: "Writer",
+            },
+          ],
           runtime: { ...state.runtime, enabled: true },
         });
       },
@@ -782,7 +864,7 @@ describe("usage semantics and transport", () => {
     openUsage();
     expect(await screen.findByText(/42%/)).toBeTruthy();
     expect(await screen.findByText(/71%/)).toBeTruthy();
-    await screen.findByText("自动刷新已开启");
+    await waitFor(() => expect(screen.queryByText("更新中")).toBeNull());
     expect(
       calls().map(([, options]) => JSON.parse(String(options.body)).provider),
     ).toEqual(["codex", "claude"]);
@@ -791,13 +873,13 @@ describe("usage semantics and transport", () => {
     expect(screen.queryByRole("button", { name: "刷新工作台状态" })).toBeNull();
     openUsage();
     await waitFor(() => expect(calls()).toHaveLength(4));
-    await screen.findByText("自动刷新已开启");
+    await waitFor(() => expect(screen.queryByText("更新中")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "协作工作台" }));
     openUsage();
     await waitFor(() => expect(calls()).toHaveLength(6));
-    await screen.findByText("自动刷新已开启");
+    await waitFor(() => expect(screen.queryByText("更新中")).toBeNull());
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-    expect(screen.getByText("Automatic refresh is on")).toBeTruthy();
+    expect(screen.queryByText("Automatic refresh is on")).toBeNull();
     expect(calls()).toHaveLength(6);
   });
 
@@ -810,7 +892,19 @@ describe("usage semantics and transport", () => {
         return new Promise<Response>((resolve) => pending.push(resolve));
       }
       return Promise.resolve(
-        response({ ...state, runtime: { ...state.runtime, enabled: true } }),
+        response({
+          ...state,
+          agents: [
+            ...state.agents,
+            {
+              ...state.agents[0],
+              id: "agent-b",
+              provider: "claude",
+              name: "Writer",
+            },
+          ],
+          runtime: { ...state.runtime, enabled: true },
+        }),
       );
     });
     render(<App />);
@@ -818,7 +912,7 @@ describe("usage semantics and transport", () => {
     for (let i = 0; i < 3; i++)
       fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
     expect(pending).toHaveLength(2);
-    expect(screen.getByText("正在更新额度…")).toBeTruthy();
+    expect(screen.getAllByText("更新中")).toHaveLength(2);
     expect(
       (screen.getAllByRole("button", { name: "编辑" })[0] as HTMLButtonElement)
         .disabled,
@@ -858,6 +952,15 @@ describe("usage semantics and transport", () => {
         }
         return response({
           ...state,
+          agents: [
+            ...state.agents,
+            {
+              ...state.agents[0],
+              id: "agent-b",
+              provider: "claude",
+              name: "Writer",
+            },
+          ],
           runtime: { ...state.runtime, enabled: true },
           quotas: [
             {
@@ -876,7 +979,7 @@ describe("usage semantics and transport", () => {
     expect(await screen.findByText(/55%/)).toBeTruthy();
     expect(screen.getByText(/42%/)).toBeTruthy();
     expect(
-      await screen.findByText("暂时无法更新，保留上次数据；系统会自动重试。"),
+      await screen.findByText("额度更新失败，稍后自动重试。"),
     ).toBeTruthy();
   });
 
@@ -963,7 +1066,7 @@ describe("native session workflow", () => {
     );
     render(<App />);
     await connect();
-    expect(await screen.findByText("native-demo-123")).toBeTruthy();
+    expect(await screen.findByText("任务排队中")).toBeTruthy();
     const prompt = screen.getByLabelText(
       "给 Agent 的任务",
     ) as HTMLTextAreaElement;
@@ -984,7 +1087,7 @@ describe("native session workflow", () => {
     );
     render(<App />);
     await connect();
-    fireEvent.click(await screen.findByText("执行记录"));
+    expect(await screen.findByText("任务排队中")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^取消$/ }));
     await waitFor(() =>
       expect(
@@ -1113,7 +1216,9 @@ describe("offline demonstration", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "协作工作台" });
     expect(screen.getByText(/演示模式/)).toBeTruthy();
-    expect(screen.getByText("demo-native-codex-01")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: demoState("zh").sessions[0].title }),
+    ).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "运行任务" }) as HTMLButtonElement)
         .disabled,
@@ -1144,7 +1249,7 @@ describe("offline demonstration", () => {
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
     expect(screen.queryByRole("button", { name: "读取额度" })).toBeNull();
-    expect(screen.getByText("演示数据，不会读取实际额度。")).toBeTruthy();
+    expect(screen.queryByText("演示数据，不会读取实际额度。")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     await screen.findAllByText("5-hour window");
     expect(document.documentElement.lang).toBe("en");

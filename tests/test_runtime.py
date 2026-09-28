@@ -76,6 +76,32 @@ class RuntimeTests(unittest.TestCase):
         self.wait_for(lambda: self.store.get_run(run['id'])['status'] not in ('queued', 'running'))
         return self.store.get_run(run['id'])
 
+    def test_progress_is_persisted_while_running_and_result_only_completes_after_exit(self):
+        entered = threading.Event()
+        def stream(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900):
+            bind('progress-session')
+            emit('reasoning_chunk', {'item_id':'thought','part':0,'text':'Checking the workspace'})
+            emit('tool_call', {'item':{'type':'commandExecution','id':'cmd','command':'pwd'}})
+            emit('tool_output', {'item_id':'cmd','text':'/workspace'})
+            entered.set()
+            self.gate.wait(2)
+            emit('tool_result', {'item':{'id':'cmd','status':'completed','aggregatedOutput':'/workspace'}})
+            return 'Verified workspace'
+        runtime = self.make_runtime(executor=stream)
+        run = runtime.start(self.sa['id'], 'Check workspace')
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(self.store.get_run(run['id'])['status'], 'running')
+        events = self.store.session_events(self.sa['id'])
+        progress = [e for e in events if e['kind'] in ('reasoning_chunk','tool_call','tool_output')]
+        self.assertEqual(len(progress), 3)
+        self.assertTrue(all(e['payload']['run_id'] == run['id'] for e in progress))
+        self.assertFalse(any(e['kind'] == 'run_finished' for e in events))
+        self.gate.set()
+        self.wait_for(lambda: self.store.get_run(run['id'])['status'] == 'completed')
+        self.assertEqual(self.store.get_run(run['id'])['result'], 'Verified workspace')
+        events = self.store.session_events(self.sa['id'])
+        self.assertEqual([e['kind'] for e in events][-2:], ['assistant_message','run_finished'])
+
     def test_review_mode_does_not_dispatch_or_persist_pending_tasks(self):
         runtime = self.make_runtime(execution_enabled=False)
         with self.assertRaises(Forbidden): runtime.start(self.sa['id'], 'Task')

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import TaskTimeline from "../TaskTimeline";
 import { TPS, type Metrics } from "../metrics";
 import { listOf, remainingPercent, request } from "../api";
 import type {
@@ -19,9 +20,6 @@ import {
   Empty,
   Icon,
   Stat,
-  conversationEvents,
-  eventDescription,
-  eventLabel,
   isArchived,
   statusLabel,
 } from "../ui";
@@ -122,7 +120,6 @@ export default function Workspace({
   const sessionRuns = (state.runs ?? []).filter(
     (run) => run.session_id === sessionID,
   );
-  const queued = sessionRuns.filter((run) => run.status === "queued");
   const activeRuns = sessionRuns.filter((run) =>
     ["queued", "running"].includes(run.status),
   );
@@ -171,25 +168,30 @@ export default function Workspace({
       if (pending) return;
       pending = true;
       try {
-        const result = await request<{ events: AgentEvent[] }>(
-          token,
-          `/api/sessions/${encodeURIComponent(sessionID)}/events?after=${lastSeq.current}`,
-          undefined,
-          controller.signal,
-        );
-        if (controller.signal.aborted) return;
-        if (result.events.length) {
-          lastSeq.current = Math.max(
-            lastSeq.current,
-            ...result.events.map((event) => event.seq),
+        for (let page = 0; page < 10; page++) {
+          const result = await request<{ events: AgentEvent[] }>(
+            token,
+            `/api/sessions/${encodeURIComponent(sessionID)}/events?after=${lastSeq.current}`,
+            undefined,
+            controller.signal,
           );
-          setEvents((previous) => {
-            const seen = new Set(previous.map((event) => event.id));
-            return [
-              ...previous,
-              ...result.events.filter((event) => !seen.has(event.id)),
-            ].slice(-500);
-          });
+          if (controller.signal.aborted) return;
+          if (!Array.isArray(result.events))
+            throw new Error("Invalid event list");
+          if (result.events.length) {
+            lastSeq.current = Math.max(
+              lastSeq.current,
+              ...result.events.map((event) => event.seq),
+            );
+            setEvents((previous) => {
+              const seen = new Set(previous.map((event) => event.id));
+              return [
+                ...previous,
+                ...result.events.filter((event) => !seen.has(event.id)),
+              ];
+            });
+          }
+          if (result.events.length < 500) break;
         }
         setEventError("");
       } catch {
@@ -207,7 +209,7 @@ export default function Workspace({
     void poll();
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "hidden") void poll();
-    }, 2000);
+    }, 1000);
     return () => {
       controller.abort();
       window.clearInterval(interval);
@@ -536,9 +538,11 @@ export default function Workspace({
           </form>
         </section>
       )}
-      <section className="panel workspace-tps">
-        <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
-      </section>
+      {!!agents.length && (
+        <section className="panel workspace-tps">
+          <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
+        </section>
+      )}
       {agents.length ? (
         <div className="agent-grid">
           {agents.map((agent) => (
@@ -703,12 +707,6 @@ export default function Workspace({
                   {selectedSession?.title ||
                     t("选择一个会话", "Select a session")}
                 </h2>
-                <p>
-                  {t(
-                    "原生上下文独立保留 · 项目记忆按审阅结果共享",
-                    "Private native context · Reviewed project memory is shared",
-                  )}
-                </p>
               </div>
               {selectedSession && (
                 <span className={`pill ${running ? "live" : ""}`}>
@@ -719,76 +717,6 @@ export default function Workspace({
             </div>
             {selectedSession ? (
               <>
-                <div className="session-context">
-                  <Icon name="shield" size={14} />
-                  <span>{t("原生会话", "Native session")}</span>
-                  <code title={selectedSession.native_session_id ?? ""}>
-                    {selectedSession.native_session_id
-                      ? selectedSession.native_session_id
-                      : t("首次执行后建立", "Created on first run")}
-                  </code>
-                  <span className="private-label">
-                    {t("私有上下文", "Private context")}
-                  </span>
-                </div>
-                {!!sessionRuns.length && (
-                  <details className="run-history">
-                    <summary>
-                      {t("执行记录", "Run history")}{" "}
-                      <span className="count-badge">{sessionRuns.length}</span>
-                      <span className="muted">
-                        {queued.length
-                          ? t(
-                              `${queued.length} 项排队中`,
-                              `${queued.length} queued`,
-                            )
-                          : t("查看任务与派工状态", "Task and dispatch status")}
-                      </span>
-                    </summary>
-                    <div className="run-list">
-                      {sessionRuns
-                        .slice()
-                        .reverse()
-                        .map((run) => (
-                          <article className="run-row" key={run.id}>
-                            <span className={`state-indicator ${run.status}`} />
-                            <div>
-                              <strong>{run.prompt}</strong>
-                              <small>
-                                {run.origin === "delegate"
-                                  ? t("Agent 派工", "Agent delegation")
-                                  : run.origin === "reply"
-                                    ? t("协作结果回传", "Collaboration result")
-                                    : t("你发起的任务", "Your task")}{" "}
-                                · <DateText date={run.created_at} lang={lang} />
-                              </small>
-                              {run.error && (
-                                <p className="inline-error">{run.error}</p>
-                              )}
-                            </div>
-                            <span className="pill">
-                              {statusLabel(run.status, t)}
-                            </span>
-                            {["queued", "running"].includes(run.status) && (
-                              <button
-                                type="button"
-                                className="text-button"
-                                disabled={busy}
-                                onClick={() =>
-                                  void mutate(
-                                    `/api/runs/${encodeURIComponent(run.id)}/cancel`,
-                                    {},
-                                  )
-                                }
-                              >
-                                {t("取消", "Cancel")}
-                              </button>
-                            )}
-                          </article>
-                        ))}
-                    </div>
-                  </details>
-                )}
                 <div
                   className="event-feed"
                   aria-label={t("会话事件", "Session events")}
@@ -803,7 +731,7 @@ export default function Workspace({
                     <p className="muted">
                       {t("正在读取事件…", "Loading events…")}
                     </p>
-                  ) : !events.length ? (
+                  ) : !events.length && !sessionRuns.length ? (
                     <Empty
                       icon="message"
                       title={t(
@@ -812,25 +740,20 @@ export default function Workspace({
                       )}
                     >
                       {t(
-                        "输入任务并点击运行。后续任务会延续此原生会话，已审阅的项目记忆作为共享上下文。",
-                        "Enter a task and click Run. Follow-up tasks continue this native session with reviewed project memory as shared context.",
+                        "发送第一条消息，开始对话。",
+                        "Send your first message to start a conversation.",
                       )}
                     </Empty>
                   ) : (
-                    conversationEvents(events).map((event) => (
-                      <article
-                        key={event.id}
-                        className={`event ${event.kind.includes("error") ? "event-error" : ""}`}
-                      >
-                        <div className="event-meta">
-                          <span title={event.kind}>
-                            {eventLabel(event.kind, t)}
-                          </span>
-                          <DateText date={event.created_at} lang={lang} />
-                        </div>
-                        <pre>{eventDescription(event, t)}</pre>
-                      </article>
-                    ))
+                    <TaskTimeline
+                      runs={sessionRuns}
+                      events={events}
+                      agentName={selectedAgent?.name ?? "Agent"}
+                      t={t}
+                      lang={lang}
+                      busy={busy}
+                      mutate={mutate}
+                    />
                   )}
                 </div>
                 {approvals

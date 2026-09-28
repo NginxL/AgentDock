@@ -14,6 +14,10 @@ from agentdock.store import Forbidden
 class QuotaStore:
     def __init__(self):
         self.quotas = {}
+        self.providers = ["codex", "claude"]
+
+    def configured_providers(self):
+        return self.providers
 
     def get_quota(self, provider):
         return self.quotas.get(provider)
@@ -23,6 +27,27 @@ class QuotaStore:
 
 
 class QuotaTests(unittest.TestCase):
+    def test_refresh_and_timer_follow_configured_agents(self):
+        store = QuotaStore()
+        store.providers = []
+        service = QuotaService(store, ['helper'], True)
+        service.AUTO_REFRESH_INTERVAL = .01
+        with patch.object(service, '_probe') as probe:
+            with self.assertRaises(ValueError): service.refresh('codex')
+            service.start_auto_refresh()
+            time.sleep(.04)
+            probe.assert_not_called()
+            called = threading.Event()
+            def result(provider):
+                self.assertEqual(provider, 'claude')
+                called.set()
+                return {'provider': provider, 'windows': []}
+            probe.side_effect = result
+            store.providers = ['claude']
+            self.assertTrue(called.wait(1))
+            service.close()
+            self.assertEqual({c.args[0] for c in probe.call_args_list}, {'claude'})
+
     def test_helper_failures_are_whitelisted_and_authorization_is_explicit(self):
         service = QuotaService(QuotaStore(), ['helper'], True)
         with patch.object(service, '_probe', return_value={'provider':'claude','error_code':'authorization_required','error':'private token'}) as probe:

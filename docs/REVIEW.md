@@ -9,7 +9,7 @@ AgentDock 0.3 combines a React interface, a Python standard-library service, and
 | Area | Implemented | Acceptance boundary |
 | --- | --- | --- |
 | Interface | Chinese by default, English switching, project navigation, native-session status, conversation events, task dispatch, approvals, shared memory, and quota summaries. | Offline previews use the actual interface with fictional fixtures. They do not demonstrate real model execution, subscriptions, or quota availability. |
-| Native providers | Codex app-server JSON-RPC; Claude Code stream-json control messages; retained native IDs, text/tool events, permission decisions, deadlines, and process-group cleanup. | Wire contracts have been checked against documentation and local CLI metadata. Real login and model execution remain unverified. |
+| Native providers | Codex app-server JSON-RPC; Claude Code stream-json control messages; retained native IDs, text/tool events, permission decisions, deadlines, and process-group cleanup. | Local CLI conversations and tool events passed. Additional client releases, accounts and models still require acceptance testing. |
 | Collaboration | Automatic dispatch, workspace-aware queuing, native-session continuation, result return, retry deduplication, depth and run limits, and cancellation of task descendants. | Real model behavior during delegation and long-running collaboration requires live acceptance. |
 | Shared memory | Project isolation, literal keyword search, version conflicts, agent proposals, human approval, soft archive, and database history. | Vector search, automatic extraction, a complete history browser, and cross-project sharing are not implemented. |
 | Quotas | Built-in usage helpers for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Local Codex quota queries and Claude Desktop snapshot reads passed; additional accounts and comparison with official usage pages remain unverified. |
@@ -38,11 +38,11 @@ Frontend checks use simulated DOM and HTTP responses. The production build valid
 
 | Test area | Coverage |
 | --- | --- |
-| Native protocol | New and resumed sessions, metadata-only Codex resume, exact native identity, streaming without duplicate final text, permission allow/deny round trips, child-scoped Claude foreground policy, mismatched session/turn IDs, invalid JSON, early exits, and sanitized failures. |
+| Native protocol | New and resumed sessions, metadata-only Codex resume, exact native identity, published thinking summaries and tool output streams, streaming without duplicate final text, permission allow/deny round trips, child-scoped Claude foreground policy, mismatched session/turn IDs, invalid JSON, early exits, and sanitized failures. |
 | Resource bounds | Output limits, permission expiry, run deadlines while approval is blocked, cancellation, descendant-process cleanup, and MCP authority revocation. |
 | Dispatcher and MCP | Automatic delivery and return to the exact requesting session, final-result settlement after nested or multiple child tasks, queued-work admission, workspace exclusion, idempotency, failure propagation, cancellation, and reserved reply capacity. |
 | Storage and authorization | Project and sender isolation, user-defined role persistence and administrator-only edits, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
-| Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, page-entry refresh, repeated-click coalescing, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
+| Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, configured-agent quota scope, empty-state behavior, task status transitions and expandable execution details, page-entry refresh, repeated-click coalescing, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
 
 Reproduce the automated checks without starting a real agent:
 
@@ -93,3 +93,5 @@ Local smoke tests ran two consecutive turns each with Codex and Claude, verified
 ---
 
 **English** · [简体中文](REVIEW.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
+
+Local manager checks confirmed Codex and Claude CLI messages, tool events, final replies and running-to-completed transitions in isolated workspaces. Offline protocol tests cover thinking deltas and summary replacement; the presence of thinking text in a real task depends on what its CLI publishes. Unbound local history is excluded from all statistics, and configuring an agent does not trigger history import.

@@ -19,11 +19,15 @@ Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is
 
 `GET /api/models/{codex|claude}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted metadata is returned; account information is discarded.
 
-`GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `unassigned_sessions`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
+`GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
+
+All metric groups include only native sessions bound to registered agents. With no agents, totals are zero and provider, agent and daily activity collections are empty. `GET /api/state` and `GET /api/quotas` expose only configured providers; missing snapshots have `status: "unknown"` and no windows in the menu response. Quota refresh rejects unconfigured providers.
 
 `activity` contains `today` (the server’s local calendar date), `days` (`date` and `tokens` per recorded day over the last 365 days), `updated_at` (latest source timestamp, or null) and `status` (`pending`, `scanning`, `ready`, `partial` or `disabled`). Days without recorded usage have no positive count. Initial Codex activity backfill reads bounded chunks from the start of history independently of the fast totals/TPS scan; progress survives restarts. No provider request is made.
 
 Independent sessions have a null `project_id` and fixed `workspace`. Independent agents receive empty teammate/memory searches; project dispatch and memory proposals are denied.
+
+Task events include `reasoning_chunk`, `reasoning_message` (a final replacement for the same `item_id` and `part`), `tool_call`, `tool_output` and `tool_result`. Each carries `run_id`; tool chunks use `item_id`. Codex supplies reasoning summaries; Claude supplies published thinking blocks. `run_finished.status` is authoritative for terminal state, and `runs.result` preserves the final reply. Visible conversations poll events every second and drain full cursor pages.
 
 ## Authentication and request boundary
 
