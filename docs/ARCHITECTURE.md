@@ -2,7 +2,7 @@
 
 **English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)
 
-AgentDock 0.2 is a local, single-user workbench. It manages native sessions created through its own runtime. Automated verification uses simulated CLI processes; live provider interoperability remains an acceptance item.
+AgentDock 0.3 is a local, single-user workbench. It manages native sessions created through its own runtime. Automated verification uses simulated CLI processes; live provider interoperability remains an acceptance item.
 
 ## Components
 
@@ -34,7 +34,7 @@ The browser's `?demo=1` mode reads fictional fixtures and makes no API requests.
 
 ## Sessions and turns
 
-A session belongs to one project and agent. Its `native_session_id` is initially empty and is bound only by that session's active run. Once bound, a different native ID is rejected. IDs belonging to another managed session cannot be rebound.
+A session belongs to one agent and optionally a project. Its working directory is fixed when created. Its `native_session_id` is initially empty and is bound only by that session's active run. Once bound, a different native ID is rejected. IDs belonging to another managed session cannot be rebound.
 
 Codex starts or resumes a thread through `codex app-server`. Claude starts with a generated session UUID or resumes the saved UUID through the native CLI. Each turn launches a bounded subprocess and closes it afterwards; conversation continuity comes from the provider's native persisted session, not a long-running process or replayed UI history.
 
@@ -42,7 +42,7 @@ Agent names and optional roles are defined by the user, independently of the CLI
 
 The prompt contains the current task and a bounded reference block with the agent role and approved project memory. Private conversation history remains with the native CLI. Shared memories and teammate results are marked as reference data, not authority; this labeling does not guarantee resistance to prompt injection.
 
-Authentication and model selection follow the locally installed CLI's configuration. Execution uses the CLI’s authentication; the built-in usage helper reads existing local credentials on demand and never exports them to the workbench. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
+Authentication and model selection follow the locally installed CLI's configuration. Execution uses the CLI’s authentication; the built-in quota helper reads a Claude Desktop quota snapshot or queries the Codex-owned App Server without reading credentials. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
 
 ## Queue and task settlement
 
@@ -106,9 +106,9 @@ The UI presents versions, provenance and proposal review. Full revision browsing
 
 With execution enabled and a helper configured, the local service owns one 600-second refresh loop, starting 10 minutes after startup. Selecting Usage & billing also invokes `configured quota_command + --probe + codex|claude`; overlapping page requests are coalesced. All paths share the 35-second probe timeout and 60-second per-provider throttle. Hidden windows and multiple tabs do not create extra timers. Missed ticks do not produce a catch-up burst, and shutdown stops the timer and drains owned probes. Import, cache reads, demo mode and review mode never launch probes. Automatic reads never request interactive Keychain authorization.
 
-Snapshots retain provider, plan, remaining percentages, reset timestamps, fetch time and status. Unknown values stay null. Readings older than 15 minutes become stale. After a reset time passes, its percentage becomes unknown until refreshed. A failed refresh preserves old readings with an error/stale state. Account identifiers and raw stderr are discarded.
+Snapshots retain provider, plan, remaining percentages, reset timestamps, source sample time and status. Unknown values stay null. Readings older than 15 minutes become stale. After a reset time passes, its percentage becomes unknown until refreshed. A failed refresh preserves old readings with an error/stale state. Account identifiers and raw stderr are discarded.
 
-Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. The bundled helper owns credential reads and usage requests; provider accounts are unchanged. Quota visibility grants no execution permission.
+Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. The bundled helper reads the Claude Desktop snapshot or queries the Codex-owned App Server; provider accounts are unchanged. Quota visibility grants no execution permission.
 
 ## Trust and persistence
 
@@ -120,14 +120,24 @@ AgentDock has no external backend or analytics. Agent execution and quota reads 
 
 Upgrading a 0.1 store preserves historical messages as `legacy` records without dispatching them. Old sessions without native bindings start new native sessions when explicitly run. The former ACP command configuration must be replaced with native CLI commands. See [validation](REVIEW.md) and the [API contract](API.md).
 
----
-
-**English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)
-
 ## macOS installation and connection
 
 `native/Sources/AgentDockDesktop` provides a native window and nonpersistent WebView. The app owns a local Python child process. After that child reports readiness, the access token is injected only into the same-origin main page’s memory, never URLs, logs or browser storage. Quitting stops the service. External links open in the system browser.
 
 An `NSStatusItem` and native `NSMenu` keep a menu-bar entry available while the main window is hidden. Closing the window does not stop tasks; explicit quit drains the owned backend. The menu reads the authenticated, cache-only `GET /api/quotas` endpoint without separate provider-refresh controls. The service owns the automatic refresh schedule. Its ephemeral HTTP client rejects redirects. A same-origin main-frame bridge shares the interface language with the native menus; only that preference is persisted.
 
-`quota_command` selects the bundled `AgentDockUsage`; legacy `agentmeter_command` remains supported. Ordinary reads prohibit Keychain interaction; only an explicit administrator authorization request allows a prompt. Codex queries its native app server. Claude reads existing local credentials for the official usage endpoint; the helper does not refresh, copy or persist credentials.
+`quota_command` points to bundled `AgentDockUsage`; legacy `agentmeter_command` remains compatible. Codex queries its native App Server, which handles authentication. Claude reads only version 2 of `~/Library/Application Support/Claude/plan-usage-history.json`, bounded to 4 MiB, with no Keychain or network access. Ambiguous multi-organization snapshots are rejected. `fetchedAt` preserves the source sample time; missing reset times remain unknown.
+
+## Independent agents, models and metering
+
+An agent may have no project. Independent agents without a selected workspace receive a private `workspaces/<agent-id>` directory; project agents use the project directory. Session ownership and workspace freeze at creation. Workspace exclusion applies equally to independent agents. Their MCP tools cannot read project memories or dispatch project tasks.
+
+`catalog.py` discovers models and efforts through Codex `model/list` and the Claude control handshake, drops account fields and caches metadata for five minutes. Saved agent settings reach future Codex `turn/start` requests as `model/effort`, or Claude as `--model/--effort`. Omitted settings preserve native client/session behavior without modifying global configuration.
+
+`metrics.py` indexes local token logs and accepts live usage events from `providers.py`. Codex stores cumulative native-thread counters; Claude merges repeated blocks by session and message ID. Live events, log scans and archived copies share deduplication keys. Cache counters are not added to input twice. The index stores counters, times and identifiers, not log text. Codex reads bounded cumulative tails; Claude scans incrementally by file offset. Missing log history cannot be reconstructed.
+
+The three-minute chart spreads measured output increments over their reported interval in three-second buckets; current TPS averages the last fifteen seconds. Batched reports and missing measurements cannot establish token-by-token generation speed. Token statistics and quota snapshots are independent datasets, not billing estimates.
+
+---
+
+**English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)

@@ -13,8 +13,10 @@ import Workspace from "./views/Workspace";
 import Messages from "./views/Messages";
 import Memories from "./views/Memories";
 import Usage from "./views/Usage";
+import Tokens from "./views/Tokens";
+import { useMetrics } from "./metrics";
 
-type Tab = "workspace" | "messages" | "memory" | "usage";
+type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
 
 declare global {
   interface Window {
@@ -44,6 +46,11 @@ export default function App() {
   const [entryToken, setEntryToken] = useState("");
   const [state, setState] = useState<DockState | null>(() =>
     demo ? demoState("zh") : null,
+  );
+  const { metrics, failed: metricsFailed } = useMetrics(
+    token,
+    demo,
+    state?.agents.map((a) => a.id) ?? [],
   );
   const [connecting, setConnecting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -238,8 +245,12 @@ export default function App() {
   }, [token, refresh, disconnect, lang]);
 
   useEffect(() => {
-    if (state && !state.projects.some((project) => project.id === projectID))
-      setProjectID(state.projects[0]?.id ?? "");
+    if (
+      projectID &&
+      state &&
+      !state.projects.some((project) => project.id === projectID)
+    )
+      setProjectID("");
   }, [state, projectID]);
 
   async function connect(event: FormEvent) {
@@ -453,13 +464,17 @@ export default function App() {
     );
 
   const project = state.projects.find((p) => p.id === projectID);
-  const agents = state.agents.filter((a) => a.project_id === projectID);
-  const sessions = state.sessions.filter((s) => s.project_id === projectID);
+  const agents = state.agents.filter(
+    (a) => !projectID || a.project_id === projectID,
+  );
+  const sessions = state.sessions.filter(
+    (s) => !projectID || s.project_id === projectID,
+  );
   const proposals = state.proposals.filter(
     (p) => p.project_id === projectID && p.status === "pending",
   );
   const approvals = state.approvals.filter(
-    (a) => a.project_id === projectID && a.status === "pending",
+    (a) => (!projectID || a.project_id === projectID) && a.status === "pending",
   );
   const nav: {
     key: Tab;
@@ -483,6 +498,7 @@ export default function App() {
       en: "Shared memory",
       badge: proposals.length,
     },
+    { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
   ];
 
@@ -500,9 +516,7 @@ export default function App() {
             value={projectID}
             onChange={(e) => setProjectID(e.target.value)}
           >
-            {state.projects.length === 0 && (
-              <option value="">{t("尚无项目", "No projects")}</option>
-            )}
+            <option value="">{t("全部 Agent", "All agents")}</option>
             {state.projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -637,15 +651,15 @@ export default function App() {
               onCreated={(id) => setProjectID(id)}
             />
           )}
-          {!project && tab !== "usage" ? (
+          {!project && (tab === "memory" || tab === "messages") ? (
             <section className="panel">
               <Empty
                 icon="work"
-                title={t("从一个项目开始", "Start with a project")}
+                title={t("选择项目以协作", "Choose a project to collaborate")}
               >
                 {t(
-                  "添加已有的本地工作目录，然后创建 Codex 或 Claude Agent。每个项目拥有独立的消息和共享记忆。",
-                  "Add an existing local directory, then create Codex or Claude agents. Every project has its own messages and shared memory.",
+                  "项目用于共享记忆和多 Agent 派工。独立对话无需项目，可直接在工作台创建 Agent。",
+                  "Projects group shared memory and agent dispatch. Create an agent directly in Workspace to chat without a project.",
                 )}
               </Empty>
               <button
@@ -658,11 +672,13 @@ export default function App() {
             </section>
           ) : (
             <>
-              {tab === "workspace" && project && (
+              {tab === "workspace" && (
                 <Workspace
                   key={projectID}
                   t={t}
                   lang={lang}
+                  metrics={metrics}
+                  metricsFailed={metricsFailed}
                   project={project}
                   agents={agents}
                   sessions={sessions}
@@ -698,6 +714,15 @@ export default function App() {
                   proposals={proposals}
                   busy={!!busy || demo}
                   mutate={mutate}
+                />
+              )}
+              {tab === "tokens" && (
+                <Tokens
+                  metrics={metrics}
+                  failed={metricsFailed}
+                  agents={state.agents}
+                  t={t}
+                  lang={lang}
                 />
               )}
               {tab === "usage" && (

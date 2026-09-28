@@ -17,7 +17,7 @@ class APITests(unittest.TestCase):
         for override in ({'Authorization':''},{'Host':'evil.example:47831'},{'Origin':'https://evil.example'},{'Sec-Fetch-Site':'cross-site'}): self.assertEqual(self.call('GET','/api/state',headers={**self.h,**override})[0],401 if 'Authorization' in override else 403)
         status,state=self.call('GET','/api/state'); self.assertEqual(status,200); self.assertFalse(state['runtime']['enabled']); self.assertNotIn('test-admin',json.dumps(state))
     def test_review_mode_never_invokes_runtime_or_quota(self):
-        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],403)
+        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],404)
         for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)
         self.assertEqual(self.runtime.mock_calls,[]); self.assertEqual(self.quota.mock_calls,[])
     def test_menu_quota_read_is_authenticated_and_cache_only(self):
@@ -33,12 +33,12 @@ class APITests(unittest.TestCase):
     def test_interactive_usage_requires_admin_and_valid_provider(self):
         self.api.execution_enabled = True
         self.quota.refresh.return_value = {'status':'available'}
-        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'codex'})[0],400)
+        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'codex'})[0],404)
         self.quota.refresh.assert_not_called()
         self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'}, {**self.h,'Authorization':'Bearer bad'})[0],401)
         self.quota.refresh.assert_not_called()
-        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],200)
-        self.quota.refresh.assert_called_once_with('claude', authorize=True)
+        self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],404)
+        self.quota.refresh.assert_not_called()
     def test_agent_role_updates_work_without_enabling_execution(self):
         _,project = self.call('POST','/api/projects',{'name':'P','path':self.tmp.name})
         _,agent = self.call('POST','/api/agents',{'project_id':project['id'],'name':'Helper','provider':'claude'})

@@ -2,13 +2,13 @@
 <h1 align="center">AgentDock</h1>
 <p align="center">Native agent sessions. Connected work. One clear workspace.</p>
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
-<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/version-0.2_preview-6366f1" alt="0.2 preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
+<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="Checks" /></a> <img src="https://img.shields.io/badge/version-0.3.0_preview-6366f1" alt="0.3.0 preview" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9+" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT license" /></a></p>
 
 AgentDock brings Codex and Claude Code into a local workspace for conversations, task handoffs, shared project memory, and usage monitoring. Agents run through their native CLIs and continue their own sessions. A task sent to a teammate enters the execution queue; its result returns to the conversation that requested it.
 
 The interface defaults to Chinese and supports English throughout. A Python standard-library service and SQLite store power the React workspace.
 
-> **Developer preview.** Execution is off by default. Automated checks cover simulated native CLI protocols and task handoffs; live model execution and account compatibility still require acceptance testing.
+> **Developer preview.** Execution is off by default. Automated checks cover simulated native CLI protocols and task handoffs; local two-turn conversations and usage events have been verified for both providers; additional accounts, permission actions and long-running collaboration require acceptance testing.
 
 [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
@@ -21,9 +21,9 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 <details>
 <summary>Role configuration, task handoffs, and usage monitoring</summary>
 
-**Custom roles:** select an agent and choose **Edit role** to change its name, describe its responsibilities, or clear the role. Provider selection is independent of the role.
+**Custom roles:** select an agent and choose **Agent settings** to change its name, describe its responsibilities, or clear the role. Provider selection is independent of the role.
 
-![Agent name and role editor](docs/images/roles.en.png)
+![Agent settings: name, role, model and effort](docs/images/roles.en.png)
 
 **Dispatch:** inspect the target conversation, execution result and return status.
 
@@ -39,6 +39,8 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 | Capability | What it does |
 | --- | --- |
+| Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the local client. |
+| TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows local historical input, output and cache counters, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
@@ -59,11 +61,11 @@ The installer creates `~/Applications/AgentDock.app`. Open it to connect without
 
 The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes Codex/Claude automatically. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
 
-The **Connect Claude** action appears only when Keychain authorization is required. Choose it and approve the macOS prompt yourself. Ordinary refreshes never open a Keychain permission dialog.
+Claude quota reads use only the snapshot saved by Claude Desktop, without Keychain or credential access. **Data updated** shows the source sample time; rereading the file does not advance it. The current format has no reset timestamps, so resets remain unknown. Signing into Claude Code alone does not guarantee a Desktop snapshot exists. Codex queries its local App Server, which handles its own authentication.
 
 To migrate AgentMeter billing records, run `python3 scripts/install-macos.py --import-agentmeter`. Migration backs up the original preferences, preserves existing AgentDock records, and does not change provider logins or remove the old app.
 
-To update, quit the app, run `git pull --ff-only`, and rerun the installer. Configuration and history are preserved; the previous app is saved under the data directory's `backups`. Builds are locally compiled and ad-hoc signed, not Apple-notarized.
+To update, quit the app, run `git pull --ff-only`, and rerun the installer. Configuration and history are preserved; legacy databases are backed up before the 0.3 migration, and the previous app is saved under the data directory's `backups`. Builds are locally compiled and ad-hoc signed, not Apple-notarized.
 
 ## Getting started
 
@@ -86,9 +88,19 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Select a trusted project directory and choose **Add agent** to select a provider, name the agent, and optionally describe its role. Leave the role blank to follow each task. To change an existing agent, select its card and choose **Edit role**. Changes apply to future turns without interrupting active tasks or clearing native conversation history. Create a new session when you need a fresh context.
+Choose **Workspace → Add agent**, select a local provider, and name your agent. No project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder. Associate a project when you need shared memory or task handoffs.
+
+**Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
 
 Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
+
+## Tokens and throughput
+
+![Token totals and throughput, fictional demo data](docs/images/tokens.en.png)
+
+Token statistics include readable local Codex/Claude Code history and AgentDock sessions. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
+
+TPS uses reported output-token increments over their measured intervals, including waiting and tool time. Current TPS is a 15-second average; the three-minute average includes idle time. Batched client reporting can delay the chart. Active tasks without a valid sample show “—”; idle activity shows 0. Unlinked historical sessions contribute to total/provider usage without being attributed to an unrelated agent.
 
 ## Configuration
 
@@ -106,7 +118,7 @@ Teammate dispatches and result-return turns execute automatically while executio
 
 Use absolute executable paths if the CLIs are not on the server's `PATH`. Keep machine-specific configuration in the ignored `config.local.json`. Provider commands cannot be supplied by the UI or an agent.
 
-AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. Task execution uses native CLI authentication without the Claude Agent SDK or a new API key. The built-in usage helper reads existing local credentials on demand. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
+AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. Task execution uses native CLI authentication without the Claude Agent SDK or a new API key. The usage helper does not read Claude credentials; Codex handles authentication for its own quota query. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
 
 ## How collaboration works
 

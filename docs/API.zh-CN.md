@@ -2,7 +2,7 @@
 
 [English](API.md) · **简体中文** · [项目说明](../README.zh-CN.md) · [架构设计](ARCHITECTURE.zh-CN.md)
 
-版本：**0.2 预览版**。工作台记录的 ID 为 UUID 字符串；`native_session_id` 是由提供商管理的原生会话标识。时间戳采用 UTC 时区的 ISO 8601 格式。成功响应为 JSON，错误响应为 `{ "error": "message" }`。
+版本：**0.3 预览版**。工作台记录的 ID 为 UUID 字符串；`native_session_id` 是由提供商管理的原生会话标识。时间戳采用 UTC 时区的 ISO 8601 格式。成功响应为 JSON，错误响应为 `{ "error": "message" }`。
 
 | HTTP 状态码 | 含义 |
 | --- | --- |
@@ -14,6 +14,14 @@
 | `409` | 状态、幂等键、归属或记忆版本冲突。 |
 | `413` | HTTP 请求体超过大小限制。 |
 | `500` | 已去除敏感信息的内部错误，不能据此认为操作成功。 |
+
+## 模型与用量接口
+
+`GET /api/models/{codex|claude}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟；只保留白名单字段，不返回账户信息。
+
+`GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`unassigned_sessions`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
+
+独立会话的 `project_id` 为 null，拥有固定 `workspace`。独立 Agent 的队友列表和记忆搜索为空，项目派工与记忆提议被拒绝。
 
 ## 身份认证与请求边界
 
@@ -30,8 +38,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
 | `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 Codex／Claude 缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
-| `POST /api/agents` | `project_id`、`name`、`provider`（`codex` / `claude`），以及可选的 `role`（默认空）。 |
-| `POST /api/agents/{id}` | `name`（1–100 字符）与 `role`（最多 4,000 字符）至少提供一项。`role: ""` 清空角色；省略的字段保持原值。仅允许这两个字段，返回更新后的 Agent。 |
+| `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
+| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`；模型或目录设置要求无排队及运行任务。只有尚无会话时可更改 `project_id` 和 `workspace`；提供方不可更改。 |
 | `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
@@ -44,12 +52,11 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/proposals/{id}/reject` | 空对象。拒绝待处理的提议。 |
 | `POST /api/approvals/{id}` | `option_id`，必须为 AgentDock 返回的、仍待处理的审批选项之一。 |
 | `POST /api/quotas/refresh` | `provider`（`codex` / `claude`）。点击“额度与订阅”时调用，必须启用执行；与服务定时刷新共用节流。 |
-| `POST /api/quotas/authorize` | `provider: "claude"`。仅管理员可调用，须启用执行并使用内置组件。允许显示钥匙串授权提示，最多等待 180 秒；普通刷新不会显示提示。 |
 | `POST /api/subscriptions` | `provider`；可选 `plan`、`renewal_date`（`YYYY-MM-DD` 或 null）、`monthly_cost`（非负有限数值或 null）、`currency`（三个字母，默认为 `USD`）。 |
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。
 
-名称和角色由用户定义，与 `provider` 独立。更新接口使用工作台管理员令牌，在仅审阅模式也可调用；智能体的执行令牌不能修改角色。每轮构建提示词时读取最新角色，已提交给原生 CLI 的提示词保持不变。更新不会重建会话或清除历史。`provider` 与 `project_id` 不可通过此接口修改，以保留原生会话归属。
+名称和角色由用户定义，与 `provider` 独立。更新接口使用工作台管理员令牌，在仅审阅模式也可调用；智能体的执行令牌不能修改角色。每轮构建提示词时读取最新角色，已提交给原生 CLI 的提示词保持不变。更新不会重建会话或清除历史。`provider` 不可修改；已有会话的项目和工作目录固定。
 
 ## 状态与任务记录
 

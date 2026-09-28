@@ -76,6 +76,12 @@ export default function Usage({
                   )
                 : t("自动刷新已开启", "Automatic refresh is on")}
       </p>
+      <p className="form-hint">
+        {t(
+          "Claude 读取客户端保存的本地额度快照；Codex 通过本机客户端查询。刷新时间不等于源数据更新时间，重置时间缺失时显示未知。",
+          "Claude reads its client’s local quota snapshot; Codex queries through its local client. Refreshing does not change the source timestamp. Missing reset times remain unknown.",
+        )}
+      </p>
       <div className="usage-grid">
         {(["codex", "claude"] as Provider[]).map((provider) => {
           const quota = quotas.find((q) => q.provider === provider);
@@ -134,26 +140,15 @@ export default function Usage({
                 <span>
                   {quota?.source === "demo"
                     ? t("演示数据", "Demo data")
-                    : quota?.source || "AgentDock"}{" "}
-                  · {t("更新于", "Updated")}{" "}
+                    : quota?.source === "claude-desktop-snapshot"
+                      ? t("Claude 本地快照", "Claude local snapshot")
+                      : provider === "codex"
+                        ? "Codex"
+                        : t("上次保存的数据", "Previously saved data")}{" "}
+                  · {t("数据更新于", "Data updated")}{" "}
                   <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
               </div>
-              {provider === "claude" &&
-                quota?.source !== "AgentMeter" &&
-                quota?.error_code === "authorization_required" && (
-                  <button
-                    className="text-button"
-                    disabled={busy || refreshing || !runtimeEnabled}
-                    onClick={() =>
-                      void mutate("/api/quotas/authorize", {
-                        provider: "claude",
-                      })
-                    }
-                  >
-                    {t("连接 Claude", "Connect Claude")}
-                  </button>
-                )}
               <div className="billing-info">
                 <div className="record-heading">
                   <h3>{t("手动订阅记录", "Manual billing record")}</h3>
@@ -379,8 +374,8 @@ function quotaError(code: string | undefined, fallback: string, t: Translate) {
       "Could not read usage. Check the local client login and permissions.",
     ],
     authorization_required: [
-      "请点击“连接 Claude”，授权读取已有的钥匙串凭据。",
-      "Choose Connect Claude to approve access to the existing Keychain credential.",
+      "旧版额度数据不可用，正在等待本地快照。",
+      "Legacy usage data is unavailable. Waiting for the local snapshot.",
     ],
     not_installed: [
       "未找到服务的命令行客户端，请检查安装。",

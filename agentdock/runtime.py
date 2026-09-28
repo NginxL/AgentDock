@@ -100,6 +100,7 @@ class Runtime:
             self._check_enabled()
             caller = self.store.capability_run(token)
             if name == "message_send":
+                if caller["project_id"] is None: raise Forbidden("Agent collaboration requires a project")
                 self._command(self.store.get_agent(arguments.get("recipient_id"))["provider"])
                 message = self.store.enqueue_message(
                     caller["project_id"], caller["agent_id"], arguments.get("recipient_id"),
@@ -144,6 +145,14 @@ class Runtime:
     def _event(self, run, kind, payload):
         if not isinstance(payload, dict):
             raise RuntimeFailure("Agent returned an invalid event")
+        if kind == "token_usage":
+            from .metrics import record
+            agent = self.store.get_agent(run.record["agent_id"])
+            session = self.store.get_session(run.record["session_id"])
+            if payload.get("native_id") != session.get("native_session_id"): return
+            record(self.store, agent["provider"], payload["native_id"], payload.get("record_id"), payload.get("usage"), payload.get("at"), "managed",
+                   (payload.get("started_at"), payload.get("output_delta")))
+            return
         if kind == "assistant_delta":
             kind, payload = "agent_message_chunk", {"content": {"type": "text", "text": payload.get("text", "")}}
         serialized = json.dumps({**payload, "run_id": run.record["id"]}, ensure_ascii=False)
@@ -198,7 +207,7 @@ class Runtime:
             record = run.record
             session = self.store.get_session(record["session_id"])
             agent = self.store.get_agent(record["agent_id"])
-            project = self.store.get_project(record["project_id"])
+            workspace = session["workspace"]
             self._event(run, "run_started", {"provider": agent["provider"], "protocol": "native",
                                              "native_resume": bool(session.get("native_session_id"))})
             context = self.store.context_for_run(record["id"])
@@ -209,12 +218,12 @@ class Runtime:
                                   "AGENTDOCK_CAPABILITY": run.capability,
                                   "PYTHONPATH": self.config["package_root"]}}
             result = self._execute(
-                agent["provider"], self._command(agent["provider"]), project["path"], prompt,
+                agent["provider"], self._command(agent["provider"]), workspace, prompt,
                 session.get("native_session_id"), mcp_config, run.stop,
                 lambda kind, payload: self._event(run, kind, payload),
                 lambda native_id: self.store.bind_native_session(session["id"], native_id, run_id=record["id"]),
                 lambda request, options: self._request_approval(run, request, options),
-                timeout=self.config.get("run_timeout", 900))
+                timeout=self.config.get("run_timeout", 900), **({"model": agent["model"], "effort": agent["effort"]} if agent.get("model") or agent.get("effort") else {}))
             if not isinstance(result, str):
                 raise RuntimeFailure("Native CLI did not return a valid result.")
             result = result.replace(run.capability, "[redacted]").replace("\x00", "")[:64000]

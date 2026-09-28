@@ -5,17 +5,16 @@ import MeterProviders
 // This helper has no windows, menu item, timers, subscription store or login flow.
 // Credentials remain in the provider's existing local store and are never emitted.
 let arguments = Array(CommandLine.arguments.dropFirst())
-guard arguments.count == 2, ["--probe", "--authorize"].contains(arguments[0]),
-      ["codex", "claude"].contains(arguments[1]),
-      arguments[0] != "--authorize" || arguments[1] == "claude" else {
-    fputs("Usage: AgentDockUsage --probe codex|claude, or --authorize claude\n", stderr)
+guard arguments.count == 2, arguments[0] == "--probe",
+      ["codex", "claude"].contains(arguments[1]) else {
+    fputs("Usage: AgentDockUsage --probe codex|claude\n", stderr)
     exit(2)
 }
 let kind = arguments[1]
 Task {
     do {
         let provider: any UsageProvider = kind == "codex"
-            ? CodexProvider() : ClaudeProvider(allowKeychainPrompt: arguments[0] == "--authorize")
+            ? CodexProvider() : ClaudeProvider()
         var snapshot = try await provider.fetch()
         snapshot.accountID = nil
         let encoder = JSONEncoder()

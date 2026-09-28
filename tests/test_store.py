@@ -43,7 +43,7 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(cleared['name'], 'My designer')
         self.assertEqual(cleared['role'], '')
     def test_invalid_agent_edits_leave_original_values_unchanged(self):
-        for change in ({}, {'provider': 'claude'}, {'project_id': self.p['id']}, {'id': 'other'},
+        for change in ({}, {'provider': 'claude'}, {'unknown_setting': 'x'}, {'id': 'other'},
                        {'name': ''}, {'name': 'x' * 101}, {'role': None}, {'role': 'x' * 4001},
                        {'name': 'Valid name', 'role': '\x00'}):
             with self.subTest(change=str(change)[:100]):

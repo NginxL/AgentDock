@@ -30,11 +30,9 @@ class QuotaTests(unittest.TestCase):
             self.assertEqual(result['error_code'], 'authorization_required')
             self.assertNotIn('private token', str(result))
             probe.assert_called_once_with('claude')
-        with patch.object(service, '_probe', return_value={**self.snapshot(), 'provider':'claude'}) as probe:
-            result = service.refresh('claude', authorize=True)
-            self.assertEqual(result['status'], 'available')
-            self.assertNotIn('error_code', result)
-            probe.assert_called_once_with('claude', authorize=True)
+        with patch.object(service, '_probe') as probe:
+            with self.assertRaises(ValueError): service.refresh('claude', authorize=True)
+            probe.assert_not_called()
         with self.assertRaises(ValueError): service.refresh('codex', authorize=True)
         legacy = QuotaService(QuotaStore(), ['AgentMeter'], True, source='AgentMeter')
         with self.assertRaises(ValueError): legacy.refresh('claude', authorize=True)
@@ -42,7 +40,7 @@ class QuotaTests(unittest.TestCase):
     def test_authorization_never_starts_in_review_mode(self):
         service = QuotaService(QuotaStore(), ['helper'], False)
         with patch.object(service, '_probe') as probe:
-            self.assertEqual(service.refresh('claude', authorize=True)['status'], 'disabled')
+            with self.assertRaises(ValueError): service.refresh('claude', authorize=True)
             probe.assert_not_called()
 
     def setUp(self):

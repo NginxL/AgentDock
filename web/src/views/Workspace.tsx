@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TPS, type Metrics } from "../metrics";
 import { listOf, remainingPercent, request } from "../api";
 import type {
   Agent,
@@ -29,6 +30,8 @@ export default function Workspace({
   t,
   lang,
   project,
+  metrics,
+  metricsFailed,
   agents,
   sessions,
   approvals,
@@ -41,7 +44,9 @@ export default function Workspace({
 }: {
   t: Translate;
   lang: Language;
-  project: Project;
+  project?: Project;
+  metrics?: Metrics | null;
+  metricsFailed?: boolean;
   agents: Agent[];
   sessions: Session[];
   approvals: Approval[];
@@ -57,6 +62,50 @@ export default function Workspace({
   const [agentName, setAgentName] = useState("");
   const [provider, setProvider] = useState<Provider>("codex");
   const [role, setRole] = useState("");
+  const [workspace, setWorkspace] = useState("");
+  const [agentProject, setAgentProject] = useState(project?.id ?? "");
+  const [model, setModel] = useState("");
+  const [effort, setEffort] = useState("");
+  const [models, setModels] = useState<
+    { id: string; name: string; efforts: string[] }[]
+  >([]);
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  useEffect(() => {
+    if (!agentForm) return;
+    setModels([]);
+    setCatalogError(false);
+    if (demo) {
+      setModels([
+        {
+          id: "demo-model",
+          name: "Demo model",
+          efforts: ["low", "medium", "high"],
+        },
+      ]);
+      return;
+    }
+    if (!runtimeEnabled) return;
+    const abort = new AbortController();
+    setCatalogLoading(true);
+    void request<{ models: { id: string; name: string; efforts: string[] }[] }>(
+      token,
+      `/api/models/${provider}`,
+      undefined,
+      abort.signal,
+    )
+      .then((r) => {
+        if (!abort.signal.aborted)
+          setModels(Array.isArray(r.models) ? r.models : []);
+      })
+      .catch(() => {
+        if (!abort.signal.aborted) setCatalogError(true);
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setCatalogLoading(false);
+      });
+    return () => abort.abort();
+  }, [agentForm, provider, token, demo, runtimeEnabled]);
   const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
   const [sessionID, setSessionID] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
@@ -170,8 +219,16 @@ export default function Workspace({
       <div className="page-heading">
         <div>
           <h1>{t("协作工作台", "Workspace")}</h1>
-          <p className="path-line" title={project.path}>
-            {project.path}
+          <p
+            className="path-line"
+            title={project?.path ?? selectedAgent?.workspace}
+          >
+            {project?.path ??
+              selectedAgent?.workspace ??
+              t(
+                "无需项目，直接连接本机 Agent 开始对话",
+                "Chat with a local agent — no project required",
+              )}
           </p>
         </div>
         <div className="button-row">
@@ -180,18 +237,22 @@ export default function Workspace({
               className="secondary"
               disabled={busy && !demo}
               aria-label={t(
-                `编辑 ${selectedAgent.name} 的角色`,
-                `Edit role for ${selectedAgent.name}`,
+                `设置 ${selectedAgent.name}`,
+                `Configure ${selectedAgent.name}`,
               )}
               onClick={() => {
                 setEditingAgentID(selectedAgent.id);
                 setAgentName(selectedAgent.name);
                 setProvider(selectedAgent.provider);
                 setRole(selectedAgent.role);
+                setWorkspace(selectedAgent.workspace ?? "");
+                setAgentProject(selectedAgent.project_id ?? "");
+                setModel(selectedAgent.model ?? "");
+                setEffort(selectedAgent.effort ?? "");
                 setAgentForm(true);
               }}
             >
-              {t("编辑角色", "Edit role")}
+              {t("Agent 设置", "Agent settings")}
             </button>
           )}
           <button
@@ -202,6 +263,10 @@ export default function Workspace({
               setAgentName("");
               setProvider("codex");
               setRole("");
+              setWorkspace("");
+              setAgentProject(project?.id ?? "");
+              setModel("");
+              setEffort("");
               setAgentForm(true);
             }}
           >
@@ -211,11 +276,7 @@ export default function Workspace({
         </div>
       </div>
       <div className="stat-grid">
-        <Stat
-          value={agents.length}
-          label={t("项目 Agent", "Project agents")}
-          icon="dock"
-        />
+        <Stat value={agents.length} label={t("Agent", "Agents")} icon="dock" />
         <Stat
           value={sessions.filter((s) => s.status === "running").length}
           label={t("运行中", "Running")}
@@ -224,7 +285,7 @@ export default function Workspace({
         <Stat
           value={
             state.memories.filter(
-              (m) => m.project_id === project.id && !isArchived(m),
+              (m) => !!project && m.project_id === project.id && !isArchived(m),
             ).length
           }
           label={t("已审阅记忆", "Reviewed memories")}
@@ -245,7 +306,7 @@ export default function Workspace({
                     `编辑 Agent · ${editingAgent.name}`,
                     `Edit agent · ${editingAgent.name}`,
                   )
-                : t("添加项目 Agent", "Add a project agent")}
+                : t("添加 Agent", "Add an agent")}
             </h2>
             <button
               className="icon-button"
@@ -268,9 +329,23 @@ export default function Workspace({
                   ? `/api/agents/${encodeURIComponent(editingAgentID)}`
                   : "/api/agents",
                 editingAgentID
-                  ? { name: agentName.trim(), role: role.trim() }
+                  ? {
+                      name: agentName.trim(),
+                      role: role.trim(),
+                      model: model || null,
+                      effort: effort || null,
+                      ...(!sessions.some((s) => s.agent_id === editingAgentID)
+                        ? {
+                            project_id: agentProject || null,
+                            workspace: workspace || null,
+                          }
+                        : {}),
+                    }
                   : {
-                      project_id: project.id,
+                      project_id: agentProject || null,
+                      workspace: workspace || null,
+                      model: model || null,
+                      effort: effort || null,
                       name: agentName.trim(),
                       provider,
                       role: role.trim(),
@@ -303,7 +378,11 @@ export default function Workspace({
                 {t("服务", "Provider")}
                 <select
                   value={provider}
-                  onChange={(e) => setProvider(e.target.value as Provider)}
+                  onChange={(e) => {
+                    setProvider(e.target.value as Provider);
+                    setModel("");
+                    setEffort("");
+                  }}
                   disabled={!!editingAgentID}
                 >
                   <option value="codex">Codex</option>
@@ -311,6 +390,114 @@ export default function Workspace({
                 </select>
               </label>
             </div>
+            <div className="form-grid">
+              <label>
+                {t("关联项目（可选）", "Project (optional)")}
+                <select
+                  value={agentProject}
+                  disabled={
+                    !!editingAgentID &&
+                    sessions.some((s) => s.agent_id === editingAgentID)
+                  }
+                  onChange={(e) => setAgentProject(e.target.value)}
+                >
+                  <option value="">
+                    {t("独立 Agent", "Independent agent")}
+                  </option>
+                  {state.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!agentProject && (
+                <label>
+                  {t("工作目录（可留空）", "Working directory (optional)")}
+                  <input
+                    value={workspace}
+                    disabled={
+                      !!editingAgentID &&
+                      sessions.some((s) => s.agent_id === editingAgentID)
+                    }
+                    onChange={(e) => setWorkspace(e.target.value)}
+                    placeholder={t(
+                      "留空自动创建独立目录",
+                      "Leave blank for a private directory",
+                    )}
+                  />
+                </label>
+              )}
+              <label>
+                {t("模型", "Model")}
+                <select
+                  value={model}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    setEffort("");
+                  }}
+                >
+                  <option value="">
+                    {t(
+                      "沿用客户端 / 会话设置",
+                      "Use client / session settings",
+                    )}
+                  </option>
+                  {model && !models.some((m) => m.id === model) && (
+                    <option value={model}>{model}</option>
+                  )}
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("思考强度", "Reasoning effort")}
+                <select
+                  value={effort}
+                  disabled={!model}
+                  onChange={(e) => setEffort(e.target.value)}
+                >
+                  <option value="">
+                    {t(
+                      "沿用客户端 / 会话设置",
+                      "Use client / session settings",
+                    )}
+                  </option>
+                  {effort &&
+                    !models
+                      .find((m) => m.id === model)
+                      ?.efforts.includes(effort) && (
+                      <option value={effort}>{effort}</option>
+                    )}
+                  {(models.find((m) => m.id === model)?.efforts ?? []).map(
+                    (e) => (
+                      <option key={e} value={e}>
+                        {e}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+            </div>
+            <p className="settings-note">
+              {catalogLoading
+                ? t(
+                    "正在读取本机可用模型…",
+                    "Reading locally available models…",
+                  )
+                : catalogError
+                  ? t(
+                      "模型列表暂不可用；可以保留客户端设置，稍后重新打开此面板。",
+                      "Model list unavailable. Keep client settings and reopen this panel to retry.",
+                    )
+                  : t(
+                      "模型与思考强度对后续消息生效。已有会话保持上下文；建立会话后，工作目录及项目固定。",
+                      "Model and effort apply to future messages. Conversations keep their context; workspace and project stay fixed once a conversation exists.",
+                    )}
+            </p>
             <label>
               {t("角色说明（可选）", "Role (optional)")}
               <textarea
@@ -343,12 +530,15 @@ export default function Workspace({
             </p>
             <button className="primary" disabled={busy || !agentName.trim()}>
               {editingAgentID
-                ? t("保存角色", "Save role")
+                ? t("保存设置", "Save settings")
                 : t("创建 Agent", "Create agent")}
             </button>
           </form>
         </section>
       )}
+      <section className="panel workspace-tps">
+        <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
+      </section>
       {agents.length ? (
         <div className="agent-grid">
           {agents.map((agent) => (
@@ -377,6 +567,10 @@ export default function Workspace({
                       "No role set · Follows each task",
                     )}
                 </p>
+                <span className="model-summary">
+                  {agent.model || t("客户端默认模型", "Client default model")}
+                  {agent.effort ? ` · ${agent.effort}` : ""}
+                </span>
                 {(() => {
                   const quota = listOf(state.quotas).find(
                     (q) => q.provider === agent.provider,
@@ -396,6 +590,7 @@ export default function Workspace({
                   );
                 })()}
               </div>
+
               <span
                 className={`small-status ${sessions.some((s) => s.agent_id === agent.id && s.status === "running") ? "live" : ""}`}
               >
@@ -405,6 +600,12 @@ export default function Workspace({
                   ? t("运行中", "Running")
                   : t("待命", "Idle")}
               </span>
+              <TPS
+                meter={metrics?.agents[agent.id]}
+                t={t}
+                compact
+                stale={metricsFailed}
+              />
             </button>
           ))}
         </div>
@@ -412,7 +613,7 @@ export default function Workspace({
         <section className="panel">
           <Empty
             icon="dock"
-            title={t("为项目分配第一位 Agent", "Add your first agent")}
+            title={t("添加第一位 Agent", "Add your first agent")}
           >
             {t(
               "先创建 Agent，再建立会话并明确发起任务。",

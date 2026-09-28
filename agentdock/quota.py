@@ -13,7 +13,7 @@ from .processes import stop_group as _kill_group
 from .store import Forbidden
 
 ERRORS = {
-    "authorization_required": "Connect Claude to approve access to its existing Keychain credential.",
+    "authorization_required": "This legacy quota source is unavailable. Refresh to read the local snapshot.",
     "not_installed": "The provider CLI is not installed or cannot be found.",
     "not_signed_in": "Sign in to a subscription account in the official client first.",
     "expired": "The provider login has expired. Sign in again in its official client.",
@@ -94,13 +94,13 @@ class QuotaService:
     def refresh(self, provider: str, authorize=False) -> dict:
         if provider not in ("codex", "claude"):
             raise ValueError("Only codex and claude quota providers are supported.")
-        if authorize and (provider != "claude" or self.source != "AgentDock"):
-            raise ValueError("Interactive authorization requires the built-in Claude helper.")
+        if authorize:
+            raise ValueError("Quota reads do not access Keychain credentials.")
         with self._lifecycle:
             self._ensure_open()
             self._inflight += 1
         try:
-            return self._refresh(provider, authorize)
+            return self._refresh(provider)
         finally:
             with self._lifecycle:
                 self._inflight -= 1
@@ -129,7 +129,7 @@ class QuotaService:
             self._ensure_open()
             self.store.set_quota(provider, quota)
 
-    def _refresh(self, provider: str, authorize=False) -> dict:
+    def _refresh(self, provider: str) -> dict:
         with self._lock:
             with self._lifecycle:
                 self._ensure_open()
@@ -140,14 +140,14 @@ class QuotaService:
             if (not all(isinstance(arg, str) and arg and "\x00" not in arg for arg in self.command)):
                 return self._failure(provider, "Usage helper command configuration is invalid.", code="helper_config_invalid")
             now = time.monotonic()
-            if not authorize and provider in self._last_attempt and now - self._last_attempt[provider] < 60:
+            if provider in self._last_attempt and now - self._last_attempt[provider] < 60:
                 cached = self.cached(provider)
                 if cached:
                     return self._expire(cached)
                 return self._failure(provider, "Please wait before refreshing again.", code="refresh_throttled")
             self._last_attempt[provider] = now
             try:
-                raw = self._probe(provider, authorize=True) if authorize else self._probe(provider)
+                raw = self._probe(provider)
                 if isinstance(raw, dict) and raw.get("provider") == provider and raw.get("error_code") in ERRORS:
                     return self._failure(provider, ERRORS[raw["error_code"]], code=raw["error_code"])
                 quota = self._normalize(provider, raw)
@@ -171,14 +171,14 @@ class QuotaService:
             snapshot = self.store.get_quota(provider)
         return self._expire(snapshot) if snapshot else None
 
-    def _probe(self, provider, authorize=False):
+    def _probe(self, provider):
         # Spawning and registration share the close lock: shutdown cannot miss a
         # process between its creation and insertion into the active set.
         selector = selectors.DefaultSelector()
         try:
             with self._lifecycle:
                 self._ensure_open()
-                process = subprocess.Popen(self.command + ["--authorize" if authorize else "--probe", provider], stdin=subprocess.DEVNULL,
+                process = subprocess.Popen(self.command + ["--probe", provider], stdin=subprocess.DEVNULL,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                            start_new_session=True, bufsize=0)
                 self._processes.add(process)
@@ -186,7 +186,7 @@ class QuotaService:
             selector.close()
             raise
         output, total = bytearray(), 0
-        deadline = time.monotonic() + (180 if authorize else self.TIMEOUT)
+        deadline = time.monotonic() + self.TIMEOUT
         try:
             for stream, kind in ((process.stdout, "stdout"), (process.stderr, "stderr")):
                 selector.register(stream, selectors.EVENT_READ, kind)
@@ -251,7 +251,7 @@ class QuotaService:
         return self._expire({"provider": provider, "plan": _text(raw.get("plan"), 120),
                              "windows": windows, "fetched_at": _iso(fetched),
                              "status": "available" if any(w["remaining_percent"] is not None for w in windows) else "unknown",
-                             "source": self.source})
+                             "source": "claude-desktop-snapshot" if provider == "claude" and raw.get("source") == "claude-desktop-snapshot" else self.source})
 
     def _expire(self, snapshot):
         # Return a copy so cache aging never mutates Store-owned values in memory.

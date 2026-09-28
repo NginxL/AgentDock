@@ -20,6 +20,9 @@ MAX_BODY = 262144
 class API:
     def __init__(self, store, runtime, quota, admin_token, port=47831, execution_enabled=False):
         self.store=store; self.runtime=runtime; self.quota=quota
+        from .catalog import Catalog
+        self.catalog=Catalog(getattr(runtime, "config", {}))
+        self.usage=None
         self.admin_token=admin_token; self.port=port; self.execution_enabled=execution_enabled
 
     def dispatch(self, method, path, headers, body=b""):
@@ -38,19 +41,26 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method=="GET" and parsed.path=="/api/metrics":
+                from .metrics import snapshot
+                result=snapshot(self.store)
+                result["scan_status"]=self.usage.status if self.usage else "disabled"
+                return 200,result
             if method=="GET" and parsed.path=="/api/quotas":
                 return 200,{"quotas":[snapshot for provider in ("codex","claude") if (snapshot:=self.quota.cached(provider)) is not None]}
             if method=="GET" and parsed.path=="/api/state":
                 state=self.store.state(); state["quotas"]=[self.quota.cached(q["provider"]) or q for q in state["quotas"]]; state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
+            if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
+                return 200,self.catalog.read(parts[2])
             if method=="GET" and len(parts)==4 and parts[:2]==["api","sessions"] and parts[3]=="events":
                 query=parse_qs(parsed.query)
                 return 200,{"events":self.store.session_events(parts[2],int(query.get("after",[0])[0]))}
             if method!="POST": return 404,{"error":"Route not found"}
             p=self._json(headers,body)
             if parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"))
-            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""))
+            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
             elif parsed.path=="/api/messages":
@@ -62,10 +72,6 @@ class API:
             elif parsed.path=="/api/quotas/refresh":
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 result=self.quota.refresh(p.get("provider"))
-            elif parsed.path=="/api/quotas/authorize":
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                if p.get("provider")!="claude": raise Invalid("Only Claude requires Keychain authorization")
-                result=self.quota.refresh("claude", authorize=True)
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
@@ -189,8 +195,11 @@ def main(argv=None):
     print("Local access token file: "+str(token_path))
     print("Execution: "+("native sessions and automatic task dispatch enabled" if args.enable_execution else "disabled (review mode)"))
     try:
+        from .metrics import LocalUsage
+        api.usage=LocalUsage(store)
+        if args.enable_execution: api.usage.start()
         quota.start_auto_refresh()
         server.serve_forever(poll_interval=0.3)
-    finally: runtime.close(); quota.close(); server.server_close(); store.close()
+    finally: api.usage.close() if api.usage else None; api.catalog.close(); runtime.close(); quota.close(); server.server_close(); store.close()
 
 if __name__=="__main__": main()

@@ -2,13 +2,13 @@
 <h1 align="center">AgentDock</h1>
 <p align="center">原生会话，任务协作，一个清晰的工作台。</p>
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
-<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="自动检查" /></a> <img src="https://img.shields.io/badge/version-0.2_preview-6366f1" alt="0.2 预览版" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9 及以上" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT 许可证" /></a></p>
+<p align="center"><a href="https://github.com/NginxL/AgentDock/actions/workflows/check.yml"><img src="https://github.com/NginxL/AgentDock/actions/workflows/check.yml/badge.svg" alt="自动检查" /></a> <img src="https://img.shields.io/badge/version-0.3.0_preview-6366f1" alt="0.3.0 预览版" /> <img src="https://img.shields.io/badge/Python-3.9%2B-3776ab" alt="Python 3.9 及以上" /> <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-187c68" alt="MIT 许可证" /></a></p>
 
 AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会话、任务交接、项目共享记忆与可用额度。智能体通过原生 CLI 执行，后续对话沿用各自的原生会话。发送给同伴的任务会进入执行队列，结果自动回到发起任务的会话。
 
 界面默认中文，支持完整切换为英文。后端采用 Python 标准库与 SQLite，前端使用 React。
 
-> **开发者预览版。** 默认关闭执行。自动检查已覆盖模拟原生 CLI 协议和任务交接；真实模型调用与账号兼容性仍需验收。
+> **开发者预览版。** 默认关闭执行。自动检查已覆盖模拟原生 CLI 协议和任务交接；本机已验证双提供方连续对话及用量事件，其他账号、权限操作和长时间协作仍需验收。
 
 [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
@@ -21,9 +21,9 @@ AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会�
 <details>
 <summary>查看角色配置、任务派工与额度界面</summary>
 
-**自定义角色：**选择 Agent 后点击“编辑角色”，修改名称、职责或清空角色说明。服务选择与角色定义独立。
+**自定义角色：**选择 Agent 后点击“Agent 设置”，修改名称、职责或清空角色说明。服务选择与角色定义独立。
 
-![Agent 名称与角色编辑界面](docs/images/roles.zh-CN.png)
+![Agent 设置：名称、角色、模型与推理强度](docs/images/roles.zh-CN.png)
 
 **任务派工：**查看目标会话、执行结果与回传状态。
 
@@ -39,6 +39,8 @@ AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会�
 
 | 能力 | 说明 |
 | --- | --- |
+| 独立 Agent | 无需项目即可创建、指定工作目录、聊天与续接上下文；模型和思考强度从本机客户端发现。 |
+| TPS 与 Token | 总计及每个 Agent 的三分钟输出吞吐曲线；单独页面查看本机历史累计 Token、输入、输出和缓存明细，按原生标识去重。 |
 | 自定义角色 | 自行定义 Agent 名称和职责，支持创建后编辑或清空角色；Codex／Claude 均可承担任意用户定义的分工。 |
 | 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
 | 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
@@ -59,11 +61,11 @@ python3 scripts/install-macos.py
 
 应用启用任务执行能力，但只有提交任务才会调用 Agent。每次点击“额度与订阅”时自动刷新 Codex／Claude，本地服务运行期间每 10 分钟也会更新一次，主窗口隐藏后仍会继续。菜单直接展示共用数据，无需单独刷新。菜单与工作台共用中英文设置，桌面版会记住语言选择。
 
-只有 Claude 确实需要钥匙串权限时才显示“连接 Claude”入口，点击后在 macOS 提示中自行授权。普通刷新不会弹出钥匙串授权框。
+Claude 额度只读取 Claude Desktop 保存的本地快照，不访问钥匙串或登录凭据。界面显示源数据的“数据更新于”时间；重新读取文件不会刷新该时间。当前快照没有重置时间，因此显示未知。仅登录 Claude Code 不保证存在 Desktop 快照。Codex 通过本机 App Server 查询账户额度，认证由 Codex 自己处理。
 
 从 AgentMeter 迁移订阅记录可运行 `python3 scripts/install-macos.py --import-agentmeter`。迁移会备份原配置、保留已有 AgentDock 记录，不修改提供方登录或删除旧应用。
 
-更新时退出应用，在仓库运行 `git pull --ff-only`，然后重新执行安装命令。配置和历史保留，原应用副本保存到数据目录的 `backups`。当前安装包在本机构建并临时签名，未经过 Apple 公证。
+更新时退出应用，在仓库运行 `git pull --ff-only`，然后重新执行安装命令。配置和历史保留；旧数据库在 0.3 迁移前备份，原应用副本也保存到数据目录的 `backups`。当前安装包在本机构建并临时签名，未经过 Apple 公证。
 
 ## 快速开始
 
@@ -86,9 +88,19 @@ python3 -m agentdock --config config.local.json
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-选择可信项目目录，通过**添加 Agent**选择服务、填写名称和可选的角色说明。角色留空时按每次任务要求执行。已有 Agent 可先选中卡片，再点击**编辑角色**修改名称和职责；变更用于后续执行，不会中断当前任务，也不会清除原生会话历史。需要全新上下文时，创建新会话。
+在**协作工作台 → 添加 Agent**选择本机服务并命名，即可创建独立 Agent，无需项目。工作目录可指定可信目录，留空则在私有数据目录下自动创建。需要项目共享记忆或派工时，再选择关联项目。
+
+在 **Agent 设置**中选择本机客户端返回的模型和思考强度，或沿用客户端／会话设置。名称和角色完全自定义。新设置用于后续消息；模型设置须等待当前任务完成。已有会话保留上下文，工作目录和项目在建立会话后固定；更换目录时创建新的 Agent。
 
 开启执行期间，同伴派工和结果回传轮次会自动执行；配置额度组件后，服务每 10 分钟自动刷新额度，首次定时刷新在启动 10 分钟后执行；点击“额度与订阅”会立即发起刷新。
+
+## Token 与吞吐统计
+
+![Token 累计统计与吞吐趋势，虚构演示数据](docs/images/tokens.zh-CN.png)
+
+Token 统计包含本机可读取的 Codex／Claude Code 历史日志和 AgentDock 会话。索引只保存计数、时间及去重标识，不复制外部对话正文。支持 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`；默认读取 `~/.codex/{sessions,archived_sessions}` 与 `~/.claude/projects`。历史文件缺失、损坏或格式不支持时，累计值可能不完整；统计不是服务商账单。缓存属于输入的子集，不重复累加。
+
+TPS 使用真实输出 Token 增量及其采样区间，包含等待和工具耗时；当前值为最近 15 秒均值，三分钟均值包含空闲时间。原生客户端批量上报可能造成延迟。活跃任务尚未收到有效采样时显示“—”，空闲时显示 0。未关联的历史会话计入总量与对应服务，不冒充某个自建 Agent 的用量。
 
 ## 配置
 
@@ -106,7 +118,7 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 如果服务的 `PATH` 中没有相应 CLI，请使用可执行文件的绝对路径。机器专属配置保存在 Git 忽略的 `config.local.json` 中。界面和智能体均不能指定执行命令。
 
-AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，执行认证沿用原生 CLI，无需 Claude Agent SDK 或新增 API Key；内置额度组件按需读取现有本机登录。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
+AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，执行认证沿用原生 CLI，无需 Claude Agent SDK 或新增 API Key；额度组件不读取 Claude 凭据，Codex 查询由本机 Codex 处理认证。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
 
 ## 协作流程
 
@@ -132,7 +144,7 @@ sequenceDiagram
 
 状态保存在 `~/.local/share/agentdock`，同一数据库只允许一个实例占用。历史、任务记录和共享记忆存储在本地。执行智能体会将任务上下文发送到其配置的模型服务；刷新额度也可能访问提供方服务。
 
-当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 管理，额度组件只在本机按需读取，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
+当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 管理，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
 
 从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 

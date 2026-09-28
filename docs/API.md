@@ -2,7 +2,7 @@
 
 **English** · [简体中文](API.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
-Version: **0.2 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON. Error responses are `{ "error": "message" }`.
+Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON. Error responses are `{ "error": "message" }`.
 
 | HTTP status | Meaning |
 | --- | --- |
@@ -14,6 +14,14 @@ Version: **0.2 preview**. Workbench IDs are UUID strings; `native_session_id` is
 | `409` | State, idempotency, ownership, or memory-version conflict. |
 | `413` | HTTP request body exceeds the size limit. |
 | `500` | Sanitized internal failure; success must not be assumed. |
+
+## Model and usage endpoints
+
+`GET /api/models/{codex|claude}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted metadata is returned; account information is discarded.
+
+`GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `unassigned_sessions`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
+
+Independent sessions have a null `project_id` and fixed `workspace`. Independent agents receive empty teammate/memory searches; project dispatch and memory proposals are denied.
 
 ## Authentication and request boundary
 
@@ -30,8 +38,8 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
 | `GET /api/quotas` | Cached Codex/Claude snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
-| `POST /api/agents` | `project_id`, `name`, `provider` (`codex` / `claude`), optional `role` (empty by default). |
-| `POST /api/agents/{id}` | At least one of `name` (1–100 characters) and `role` (up to 4,000 characters). `role: ""` clears the role; omitted fields keep their values. Only these two fields are accepted. Returns the updated agent. |
+| `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`. Blank independent workspaces are created privately; project agents use the project path. |
+| `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`. Model/workspace settings require no queued or running tasks. `project_id` and `workspace` may change only before any conversation exists. Provider is immutable. |
 | `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
@@ -44,7 +52,6 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
 | `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
 | `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Invoked when selecting Usage & billing; requires execution enabled. Shares the provider throttle with the service-owned timer. |
-| `POST /api/quotas/authorize` | `provider: "claude"`. Administrator-only; requires execution and the built-in helper. Allows a Keychain access prompt with a 180-second deadline. Ordinary refresh never prompts. |
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.

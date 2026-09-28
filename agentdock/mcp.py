@@ -45,7 +45,7 @@ class Bridge:
             if method=="initialize":
                 requested=params.get("protocolVersion")
                 self.initialized=True
-                result={"protocolVersion":requested if requested in PROTOCOLS else PROTOCOLS[0],"capabilities":{"tools":{"listChanged":False}},"serverInfo":{"name":"agentdock","version":"0.2.0"}}
+                result={"protocolVersion":requested if requested in PROTOCOLS else PROTOCOLS[0],"capabilities":{"tools":{"listChanged":False}},"serverInfo":{"name":"agentdock","version":"0.3.0"}}
             elif not self.initialized: raise ValueError("Initialize first")
             elif method=="ping": result={}
             elif method=="tools/list": result={"tools":TOOLS}

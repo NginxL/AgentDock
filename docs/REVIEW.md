@@ -4,7 +4,7 @@
 
 ## Implementation status
 
-AgentDock 0.2 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. The macOS application bundles a dedicated usage helper that supplies sanitized quota snapshots through `--probe`.
+AgentDock 0.3 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. The macOS application bundles a dedicated usage helper that supplies sanitized quota snapshots through `--probe`.
 
 | Area | Implemented | Acceptance boundary |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ AgentDock 0.2 combines a React interface, a Python standard-library service, and
 | Native providers | Codex app-server JSON-RPC; Claude Code stream-json control messages; retained native IDs, text/tool events, permission decisions, deadlines, and process-group cleanup. | Wire contracts have been checked against documentation and local CLI metadata. Real login and model execution remain unverified. |
 | Collaboration | Automatic dispatch, workspace-aware queuing, native-session continuation, result return, retry deduplication, depth and run limits, and cancellation of task descendants. | Real model behavior during delegation and long-running collaboration requires live acceptance. |
 | Shared memory | Project isolation, literal keyword search, version conflicts, agent proposals, human approval, soft archive, and database history. | Vector search, automatic extraction, a complete history browser, and cross-project sharing are not implemented. |
-| Quotas | Built-in usage helpers for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Local Codex/Claude reads passed; interactive Keychain prompts, additional accounts and comparison with official usage pages remain unverified. |
+| Quotas | Built-in usage helpers for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Local Codex quota queries and Claude Desktop snapshot reads passed; additional accounts and comparison with official usage pages remain unverified. |
 | Recovery | Additive database migration, historical mailbox preservation, one owner per native session, overlapping-workspace exclusion, database instance locking, and no automatic task replay after restart. | Existing Codex App or unrelated terminal sessions cannot be imported. Remote devices, automatic worktrees, and remote multi-user access are not implemented. |
 
 ## Provider compatibility
@@ -59,7 +59,7 @@ swift run --package-path native MeterProviderChecks
 swift run --package-path native DesktopChecks
 ```
 
-[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, conditional authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
+[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, absence of Keychain authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
 ## Code review map
 
@@ -81,7 +81,14 @@ Real execution is a separate, explicitly enabled acceptance step. Use trusted di
 4. Verify shared-memory proposal review, version conflicts, and project isolation. Compare real remaining quotas and reset times with official usage pages, including failure and stale-cache states.
 5. Inspect both interface languages using live sessions. Confirm errors, queued work, approvals, results, and unknown quota states are understandable and contain no exposed credentials.
 
-Desktop startup, automatic local connection, shutdown cleanup, and live Codex/Claude quota reads have passed local macOS checks. Interactive Keychain prompts, additional account configurations, and agreement with official usage pages remain unverified. Real agent execution and collaboration still require live acceptance; existing-session import is not implemented. The installer does not register a background service, login item, or global MCP configuration, and does not alter provider logins.
+Desktop startup, automatic local connection, shutdown cleanup, and live Codex/Claude quota reads have passed local macOS checks. Two-turn conversations and token events passed for both providers. Additional accounts, tool approvals, long-running collaboration and official-page quota comparisons still require live acceptance; existing-session import is not implemented. The installer does not register a background service, login item, or global MCP configuration, and does not alter provider logins.
+
+
+## 0.3 verification
+
+Automated coverage includes independent agent execution, project-memory isolation, overlapping directories, legacy database migration, model/effort forwarding, usage events, repeated message blocks, live/history deduplication, archived copies, append/truncation, and idle versus unknown TPS. Native quota checks cover source timestamps, unknown resets, invalid percentages and ambiguous organizations.
+
+Local smoke tests ran two consecutive turns each with Codex and Claude, verified the same native session retained a test marker, and received usage events. Native model discovery and Claude Desktop snapshot reads passed. Automated tests use offline fixtures; live checks are separate from CI and do not establish compatibility across all models, accounts or releases.
 
 ---
 

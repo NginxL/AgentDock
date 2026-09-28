@@ -7,14 +7,17 @@ export interface Project {
 }
 export interface Agent {
   id: string;
-  project_id: string;
+  project_id: string | null;
   name: string;
   provider: Provider;
   role: string;
+  workspace?: string;
+  model?: string | null;
+  effort?: string | null;
 }
 export interface Session {
   id: string;
-  project_id: string;
+  project_id: string | null;
   agent_id: string;
   title: string;
   native_session_id?: string | null;
@@ -42,7 +45,7 @@ export interface Run {
   id: string;
   session_id: string;
   agent_id: string;
-  project_id: string;
+  project_id: string | null;
   prompt: string;
   status: string;
   error?: string | null;
@@ -81,7 +84,7 @@ export interface Proposal {
 export interface AgentEvent {
   seq: number;
   id: string;
-  project_id: string;
+  project_id: string | null;
   session_id: string;
   kind: string;
   payload: unknown;
@@ -94,7 +97,7 @@ export interface ApprovalOption {
 }
 export interface Approval {
   id: string;
-  project_id: string;
+  project_id: string | null;
   session_id: string;
   run_id: string;
   request: unknown;

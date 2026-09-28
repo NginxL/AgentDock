@@ -291,6 +291,6 @@ export function demoState(lang: Language): DockState {
         currency: "USD",
       },
     ],
-    runtime: { enabled: false, version: "0.2.0" },
+    runtime: { enabled: false, version: "0.3.0" },
   };
 }

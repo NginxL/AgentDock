@@ -36,6 +36,17 @@ class NativeProvidersTest(unittest.TestCase):
             self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
             approve or permission, timeout=timeout)
 
+    def test_model_effort_and_real_usage_event_are_forwarded(self):
+        execute("codex", [sys.executable, FAKE, "codex", "usage"], str(self.cwd), "hello", None,
+            {"command": sys.executable, "args": [], "env": {"AGENTDOCK_CAPABILITY":"private-token"}},
+            self.stop, lambda k,p:self.events.append((k,p)), self.bound.append, lambda *a:None,
+            model="fixture-model", effort="high")
+        usage = next(p for k,p in self.events if k == "token_usage")
+        self.assertEqual(usage["usage"]["total_tokens"], 15)
+        self.assertEqual(usage["output_delta"], 5)
+        self.assertEqual(usage["native_id"], self.bound[0])
+        self.assertNotIn("private-token", json.dumps(usage))
+
     def contract(self):
         return [json.loads(line) for line in (self.cwd / "fake-contract.jsonl").read_text().splitlines()]
 

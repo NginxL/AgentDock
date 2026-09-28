@@ -93,6 +93,11 @@ if provider == "codex":
         if scenario == "duplicate_permission":
             send({"id": "permission-1", "method": method, "params": params})
             hang()
+    if scenario == "usage":
+        assert request["params"]["model"] == "fixture-model"
+        assert request["params"]["effort"] == "high"
+        usage = {"inputTokens": 10, "outputTokens": 5, "cachedInputTokens": 4}
+        send({"method": "thread/tokenUsage/updated", "params": {"threadId": native_id, "turnId": "turn-1", "tokenUsage": {"total": usage, "last": usage}}})
     params = {"threadId": "wrong-thread" if scenario == "wrong_session" else native_id,
               "turnId": "wrong-turn" if scenario == "wrong_turn" else "turn-1", "itemId": "answer-1", "delta": "hello "}
     send({"method": "item/agentMessage/delta", "params": params})

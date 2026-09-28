@@ -17,6 +17,7 @@ import threading
 import time
 import uuid
 
+from .metrics import normalize
 from .processes import stop_group as _stop_group
 
 
@@ -225,6 +226,8 @@ class _Codex:
         self.finished = None
         self.final_messages = {}
         self.deltas = {}
+        self.usage_output = None
+        self.usage_at = None
 
     def request(self, method, params):
         self.request_id += 1
@@ -297,6 +300,15 @@ class _Codex:
                     self.cb.text(text)
             elif item.get("type") not in ("agentMessage", "reasoning", "userMessage"):
                 self.cb.emit("tool_call" if method == "item/started" else "tool_result", {"provider": "codex", "item": item})
+        elif method == "thread/tokenUsage/updated":
+            info = params.get("tokenUsage", {})
+            usage = normalize("codex", info.get("total")) if isinstance(info, dict) else None
+            if usage and self.thread_id:
+                at = time.time()
+                delta = usage["output_tokens"] - self.usage_output if self.usage_output is not None else (normalize("codex", info.get("last")) or {}).get("output_tokens")
+                self.cb.emit("token_usage", {"native_id": self.thread_id, "record_id": "total", "usage": usage,
+                    "at": at, "started_at": self.usage_at, "output_delta": delta})
+                self.usage_output, self.usage_at = usage["output_tokens"], at
         elif method == "turn/completed":
             turn = params.get("turn")
             if not isinstance(turn, dict) or not _identifier(turn.get("id")):
@@ -307,13 +319,14 @@ class _Codex:
         elif method == "error" and not params.get("willRetry", False):
             raise ProviderError("Codex reported a run failure; private error details were omitted.")
 
-    def run(self, cwd, prompt, native_session_id, mcp, env):
-        self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.2.0"},
+    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None):
+        self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
                                     "capabilities": {"experimentalApi": False}})
         self.pipe.send({"method": "initialized", "params": {}})
         params = {"cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "workspace-write",
                   "approvalsReviewer": "user", "config": {
                       "mcp_servers": {"agentdock": {**mcp, "env_vars": list(env), "required": True}}}}
+        if model: params["model"] = model
         if native_session_id:
             params["threadId"] = native_session_id
             # Restore state without returning potentially unbounded turn history.
@@ -326,9 +339,10 @@ class _Codex:
         if native_session_id and self.thread_id != native_session_id:
             raise ProviderError("Codex resumed a different native session.")
         self.cb.bind_session(self.thread_id)
+        self.usage_at = time.time()
         response = self.request("turn/start", {"threadId": self.thread_id,
             "input": [{"type": "text", "text": prompt}], "approvalPolicy": "untrusted",
-            "approvalsReviewer": "user"})
+            "approvalsReviewer": "user", "model": model, "effort": effort})
         turn = response.get("turn")
         if not isinstance(turn, dict) or not _identifier(turn.get("id")):
             raise ProviderError("Codex did not return a valid turn.")
@@ -361,6 +375,22 @@ class _Claude:
         self.saw_delta = False
         self.message_id = None
         self.messages = []
+        self.usage_messages = {}
+        self.usage_id = None
+        self.turn_started = time.time()
+
+    def usage(self, message):
+        identifier = message.get("id")
+        raw = message.get("usage")
+        if not _identifier(identifier) or not isinstance(raw, dict): return
+        at = time.time()
+        previous = self.usage_messages.get(identifier, {"raw": {}, "at": self.turn_started, "out": 0})
+        raw = {**previous["raw"], **raw}
+        usage = normalize("claude", raw)
+        if usage:
+            self.cb.emit("token_usage", {"native_id": self.native_id, "record_id": identifier, "usage": usage,
+                "at": at, "started_at": previous["at"], "output_delta": max(0, usage["output_tokens"]-previous["out"])})
+        self.usage_messages[identifier] = {"raw": raw, "at": at, "out": usage["output_tokens"] if usage else previous["out"]}
 
     def handle_permission(self, message):
         identifier, request = message.get("request_id"), message.get("request")
@@ -418,6 +448,13 @@ class _Claude:
                     raise ProviderError("Claude returned an invalid stream event.")
                 if event.get("type") == "message_start":
                     self.saw_delta = False
+                    body = event.get("message", {})
+                    self.usage_id = body.get("id")
+                    if _identifier(self.usage_id):
+                        self.usage_messages[self.usage_id] = {"raw": {}, "at": time.time(), "out": 0}
+                        self.usage(body)
+                if event.get("type") == "message_delta":
+                    self.usage({"id": self.usage_id, "usage": event.get("usage")})
                 if event.get("type") == "content_block_delta":
                     delta = event.get("delta", {})
                     if isinstance(delta, dict) and delta.get("type") == "text_delta":
@@ -427,6 +464,7 @@ class _Claude:
                 if kind == "assistant" and message.get("error"):
                     raise ProviderError("Claude reported a provider error; private error details were omitted.")
                 body = message.get("message", {})
+                if kind == "assistant" and not message.get("parent_tool_use_id") and isinstance(body, dict): self.usage(body)
                 content = body.get("content", []) if isinstance(body, dict) else []
                 if not isinstance(content, list):
                     raise ProviderError("Claude returned invalid message content.")
@@ -463,7 +501,7 @@ class _Claude:
 
 
 def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
-            emit, bind_session, approve, timeout=900):
+            emit, bind_session, approve, timeout=900, model=None, effort=None):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -504,6 +542,8 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
                  "--include-partial-messages", "--permission-prompt-tool", "stdio",
                  "--permission-mode", "manual", "--strict-mcp-config",
                  "--mcp-config", json.dumps({"mcpServers": {"agentdock": {"type": "stdio", **mcp}}})]
+        if model: argv += ["--model", model]
+        if effort: argv += ["--effort", effort]
         argv += ["--resume=" + native_id] if native_session_id else ["--session-id", native_id]
     pipe = adapter = None
     try:
@@ -511,7 +551,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
-            return adapter.run(cwd, prompt, native_session_id, mcp, additions)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort)
         adapter = _Claude(pipe, callbacks, native_id)
         return adapter.run(prompt)
     except (ProviderCancelled, ProviderError):

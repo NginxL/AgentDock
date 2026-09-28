@@ -143,19 +143,17 @@ describe("desktop connection and built-in usage", () => {
     ).toBe(true);
   });
 
-  it("only requests Claude Keychain access after the explicit connection action", async () => {
+  it("never exposes Keychain authorization and labels the local source time", async () => {
     fetchMock.mockImplementation(async () =>
       response({
         ...state,
-        runtime: { ...state.runtime, enabled: true },
         quotas: [
           {
             provider: "claude",
-            source: "AgentDock",
+            source: "claude-desktop-snapshot",
             windows: [],
-            status: "unavailable",
-            error: "safe fallback",
-            error_code: "authorization_required",
+            status: "stale",
+            fetched_at: "2026-01-01T00:00:00Z",
           },
         ],
       }),
@@ -163,33 +161,11 @@ describe("desktop connection and built-in usage", () => {
     render(<App />);
     await connect();
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(
-      screen.getByText("请点击“连接 Claude”，授权读取已有的钥匙串凭据。"),
-    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /连接 Claude/ })).toBeNull();
+    expect(screen.getByText(/Claude 本地快照/)).toBeTruthy();
     expect(
       fetchMock.mock.calls.every(([path]) => path !== "/api/quotas/authorize"),
     ).toBe(true);
-    await waitFor(() =>
-      expect(
-        (
-          screen.getByRole("button", {
-            name: "连接 Claude",
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "连接 Claude" }));
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([path]) => path === "/api/quotas/authorize"),
-      ).toBe(true),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-    expect(
-      screen.getByText(
-        "Choose Connect Claude to approve access to the existing Keychain credential.",
-      ),
-    ).toBeTruthy();
   });
 });
 async function connect() {
@@ -198,6 +174,10 @@ async function connect() {
   });
   fireEvent.click(screen.getByRole("button", { name: "进入工作台" }));
   await screen.findByRole("heading", { name: "协作工作台" });
+  if (screen.queryByRole("option", { name: "Demo project" }))
+    fireEvent.change(screen.getByLabelText("当前项目"), {
+      target: { value: "project-a" },
+    });
 }
 
 function deferred<T>() {
@@ -245,6 +225,9 @@ describe("user-defined agent roles", () => {
       )!;
       expect(JSON.parse(call[1].body)).toEqual({
         project_id: "project-a",
+        workspace: null,
+        model: null,
+        effort: null,
         name: "My helper",
         provider,
         role: "",
@@ -274,9 +257,7 @@ describe("user-defined agent roles", () => {
     );
     render(<App />);
     await connect();
-    fireEvent.click(
-      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
       true,
     );
@@ -289,10 +270,10 @@ describe("user-defined agent roles", () => {
     fireEvent.change(screen.getByLabelText("角色说明（可选）"), {
       target: { value: "" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
-    await screen.findByRole("button", { name: "编辑 Custom helper 的角色" });
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
+    await screen.findByRole("button", { name: "设置 Custom helper" });
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "保存角色" })).toBeNull(),
+      expect(screen.queryByRole("button", { name: "保存设置" })).toBeNull(),
     );
     expect(screen.getByText("未设置角色 · 按任务要求执行")).toBeTruthy();
     expect(screen.getByText("existing-native-session")).toBeTruthy();
@@ -302,11 +283,11 @@ describe("user-defined agent roles", () => {
     expect(JSON.parse(call[1].body)).toEqual({
       name: "Custom helper",
       role: "",
+      model: null,
+      effort: null,
     });
     expect(current.agents[0].provider).toBe("codex");
-    fireEvent.click(
-      screen.getByRole("button", { name: "编辑 Custom helper 的角色" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置 Custom helper" }));
     expect(
       (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
     ).toBe("");
@@ -320,13 +301,11 @@ describe("user-defined agent roles", () => {
     });
     render(<App />);
     await connect();
-    fireEvent.click(
-      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     fireEvent.change(screen.getByLabelText("角色说明（可选）"), {
       target: { value: "My unsaved role" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存角色" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存设置" }));
     await screen.findByText("Temporary save failure");
     expect(
       (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
@@ -349,9 +328,7 @@ describe("user-defined agent roles", () => {
   it("translates role controls without changing user content", async () => {
     render(<App />);
     await connect();
-    fireEvent.click(
-      screen.getByRole("button", { name: "编辑 Review agent 的角色" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     expect(
       screen.getByRole("heading", { name: "Edit agent · Review agent" }),
@@ -359,7 +336,7 @@ describe("user-defined agent roles", () => {
     expect(
       (screen.getByLabelText("Role (optional)") as HTMLTextAreaElement).value,
     ).toBe("Review changes");
-    expect(screen.getByRole("button", { name: "Save role" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Save settings" })).toBeTruthy();
     expect(screen.queryByText("角色说明（可选）")).toBeNull();
   });
 
@@ -375,11 +352,9 @@ describe("user-defined agent roles", () => {
     window.history.replaceState({}, "", "/?demo=1");
     render(<App />);
     await screen.findByRole("heading", { name: "协作工作台" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "编辑 Agent A 的角色" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "设置 Agent A" }));
     expect(
-      (screen.getByRole("button", { name: "保存角色" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "保存设置" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -622,6 +597,13 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
+    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
+      fireEvent.change(screen.getByLabelText("当前项目"), {
+        target: {
+          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
+            .options[1]?.value,
+        },
+      });
     fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     fireEvent.change(screen.getByLabelText("内容"), {
@@ -710,6 +692,13 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
+    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
+      fireEvent.change(screen.getByLabelText("当前项目"), {
+        target: {
+          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
+            .options[1]?.value,
+        },
+      });
     fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
     expect(screen.getByText(hostile)).toBeTruthy();
     expect(document.querySelector("img")).toBeNull();
@@ -738,6 +727,13 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
+    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
+      fireEvent.change(screen.getByLabelText("当前项目"), {
+        target: {
+          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
+            .options[1]?.value,
+        },
+      });
     fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
     expect(
       (screen.getByRole("button", { name: "批准写入" }) as HTMLButtonElement)
@@ -1122,12 +1118,25 @@ describe("offline demonstration", () => {
       (screen.getByRole("button", { name: "运行任务" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    fireEvent.change(screen.getByLabelText("当前项目"), {
+      target: {
+        value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
+          .options[1].value,
+      },
+    });
     fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
     expect(screen.getByText(/目标会话: 审阅搜索变更/)).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "派发任务" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
+      fireEvent.change(screen.getByLabelText("当前项目"), {
+        target: {
+          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
+            .options[1]?.value,
+        },
+      });
     fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
     expect(
       (screen.getByRole("button", { name: "批准写入" }) as HTMLButtonElement)
@@ -1177,5 +1186,75 @@ describe("streamed conversation rendering", () => {
       "Second run",
       "Hello world!",
     ]);
+  });
+});
+
+describe("independent agents and usage", () => {
+  it("creates an agent with native model settings without a project", async () => {
+    const empty = {
+      ...state,
+      projects: [],
+      agents: [],
+      sessions: [],
+      runtime: { enabled: true, version: "0.3.0" },
+    };
+    fetchMock.mockImplementation(async (path: string) =>
+      response(
+        path.startsWith("/api/models/")
+          ? {
+              models: [
+                {
+                  id: "fixture-model",
+                  name: "Fixture",
+                  efforts: ["low", "high"],
+                },
+              ],
+            }
+          : path === "/api/agents"
+            ? { id: "new-agent" }
+            : empty,
+      ),
+    );
+    render(<App />);
+    await connect();
+    expect(screen.queryByRole("button", { name: "创建第一个项目" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "Personal assistant" },
+    });
+    await screen.findByRole("option", { name: "fixture-model" });
+    fireEvent.change(screen.getByLabelText("模型"), {
+      target: { value: "fixture-model" },
+    });
+    fireEvent.change(screen.getByLabelText("思考强度"), {
+      target: { value: "high" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([p]) => p === "/api/agents")).toBe(
+        true,
+      ),
+    );
+    const call = fetchMock.mock.calls.find(([p]) => p === "/api/agents")!;
+    expect(JSON.parse(call[1].body)).toMatchObject({
+      project_id: null,
+      workspace: null,
+      model: "fixture-model",
+      effort: "high",
+      provider: "codex",
+    });
+  });
+  it("opens bilingual token statistics without a project or network in demo", async () => {
+    window.history.replaceState({}, "", "/?demo=1");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Token 统计" }));
+    expect(screen.getByRole("heading", { name: "Token 统计" })).toBeTruthy();
+    expect(screen.getByText("958,000")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(
+      screen.getByRole("heading", { name: "Token statistics" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("累计 Token")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
