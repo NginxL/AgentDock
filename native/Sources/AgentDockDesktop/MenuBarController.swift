@@ -13,7 +13,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let openItem = NSMenuItem()
-    private let refreshItem = NSMenuItem()
     private let quitItem = NSMenuItem()
     private let stateItem = NSMenuItem()
     private var providerItems: [String: (header: NSMenuItem, lines: [NSMenuItem])] = [:]
@@ -22,7 +21,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private var token: String?
     private var task: Task<Void, Never>?
     private var generation = 0
-    private var refreshing = false
     private var connectionFailed = false
     private var snapshots: [MenuQuota] = []
     private let session: URLSession
@@ -64,7 +62,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             menu.addItem(.separator())
         }
         stateItem.isEnabled = false; menu.addItem(stateItem)
-        configure(refreshItem, action: #selector(refreshUsage)); menu.addItem(refreshItem)
         menu.addItem(.separator())
         configure(quitItem, action: #selector(quit)); menu.addItem(quitItem)
         render()
@@ -76,27 +73,25 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     func connect(token: String) {
         generation += 1; task?.cancel(); task = nil
-        self.token = token; refreshing = false; connectionFailed = false
-        render(); fetch(refreshProviders: false)
+        self.token = token; connectionFailed = false
+        render(); fetch()
     }
 
     func disconnect() {
         generation += 1; task?.cancel(); task = nil
-        token = nil; refreshing = false; connectionFailed = true
+        token = nil; connectionFailed = true
         render()
     }
 
-    func menuWillOpen(_ menu: NSMenu) { render(); fetch(refreshProviders: false) }
+    func menuWillOpen(_ menu: NSMenu) { render(); fetch() }
 
     func showMenu() { statusItem.button?.performClick(nil) }
 
     private func render() {
         let t = language.text
         openItem.title = t("打开工作台", "Open workbench")
-        refreshItem.title = refreshing ? t("正在读取额度…", "Fetching usage…") : t("读取最新额度", "Fetch latest usage")
-        refreshItem.isEnabled = token != nil && !refreshing
         quitItem.title = t("退出 AgentDock", "Quit AgentDock")
-        stateItem.title = connectionFailed ? t("本地服务不可用 · 请重新打开应用", "Local service unavailable · reopen the app") : token == nil ? t("正在启动本地服务…", "Starting local service…") : t("菜单展示缓存，点击刷新读取最新额度", "Cached usage · refresh to fetch current limits")
+        stateItem.title = connectionFailed ? t("本地服务不可用 · 请重新打开应用", "Local service unavailable · reopen the app") : token == nil ? t("正在启动本地服务…", "Starting local service…") : t("每 10 分钟自动更新", "Updates automatically every 10 minutes")
         for provider in ["codex", "claude"] {
             guard let items = providerItems[provider] else { continue }
             let snapshot = snapshots.first { $0.provider == provider }
@@ -110,25 +105,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func fetch(refreshProviders: Bool) {
-        guard let token else { return }
-        if task != nil {
-            guard refreshProviders, !refreshing else { return }
-            generation += 1; task?.cancel(); task = nil
-        }
+    private func fetch() {
+        guard let token, task == nil else { return }
         let started = generation
-        refreshing = refreshProviders; render()
         task = Task { [weak self] in
             guard let self else { return }
             defer {
-                if generation == started { task = nil; refreshing = false; render() }
+                if generation == started { task = nil; render() }
             }
             do {
-                if refreshProviders {
-                    for provider in ["codex", "claude"] {
-                        _ = try await request("api/quotas/refresh", token: token, provider: provider)
-                    }
-                }
                 let data = try await request("api/quotas", token: token)
                 let response = try JSONDecoder().decode(MenuQuotaResponse.self, from: data)
                 guard generation == started, !Task.isCancelled else { return }
@@ -141,20 +126,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func request(_ path: String, token: String, provider: String? = nil) async throws -> Data {
-        var request = URLRequest(url: origin.appendingPathComponent(path), timeoutInterval: provider == nil ? 5 : 45)
+    private func request(_ path: String, token: String) async throws -> Data {
+        var request = URLRequest(url: origin.appendingPathComponent(path), timeoutInterval: 5)
         request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
-        if let provider {
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: ["provider": provider])
-        }
         let (data, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 1_048_576 else { throw URLError(.badServerResponse) }
         return data
     }
 
     @objc private func openWindow() { openWorkbench() }
-    @objc private func refreshUsage() { fetch(refreshProviders: true) }
     @objc private func quit() { NSApp.terminate(nil) }
 }

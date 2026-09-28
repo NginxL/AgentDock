@@ -188,7 +188,9 @@ def main(argv=None):
     print("AgentDock: http://127.0.0.1:"+str(args.port))
     print("Local access token file: "+str(token_path))
     print("Execution: "+("native sessions and automatic task dispatch enabled" if args.enable_execution else "disabled (review mode)"))
-    try: server.serve_forever(poll_interval=0.3)
+    try:
+        quota.start_auto_refresh()
+        server.serve_forever(poll_interval=0.3)
     finally: runtime.close(); quota.close(); server.server_close(); store.close()
 
 if __name__=="__main__": main()

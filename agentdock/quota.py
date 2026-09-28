@@ -49,6 +49,7 @@ class QuotaService:
     TIMEOUT = 35
     MAX_OUTPUT = 1048576
     MAX_AGE = 900
+    AUTO_REFRESH_INTERVAL = 600
 
     def __init__(self, store, command: list[str] | None, execution_enabled: bool, source="AgentDock"):
         self.store, self.command = store, list(command) if command else None
@@ -60,6 +61,35 @@ class QuotaService:
         self._closed = False
         self._inflight = 0
         self._processes = set()
+        self._auto_stop = threading.Event()
+        self._auto_thread = None
+
+    def start_auto_refresh(self) -> None:
+        """One service-owned timer, independent of visible windows or browser tabs."""
+        with self._lifecycle:
+            self._ensure_open()
+            if not self.execution_enabled or not self.command or self._auto_thread is not None:
+                return
+            self._auto_thread = threading.Thread(target=self._auto_refresh, name="quota-refresh", daemon=True)
+            self._auto_thread.start()
+
+    def _auto_refresh(self):
+        deadline = time.monotonic() + self.AUTO_REFRESH_INTERVAL
+        while not self._auto_stop.wait(max(0, deadline - time.monotonic())):
+            for provider in ("codex", "claude"):
+                if self._auto_stop.is_set():
+                    return
+                try:
+                    self.refresh(provider)  # Non-interactive; never request Keychain authorization.
+                except Forbidden:
+                    return
+                except Exception:
+                    # Isolate provider failures; retry at the next tick without logging credentials.
+                    continue
+            now = time.monotonic()
+            deadline += self.AUTO_REFRESH_INTERVAL
+            if deadline <= now:
+                deadline = now + self.AUTO_REFRESH_INTERVAL  # No catch-up burst after suspension.
 
     def refresh(self, provider: str, authorize=False) -> dict:
         if provider not in ("codex", "claude"):
@@ -80,12 +110,15 @@ class QuotaService:
         """Stop owned probes and drain refresh callers before their Store is closed."""
         with self._lifecycle:
             self._closed = True
+            self._auto_stop.set()
             processes = list(self._processes)
         for process in processes:
             _kill_group(process)
         with self._lifecycle:
             while self._inflight:
                 self._lifecycle.wait(timeout=0.1)
+        if self._auto_thread is not None:
+            self._auto_thread.join()
 
     def _ensure_open(self):
         if self._closed:

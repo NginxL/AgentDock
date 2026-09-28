@@ -112,9 +112,7 @@ describe("desktop connection and built-in usage", () => {
     render(<App />);
     await connect();
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(
-      screen.getByText("额度缓存已过期，请点击“读取额度”更新。"),
-    ).toBeTruthy();
+    expect(screen.getByText("待更新")).toBeTruthy();
     expect(
       screen.queryByText(
         "Cached quota is outdated. Refresh to read current limits.",
@@ -122,11 +120,7 @@ describe("desktop connection and built-in usage", () => {
     ).toBeNull();
     expect(screen.getByText(/95%/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-    expect(
-      screen.getByText(
-        "Cached quota is outdated. Fetch usage to read current limits.",
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Update pending")).toBeTruthy();
   });
 
   it("connects from the native in-memory credential in StrictMode without persisting it", async () => {
@@ -175,9 +169,16 @@ describe("desktop connection and built-in usage", () => {
     expect(
       fetchMock.mock.calls.every(([path]) => path !== "/api/quotas/authorize"),
     ).toBe(true);
-    fireEvent.click(
-      screen.getByRole("button", { name: "连接 Claude（钥匙串授权）" }),
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "连接 Claude",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
     );
+    fireEvent.click(screen.getByRole("button", { name: "连接 Claude" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(([path]) => path === "/api/quotas/authorize"),
@@ -604,11 +605,8 @@ describe("connection boundaries", () => {
         .disabled,
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(
-      screen
-        .getAllByRole("button", { name: "读取额度" })
-        .every((button) => (button as HTMLButtonElement).disabled),
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: "读取额度" })).toBeNull();
+    expect(screen.getByText("执行未启用，自动刷新已暂停。")).toBeTruthy();
     expect(
       fetchMock.mock.calls.some(([path]) => /quotas|\/run$/.test(String(path))),
     ).toBe(false);
@@ -753,44 +751,139 @@ describe("reviewed memory and messages", () => {
 });
 
 describe("usage semantics and transport", () => {
-  it("labels cached quota as outdated and requires an explicit fetch", async () => {
-    fetchMock.mockImplementation(async (path: string) =>
-      response(
-        path.includes("/events?")
-          ? { events: [] }
-          : {
-              ...state,
-              runtime: { enabled: true, version: "0.1.0" },
-              quotas: [
-                {
-                  provider: "codex",
-                  status: "stale",
-                  source: "AgentMeter",
-                  windows: [{ label: "Weekly", remaining_percent: 42 }],
-                  fetched_at: "2026-01-01T00:00:00Z",
-                },
-              ],
+  it("refreshes both quotas on every usage navigation without exposing refresh or connection buttons", async () => {
+    fetchMock.mockImplementation(
+      async (path: string, options?: RequestInit) => {
+        if (path === "/api/quotas/refresh") {
+          const { provider } = JSON.parse(String(options?.body));
+          return response({
+            provider,
+            source: "AgentDock",
+            status: "available",
+            windows: [
+              {
+                label: "Weekly",
+                remaining_percent: provider === "codex" ? 42 : 71,
+              },
+            ],
+          });
+        }
+        return response({
+          ...state,
+          runtime: { ...state.runtime, enabled: true },
+        });
+      },
+    );
+    render(<App />);
+    await connect();
+    expect(
+      fetchMock.mock.calls.some(([path]) => path === "/api/quotas/refresh"),
+    ).toBe(false);
+    const openUsage = () =>
+      fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    const calls = () =>
+      fetchMock.mock.calls.filter(([path]) => path === "/api/quotas/refresh");
+    openUsage();
+    expect(await screen.findByText(/42%/)).toBeTruthy();
+    expect(await screen.findByText(/71%/)).toBeTruthy();
+    await screen.findByText("自动刷新已开启");
+    expect(
+      calls().map(([, options]) => JSON.parse(String(options.body)).provider),
+    ).toEqual(["codex", "claude"]);
+    expect(screen.queryByRole("button", { name: "读取额度" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /连接 Claude/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "刷新工作台状态" })).toBeNull();
+    openUsage();
+    await waitFor(() => expect(calls()).toHaveLength(4));
+    await screen.findByText("自动刷新已开启");
+    fireEvent.click(screen.getByRole("button", { name: "协作工作台" }));
+    openUsage();
+    await waitFor(() => expect(calls()).toHaveLength(6));
+    await screen.findByText("自动刷新已开启");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(screen.getByText("Automatic refresh is on")).toBeTruthy();
+    expect(calls()).toHaveLength(6);
+  });
+
+  it("coalesces repeated clicks, keeps unrelated controls enabled, and ignores late results after disconnect", async () => {
+    const pending: ((value: Response) => void)[] = [];
+    const signals: AbortSignal[] = [];
+    fetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/api/quotas/refresh") {
+        signals.push(options?.signal as AbortSignal);
+        return new Promise<Response>((resolve) => pending.push(resolve));
+      }
+      return Promise.resolve(
+        response({ ...state, runtime: { ...state.runtime, enabled: true } }),
+      );
+    });
+    render(<App />);
+    await connect();
+    for (let i = 0; i < 3; i++)
+      fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(pending).toHaveLength(2);
+    expect(screen.getByText("正在更新额度…")).toBeTruthy();
+    expect(
+      (screen.getAllByRole("button", { name: "编辑" })[0] as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "断开连接" }));
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    await act(async () => {
+      pending.forEach((resolve, i) =>
+        resolve(
+          response({
+            provider: i ? "claude" : "codex",
+            windows: [{ label: "Weekly", remaining_percent: 82 }],
+            status: "available",
+            source: "AgentDock",
+          }),
+        ),
+      );
+    });
+    expect(
+      screen.getByRole("heading", { name: "连接本地工作台" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/82%/)).toBeNull();
+  });
+
+  it("updates a successful provider even if the other request fails and preserves its previous data", async () => {
+    fetchMock.mockImplementation(
+      async (path: string, options?: RequestInit) => {
+        if (path === "/api/quotas/refresh") {
+          const { provider } = JSON.parse(String(options?.body));
+          if (provider === "codex") throw new Error("offline");
+          return response({
+            provider,
+            source: "AgentDock",
+            status: "available",
+            windows: [{ label: "Weekly", remaining_percent: 55 }],
+          });
+        }
+        return response({
+          ...state,
+          runtime: { ...state.runtime, enabled: true },
+          quotas: [
+            {
+              provider: "codex",
+              source: "AgentDock",
+              status: "stale",
+              windows: [{ label: "Weekly", remaining_percent: 42 }],
             },
-      ),
+          ],
+        });
+      },
     );
     render(<App />);
     await connect();
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(screen.getByText("缓存已过期")).toBeTruthy();
+    expect(await screen.findByText(/55%/)).toBeTruthy();
+    expect(screen.getByText(/42%/)).toBeTruthy();
     expect(
-      fetchMock.mock.calls.some(([path]) => path === "/api/quotas/refresh"),
-    ).toBe(false);
-    fireEvent.click(screen.getAllByRole("button", { name: "读取额度" })[0]);
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([path]) => path === "/api/quotas/refresh"),
-      ).toBe(true),
-    );
-    const call = fetchMock.mock.calls.find(
-      ([path]) => path === "/api/quotas/refresh",
-    ) as unknown as [string, RequestInit];
-    expect(JSON.parse(call[1].body as string)).toEqual({ provider: "codex" });
+      await screen.findByText("暂时无法更新，保留上次数据；系统会自动重试。"),
+    ).toBeTruthy();
   });
+
   it("distinguishes unknown quota from an actual zero remaining", () => {
     const { rerender } = render(
       <QuotaWindow
@@ -1041,11 +1134,8 @@ describe("offline demonstration", () => {
         .disabled,
     ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(
-      screen
-        .getAllByRole("button", { name: "读取额度" })
-        .every((b) => (b as HTMLButtonElement).disabled),
-    ).toBe(true);
+    expect(screen.queryByRole("button", { name: "读取额度" })).toBeNull();
+    expect(screen.getByText("演示数据，不会读取实际额度。")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     await screen.findAllByText("5-hour window");
     expect(document.documentElement.lang).toBe("en");

@@ -37,7 +37,7 @@ do {
     expect(expired.contains("额度 · 剩余未知"), "Passed reset time cannot keep an old remaining percentage")
     var old = values; old["fetched_at"] = "2026-09-28T03:00:00Z"
     let stale = try lines(old)
-    expect(stale.contains("缓存已过期 · 请刷新"), "Menu warns when cached data ages while the window is hidden")
+    expect(stale.contains("待自动更新 · 显示上次数据"), "Menu marks stale data without requesting a manual refresh")
     expect(stale.contains("5 小时 · 剩余 25.5%"), "Stale unexpired windows preserve last-known quota")
     let scoped = try lines(["windows": [["label": "Sonnet · 7 天", "remaining_percent": 100]]], .en)
     expect(scoped.contains("Sonnet · 7 days · 100% left"), "Scoped model windows translate duration labels")

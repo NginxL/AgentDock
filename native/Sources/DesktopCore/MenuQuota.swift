@@ -28,7 +28,7 @@ public struct MenuQuota: Decodable {
         let fetched = Self.date(fetched_at)
         let stale = status == "stale" || fetched.map { now.timeIntervalSince($0) > 900 || $0.timeIntervalSince(now) > 60 } == true
         var result: [String] = []
-        if stale { result.append(t("缓存已过期 · 请刷新", "Outdated cache · refresh to update")) }
+        if stale { result.append(t("待自动更新 · 显示上次数据", "Update pending · showing previous data")) }
         if error_code == "authorization_required" {
             result.append(t("请在工作台连接 Claude", "Connect Claude in the workbench"))
         } else if let error_code, error_code != "outdated_cache" {

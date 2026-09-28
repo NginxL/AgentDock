@@ -5,7 +5,7 @@ import subprocess
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock, call
 
 from agentdock.quota import QuotaService
 from agentdock.store import Forbidden
@@ -143,6 +143,66 @@ class QuotaTests(unittest.TestCase):
             self.assertEqual(service.cached("codex")["status"], "stale")
             spawn.assert_not_called()
         self.assertEqual(original["status"], "available")
+
+    def test_auto_refresh_waits_ten_minutes_and_is_single_instance(self):
+        service = QuotaService(self.store, ["fixture"], True)
+        with patch.object(service, "_probe") as probe:
+            service.start_auto_refresh()
+            worker = service._auto_thread
+            service.start_auto_refresh()
+            self.assertIs(service._auto_thread, worker)
+            self.assertEqual(service.AUTO_REFRESH_INTERVAL, 600)
+            self.assertTrue(worker.is_alive())
+            probe.assert_not_called()
+            service.close()
+            self.assertFalse(worker.is_alive())
+            probe.assert_not_called()
+        with self.assertRaises(Forbidden):
+            service.start_auto_refresh()
+
+    def test_auto_refresh_disabled_without_execution_or_helper(self):
+        for enabled, command in ((False, ["fixture"]), (True, None)):
+            service = QuotaService(self.store, command, enabled)
+            service.start_auto_refresh()
+            self.assertIsNone(service._auto_thread)
+            service.close()
+
+    def test_timer_is_noninteractive_and_continues_after_provider_failure(self):
+        service = QuotaService(self.store, ["fixture"], True)
+        service._auto_stop = Mock()
+        service._auto_stop.wait.side_effect = [False, False, True]
+        service._auto_stop.is_set.return_value = False
+        with patch("agentdock.quota.time.monotonic", side_effect=[100, 100, 700, 700, 1300, 1300]), \
+                patch.object(service, "refresh", side_effect=[RuntimeError("offline"), {}, {}, {}]) as refresh:
+            service._auto_refresh()
+        self.assertEqual(service._auto_stop.wait.call_args_list, [call(600)] * 3)
+        self.assertEqual(refresh.call_args_list, [call("codex"), call("claude")] * 2)
+
+    def test_timer_skips_missed_intervals_after_suspension(self):
+        service = QuotaService(self.store, ["fixture"], True)
+        service._auto_stop = Mock()
+        service._auto_stop.wait.side_effect = [False, True]
+        service._auto_stop.is_set.return_value = False
+        with patch("agentdock.quota.time.monotonic", side_effect=[0, 2000, 2010, 2010]), \
+                patch.object(service, "refresh") as refresh:
+            service._auto_refresh()
+        self.assertEqual(service._auto_stop.wait.call_args_list, [call(0), call(600)])
+        self.assertEqual(refresh.call_count, 2)
+
+    def test_close_stops_automatic_probe_and_joins_timer(self):
+        service = QuotaService(self.store, [sys.executable, "-c", "import time; time.sleep(60)"], True)
+        service.AUTO_REFRESH_INTERVAL = 0.01
+        service.start_auto_refresh()
+        try:
+            self.wait_for(lambda: bool(service._processes))
+            process = next(iter(service._processes))
+            service.close()
+            self.assertFalse(service._auto_thread.is_alive())
+            self.assertIsNotNone(process.poll())
+            self.assertEqual(service._inflight, 0)
+            self.assertFalse(self.store.quotas)
+        finally:
+            service.close()
 
     def start_refresh(self, service):
         errors = []

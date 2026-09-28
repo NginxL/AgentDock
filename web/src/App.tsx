@@ -6,7 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import { ApiError, listOf, request } from "./api";
-import type { DockState, Language, Mutate, Translate } from "./types";
+import type { DockState, Language, Mutate, Quota, Translate } from "./types";
 import { Brand, Empty, Icon } from "./ui";
 import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
@@ -40,6 +40,7 @@ export default function App() {
   const tokenRef = useRef("");
   const mutationInFlight = useRef(false);
   const stateEpoch = useRef(0);
+  const quotaEpoch = useRef(0);
   const [entryToken, setEntryToken] = useState("");
   const [state, setState] = useState<DockState | null>(() =>
     demo ? demoState("zh") : null,
@@ -49,6 +50,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<Tab>("workspace");
+  const [usageVisit, setUsageVisit] = useState(0);
+  const [quotaRefreshing, setQuotaRefreshing] = useState(false);
+  const [quotaRefreshFailed, setQuotaRefreshFailed] = useState(false);
+  const quotaRequest = useRef<AbortController | null>(null);
   const [projectID, setProjectID] = useState("");
   const [projectForm, setProjectForm] = useState(false);
   const desktopToken = useRef(window.__AGENTDOCK_DESKTOP_TOKEN__ ?? "");
@@ -105,6 +110,7 @@ export default function App() {
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const currentToken = tokenRef.current;
     const currentEpoch = stateEpoch.current;
+    const currentQuotaEpoch = quotaEpoch.current;
     if (!currentToken) return false;
     const next = await request<DockState>(
       currentToken,
@@ -117,9 +123,80 @@ export default function App() {
       currentEpoch !== stateEpoch.current
     )
       return false;
-    setState(next);
+    setState((current) =>
+      currentQuotaEpoch === quotaEpoch.current
+        ? next
+        : { ...next, quotas: current?.quotas ?? next.quotas },
+    );
     return true;
   }, []);
+
+  const canRefreshQuota = !demo && !!token && !!state?.runtime.enabled;
+
+  useEffect(() => {
+    setQuotaRefreshing(false);
+    setQuotaRefreshFailed(false);
+    return () => {
+      quotaRequest.current?.abort();
+      quotaRequest.current = null;
+    };
+  }, [token, canRefreshQuota]);
+
+  const refreshQuotas = useCallback(async () => {
+    if (!canRefreshQuota || quotaRequest.current) return;
+    const credential = tokenRef.current;
+    const controller = new AbortController();
+    quotaRequest.current = controller;
+    setQuotaRefreshing(true);
+    setQuotaRefreshFailed(false);
+    quotaEpoch.current += 1;
+    try {
+      const results = await Promise.allSettled(
+        (["codex", "claude"] as const).map(async (provider) => {
+          const snapshot = await request<Quota>(
+            credential,
+            "/api/quotas/refresh",
+            { provider },
+            controller.signal,
+          );
+          if (
+            snapshot.provider !== provider ||
+            !Array.isArray(snapshot.windows)
+          )
+            throw new Error("Invalid quota snapshot");
+          if (controller.signal.aborted || tokenRef.current !== credential)
+            return;
+          // Preserve newer quota values without discarding unrelated workspace edits.
+          quotaEpoch.current += 1;
+          setState(
+            (current) =>
+              current && {
+                ...current,
+                quotas: [
+                  ...listOf(current.quotas).filter(
+                    (q) => q.provider !== provider,
+                  ),
+                  snapshot,
+                ],
+              },
+          );
+        }),
+      );
+      if (!controller.signal.aborted && tokenRef.current === credential)
+        setQuotaRefreshFailed(
+          results.some((result) => result.status === "rejected"),
+        );
+    } finally {
+      if (quotaRequest.current === controller) {
+        quotaRequest.current = null;
+        setQuotaRefreshing(false);
+      }
+    }
+  }, [canRefreshQuota, token]);
+
+  useEffect(() => {
+    if (tab === "usage") void refreshQuotas();
+  }, [tab, usageVisit, refreshQuotas]);
 
   useEffect(() => {
     if (!token) return;
@@ -249,8 +326,8 @@ export default function App() {
       await refresh();
       setNotice(
         t(
-          "工作台状态已刷新。额度需要在「额度与订阅」中手动读取。",
-          "Workspace refreshed. Fetch quotas separately in Usage & billing.",
+          "工作台状态已刷新。进入「额度与订阅」时会自动更新额度。",
+          "Workspace refreshed. Opening Usage & billing updates quotas automatically.",
         ),
       );
     } catch {
@@ -445,7 +522,10 @@ export default function App() {
             <button
               key={item.key}
               className={tab === item.key ? "nav-item selected" : "nav-item"}
-              onClick={() => setTab(item.key)}
+              onClick={() => {
+                setTab(item.key);
+                if (item.key === "usage") setUsageVisit((visit) => visit + 1);
+              }}
               aria-label={t(item.zh, item.en)}
               aria-current={tab === item.key ? "page" : undefined}
             >
@@ -489,15 +569,17 @@ export default function App() {
           </div>
           <div className="top-actions">
             {languageButton}
-            <button
-              className="icon-button"
-              title={t("刷新工作台状态", "Refresh workspace state")}
-              aria-label={t("刷新工作台状态", "Refresh workspace state")}
-              onClick={manualRefresh}
-              disabled={!!busy || demo}
-            >
-              <Icon name="refresh" />
-            </button>
+            {tab !== "usage" && (
+              <button
+                className="icon-button"
+                title={t("刷新工作台状态", "Refresh workspace state")}
+                aria-label={t("刷新工作台状态", "Refresh workspace state")}
+                onClick={manualRefresh}
+                disabled={!!busy || demo}
+              >
+                <Icon name="refresh" />
+              </button>
+            )}
           </div>
         </header>
         <main id="main-content" className="main-content">
@@ -625,6 +707,9 @@ export default function App() {
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
                   runtimeEnabled={state.runtime.enabled}
+                  refreshing={quotaRefreshing}
+                  refreshFailed={quotaRefreshFailed}
+                  demo={demo}
                   busy={!!busy || demo}
                   mutate={mutate}
                 />

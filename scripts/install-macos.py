@@ -72,7 +72,7 @@ def main():
             info = {
                 "CFBundleExecutable": "AgentDock", "CFBundleIdentifier": "io.github.nginxl.AgentDock",
                 "CFBundleName": "AgentDock", "CFBundleDisplayName": "AgentDock", "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.2.2", "CFBundleVersion": "4", "LSMinimumSystemVersion": "14.0",
+                "CFBundleShortVersionString": "0.2.3", "CFBundleVersion": "5", "LSMinimumSystemVersion": "14.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
                 "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
                 "NSHumanReadableCopyright": "Copyright © 2026 NginxL. MIT License.",
@@ -94,7 +94,7 @@ def main():
     finally:
         store.close()
     print("Installed:", destination)
-    print("Open AgentDock from Applications. Quota reads and agent tasks run only when requested.")
+    print("Open AgentDock from Applications. Usage refreshes automatically every 10 minutes; agent tasks run only when requested.")
 
 
 if __name__ == "__main__": main()

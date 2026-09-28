@@ -43,9 +43,9 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
-| Usage & subscriptions | Built-in usage reader for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
+| Usage & subscriptions | Automatic usage updates for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
-| macOS menu bar | A persistent entry for opening the workbench, viewing Codex/Claude remaining quotas and reset times, fetching usage, and quitting. Language follows the workbench. |
+| macOS menu bar | A persistent entry for opening the workbench, viewing Codex/Claude remaining quotas and reset times, and quitting. Language follows the workbench. |
 
 ## macOS application
 
@@ -57,9 +57,9 @@ python3 scripts/install-macos.py
 
 The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. Its stacked-layers icon in the menu bar opens usage summaries and the workbench. Closing the main window hides it while the app and active tasks keep running. Choose **Quit AgentDock** or press `⌘Q` to stop the local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
 
-The app enables execution, but agents run only after a task is submitted. The menu displays cached quotas and their freshness; opening it does not query providers. Choose **Fetch latest usage** to refresh Codex/Claude. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
+The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes Codex/Claude automatically. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
 
-If Claude requires Keychain access, choose **Connect Claude** and approve the macOS prompt yourself. Ordinary refreshes never open a Keychain permission dialog.
+The **Connect Claude** action appears only when Keychain authorization is required. Choose it and approve the macOS prompt yourself. Ordinary refreshes never open a Keychain permission dialog.
 
 To migrate AgentMeter billing records, run `python3 scripts/install-macos.py --import-agentmeter`. Migration backs up the original preferences, preserves existing AgentDock records, and does not change provider logins or remove the old app.
 
@@ -88,7 +88,7 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 Select a trusted project directory and choose **Add agent** to select a provider, name the agent, and optionally describe its role. Leave the role blank to follow each task. To change an existing agent, select its card and choose **Edit role**. Changes apply to future turns without interrupting active tasks or clearing native conversation history. Create a new session when you need a fresh context.
 
-Teammate dispatches and result-return turns execute automatically while execution is enabled. Quota refresh remains an explicit action.
+Teammate dispatches and result-return turns execute automatically while execution is enabled. When a usage helper is configured, quotas refresh every 10 minutes and whenever you select **Usage & billing**. The first scheduled refresh occurs 10 minutes after service startup.
 
 ## Configuration
 

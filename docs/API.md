@@ -43,7 +43,7 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal's expected version and the current memory version. |
 | `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
 | `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
-| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Explicit Built-in usage helper; requires execution enabled. |
+| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Invoked when selecting Usage & billing; requires execution enabled. Shares the provider throttle with the service-owned timer. |
 | `POST /api/quotas/authorize` | `provider: "claude"`. Administrator-only; requires execution and the built-in helper. Allows a Keychain access prompt with a 180-second deadline. Ordinary refresh never prompts. |
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
@@ -110,7 +110,7 @@ Each native process executes one foreground turn and exits afterward. Claude's c
 | Collaboration | Root depth is 0; delegation depth is at most 3. Each root task admits at most 16 runs, including the root, delegated tasks, and result continuations. New delegations reserve capacity for their replies and may therefore be rejected before 16 runs exist. |
 | Timeouts | The service uses a 15-minute run deadline and a 2-minute approval deadline. Expiry stops the run without granting permission. |
 | Output | Native output is capped at 8 MiB, with a 512 KiB protocol-line limit. Runtime events and final text have additional bounds; stored final text is capped at 64,000 characters, and automatic result handoffs include at most 12,000 characters. |
-| Quotas | A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
+| Quotas | The service refreshes every 600 seconds when execution and a helper are enabled. Selecting Usage & billing also triggers refresh. A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
 
 SQLite migration is additive: projects, sessions, history, and memory remain available. Messages from the earlier mailbox model without an executable `run_id` become `legacy` audit records and are never dispatched. Native bindings are created on the first 0.2 execution; older adapter sessions are not imported.
 

@@ -42,7 +42,7 @@ Frontend checks use simulated DOM and HTTP responses. The production build valid
 | Resource bounds | Output limits, permission expiry, run deadlines while approval is blocked, cancellation, descendant-process cleanup, and MCP authority revocation. |
 | Dispatcher and MCP | Automatic delivery and return to the exact requesting session, final-result settlement after nested or multiple child tasks, queued-work admission, workspace exclusion, idempotency, failure propagation, cancellation, and reserved reply capacity. |
 | Storage and authorization | Project and sender isolation, user-defined role persistence and administrator-only edits, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
-| Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, explicit refresh, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
+| Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, page-entry refresh, repeated-click coalescing, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
 
 Reproduce the automated checks without starting a real agent:
 
@@ -59,7 +59,7 @@ swift run --package-path native MeterProviderChecks
 swift run --package-path native DesktopChecks
 ```
 
-[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads and language synchronization. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
+[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, conditional authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
 ## Code review map
 
