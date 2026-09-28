@@ -2,7 +2,6 @@ import { useState } from "react";
 import { remainingPercent } from "../api";
 import type {
   Agent,
-  Environment,
   Language,
   Mutate,
   Provider,
@@ -18,7 +17,6 @@ export default function Usage({
   quotas,
   subscriptions,
   agents,
-  environments = [],
   onAddAgent,
   refreshing,
   refreshFailed,
@@ -30,7 +28,6 @@ export default function Usage({
   quotas: Quota[];
   subscriptions: Subscription[];
   agents: Agent[];
-  environments?: Environment[];
   onAddAgent: () => void;
   refreshing: boolean;
   refreshFailed: boolean;
@@ -101,6 +98,14 @@ export default function Usage({
         ].map((agent) => {
           const provider = agent.provider;
           const environment = agent.environment_id ?? "local";
+          const agentNames = agents
+            .filter(
+              (a) =>
+                a.provider === provider &&
+                (a.environment_id ?? "local") === environment,
+            )
+            .map((a) => a.name)
+            .join(" · ");
           const quota = quotas.find(
             (q) =>
               q.provider === provider &&
@@ -121,17 +126,14 @@ export default function Usage({
               key={`${environment}:${provider}`}
             >
               <header>
-                <div className={`provider-symbol ${provider}`}>
-                  {provider === "codex" ? "C" : "✳"}
+                <div
+                  className="provider-symbol agent-symbol"
+                  aria-hidden="true"
+                >
+                  {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
                 </div>
                 <div>
-                  <h2>{provider === "codex" ? "Codex" : "Claude"}</h2>
-                  <span className="environment-name">
-                    {environment === "local"
-                      ? t("本机", "This Mac")
-                      : (environments.find((e) => e.id === environment)?.name ??
-                        t("远端", "Remote"))}
-                  </span>
+                  <h2>{agentNames}</h2>
                   <span>
                     {quota?.plan ||
                       billing?.plan ||
@@ -148,16 +150,6 @@ export default function Usage({
                         : t("未知 / 不可用", "Unknown / unavailable")}
                 </span>
               </header>
-              <p className="quota-agents">
-                {agents
-                  .filter(
-                    (a) =>
-                      a.provider === provider &&
-                      (a.environment_id ?? "local") === environment,
-                  )
-                  .map((a) => a.name)
-                  .join(" · ")}
-              </p>
               <div className="quota-windows">
                 {quota?.windows?.length ? (
                   quota.windows.map((window, index) => (
@@ -234,7 +226,14 @@ export default function Usage({
           <div className="panel-heading">
             <h2>
               {t("编辑订阅记录", "Edit billing record")} ·{" "}
-              {editing.provider === "codex" ? "Codex" : "Claude"}
+              {agents
+                .filter(
+                  (a) =>
+                    a.provider === editing.provider &&
+                    (a.environment_id ?? "local") === editing.environment,
+                )
+                .map((a) => a.name)
+                .join(" · ")}
             </h2>
             <button
               className="icon-button"
@@ -306,8 +305,8 @@ export default function Usage({
             </div>
             <p className="form-hint">
               {t(
-                "仅登记信息，不会购买、续费或更改任何订阅。实际计费由所选环境 CLI 使用的账户与服务方案决定。",
-                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows the account and plan used by the selected environment’s CLI.",
+                "仅登记信息，不会购买、续费或更改任何订阅。实际计费以服务商账户为准。",
+                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows your provider account.",
               )}
             </p>
             <button className="primary" disabled={busy}>

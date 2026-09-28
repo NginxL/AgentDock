@@ -7,7 +7,6 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import Environments from "./views/Environments";
 import Usage from "./views/Usage";
 import Workspace from "./views/Workspace";
 import type { DockState } from "./types";
@@ -39,26 +38,6 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-it("adds an SSH destination without connecting or executing a task until requested", async () => {
-  const mutate = vi.fn(async () => true);
-  render(<Environments state={state} t={t} busy={false} mutate={mutate} />);
-  fireEvent.click(screen.getByRole("button", { name: "添加 SSH 设备" }));
-  fireEvent.change(screen.getByLabelText("设备名称"), {
-    target: { value: "Build host" },
-  });
-  fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
-    target: { value: "builder@devbox" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "保存设备" }));
-  await waitFor(() =>
-    expect(mutate).toHaveBeenCalledWith(
-      "/api/environments",
-      { name: "Build host", ssh_host: "builder@devbox", python: "python3" },
-      expect.any(Function),
-    ),
-  );
-  expect(mutate).toHaveBeenCalledTimes(1);
-});
 it("keeps the same provider's local and remote quota cards separate", () => {
   const agents = [
     {
@@ -80,7 +59,6 @@ it("keeps the same provider's local and remote quota cards separate", () => {
   render(
     <Usage
       agents={agents}
-      environments={state.environments}
       t={t}
       lang="zh"
       quotas={[
@@ -111,7 +89,8 @@ it("keeps the same provider's local and remote quota cards separate", () => {
   expect(within(local).getByText("80%")).toBeTruthy();
   expect(within(local).queryByText("20%")).toBeNull();
   expect(within(remote).getByText("20%")).toBeTruthy();
-  expect(within(remote).getByText("Devbox")).toBeTruthy();
+  expect(screen.queryByText("Devbox")).toBeNull();
+  expect(screen.queryByText("本机")).toBeNull();
 });
 it("discovers models on the selected environment and binds a new independent agent to it", async () => {
   const calls = vi.fn(async () => ({

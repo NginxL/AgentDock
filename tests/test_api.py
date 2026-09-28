@@ -27,7 +27,7 @@ class APITests(unittest.TestCase):
         self.store.add_agent(None,'C','codex')
         self.quota.cached.return_value=snapshot
         status,result=self.call('GET','/api/quotas')
-        self.assertEqual((status,result),(200,{'quotas':[snapshot]}))
+        self.assertEqual((status,result),(200,{'quotas':[{**snapshot,'agent_names':['C']}]}))
         self.assertEqual([c.args for c in self.quota.cached.call_args_list],[('codex',)])
         self.quota.refresh.assert_not_called()
         self.assertEqual(self.runtime.mock_calls,[])
@@ -114,6 +114,25 @@ class APITests(unittest.TestCase):
         self.quota.refresh.return_value={'status':'unknown'}
         self.assertEqual(self.call('POST','/api/quotas/refresh',{'provider':'codex','environment_id':env['id']})[0],200)
         self.quota.refresh.assert_called_once_with('codex',environment_id=env['id'])
+
+    def test_equal_agent_names_keep_distinct_connections_and_sessions(self):
+        env=self.store.add_environment('Remote','test-host')
+        local=self.store.add_agent(None,'Helper','codex')
+        remote=self.store.add_agent(None,'Helper','codex',environment_id=env['id'])
+        self.assertNotEqual(local['id'],remote['id'])
+        a=self.store.add_session(local['id'],'Conversation')
+        b=self.store.add_session(remote['id'],'Conversation')
+        self.assertEqual((a['environment_id'],b['environment_id']),('local',env['id']))
+        self.assertEqual(self.store.connection_agent_names('codex','local'),['Helper'])
+        self.assertEqual(self.store.connection_agent_names('codex',env['id']),['Helper'])
+        self.quota.cached.return_value={'provider':'codex','status':'unknown','windows':[]}
+        values=self.call('GET','/api/quotas')[1]['quotas']
+        self.assertEqual(len(values),2)
+        self.assertTrue(all(q['agent_names']==['Helper'] for q in values))
+        self.store.update_agent(remote['id'],{'name':'Renamed'})
+        values=self.call('GET','/api/quotas')[1]['quotas']
+        self.assertEqual(next(q for q in values if q.get('environment_id')==env['id'])['agent_names'],['Renamed'])
+        self.assertEqual(next(q for q in values if not q.get('environment_id'))['agent_names'],['Helper'])
 
     def test_content_type_json_size_and_nan(self):
         self.assertEqual(self.call('POST','/api/projects',headers={**self.h,'Content-Type':'text/plain'})[0],400)

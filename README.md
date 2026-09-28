@@ -14,7 +14,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 ## Workspace
 
-![AgentDock English workspace with native sessions, task status, and usage](docs/images/workspace.en.png)
+![AgentDock English workspace with native sessions, task status, and usage](docs/images/workspace.en.jpg)
 
 *Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional. Agent A/B are example names with no preset roles; users define their names and responsibilities.*
 
@@ -23,7 +23,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 **Custom roles:** select an agent and choose **Agent settings** to change its name, describe its responsibilities, or clear the role. Provider selection is independent of the role.
 
-![Agent settings: name, role, model and effort](docs/images/roles.en.png)
+![Agent settings: name, role, model and effort](docs/images/roles.en.jpg)
 
 **Dispatch:** inspect the target conversation, execution result and return status.
 
@@ -31,7 +31,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 **Usage:** view quota windows for configured agents and reset times separately from subscription renewal records. These are fictional demo readings.
 
-![Codex and Claude usage and subscriptions](docs/images/usage.en.png)
+![Usage and subscriptions displayed by agent name](docs/images/usage.en.jpg)
 
 </details>
 
@@ -39,7 +39,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 | Capability | What it does |
 | --- | --- |
-| Local and SSH environments | Assign each agent a device, reuse its native CLI login, and keep sessions, models and quotas separated by environment. |
+| Local and SSH connections | Choose a local CLI, reuse an SSH connection or configure a new one while adding an agent. Everyday views use custom names; sessions and quotas remain scoped to their actual connection. |
 | Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the selected environment. |
 | TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
@@ -48,7 +48,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
 | Usage & subscriptions | Remaining quotas and reset times follow configured agents, with automatic updates and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
-| macOS menu bar | A persistent entry for opening the workbench, viewing Codex/Claude remaining quotas and reset times, and quitting. Language follows the workbench. |
+| macOS menu bar | A persistent entry for opening the workbench, viewing remaining quotas and reset times by agent name, and quitting. Language follows the workbench. |
 
 ## macOS application
 
@@ -89,7 +89,9 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Choose **Workspace → Add agent**. Use **Run on** to select This Mac or a saved SSH device, then choose a provider and name. Multiple agents can share a device connection; no project or duplicate connection setup is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
+Choose **Workspace → Add agent**, select a provider and enter a name. Under **Run on**, choose **Local CLI**, a saved SSH connection or **New SSH connection…**. Connection setup stays in this form, and no project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
+
+Agent lists, conversation headings and quota summaries use your custom names without automatic device or provider labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
 
 Create a conversation and send a message to your agent. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
@@ -114,11 +116,11 @@ Click an add, settings or edit button again to collapse its panel, or use × to 
 
 ## SSH environments
 
-![Devices and connections: configure SSH and add agents to a selected device, fictional demo data](docs/images/environments.en.jpg)
+![SSH connection setup inside Add agent, fictional demo data](docs/images/environments.en.jpg)
 
-Open **Devices & connections → Add SSH device**, enter a name and a system SSH Host alias or `user@host`, choose **Save device**, then **Connect / check**. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
+Open **Workspace → Add agent → Run on → New SSH connection…**, enter a system SSH Host alias or `user@host`, and choose **Connect and use**. **Advanced connection settings** lets you specify the remote Python command. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
 
-Choose **Add agent on this device** on a device card to open the creation form with that device selected. You can also select a saved device when adding an agent from Workspace. Device connections are configured separately from agent names, models, roles and permissions. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
+After connecting, choose the model, role and permissions, then select **Create agent**. Other agents can reuse the saved connection. **Agent settings** shows connection details and offers **Connect / check** after creation. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
 
 ## Tokens and throughput
 

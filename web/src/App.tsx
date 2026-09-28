@@ -21,16 +21,9 @@ import Messages from "./views/Messages";
 import Memories from "./views/Memories";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
-import Environments from "./views/Environments";
 import { useMetrics } from "./metrics";
 
-type Tab =
-  | "workspace"
-  | "messages"
-  | "memory"
-  | "usage"
-  | "tokens"
-  | "environments";
+type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
 
 declare global {
   interface Window {
@@ -533,12 +526,6 @@ export default function App() {
       en: "Shared memory",
       badge: proposals.length,
     },
-    {
-      key: "environments",
-      icon: "dock",
-      zh: "设备与连接",
-      en: "Devices & connections",
-    },
     { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
   ];
@@ -764,20 +751,6 @@ export default function App() {
                   mutate={mutate}
                 />
               )}
-              {tab === "environments" && (
-                <Environments
-                  state={state}
-                  t={t}
-                  busy={!!busy || demo}
-                  mutate={mutate}
-                  onAddAgent={(environmentID) => {
-                    setProjectID("");
-                    setProjectForm(false);
-                    setAgentEnvironment(environmentID);
-                    setTab("workspace");
-                  }}
-                />
-              )}
               {tab === "tokens" && (
                 <Tokens
                   metrics={metrics}
@@ -791,7 +764,6 @@ export default function App() {
                 <Usage
                   t={t}
                   lang={lang}
-                  environments={state.environments ?? []}
                   quotas={listOf(state.quotas)}
                   subscriptions={listOf(state.subscriptions)}
                   agents={state.agents}

@@ -64,6 +64,8 @@ swift run --package-path native DesktopChecks
 
 [CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, absence of Keychain authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
+The agent setup checks cover inline SSH registration and retry, connection reuse, deferred model discovery, preserved collapsed drafts, and equal agent names with separate session and quota bindings. Menu summaries use custom names and retain compatibility with older quota snapshots.
+
 ## Code review map
 
 SSH tests execute the actual bootstrap and detached runner under an isolated home directory with fake CLIs. They cover lost acknowledgments, event-read retries, permission responses, shared-memory calls, cancellation, expired leases, final-result persistence and environment isolation. A separate live Linux check exercised Codex 0.155.1 and Claude Code 2.1.277 model discovery, two-turn continuation and usage events. Existing Codex, Claude and SSH configuration files were compared against pre-test hashes. See [SSH verification scope](SSH.md#verification-scope).

@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
+import AgentConnection, {
+  NEW_SSH_CONNECTION,
+  type SSHConnectionDraft,
+} from "../AgentConnection";
 import { TPS, type Metrics } from "../metrics";
 import { listOf, remainingPercent, request } from "../api";
 import type {
@@ -70,13 +74,20 @@ export default function Workspace({
   const [environment, setEnvironment] = useState(
     initialEnvironment ?? project?.environment_id ?? "local",
   );
+  const [connectionDraft, setConnectionDraft] = useState<SSHConnectionDraft>({
+    host: "",
+    python: "python3",
+    previous: environment,
+  });
   useEffect(() => {
     if (initialEnvironment !== undefined) onInitialEnvironmentUsed?.();
   }, [initialEnvironment, onInitialEnvironmentUsed]);
-  const environmentName = (id?: string) =>
-    !id || id === "local"
-      ? t("本机", "This Mac")
-      : (state.environments?.find((e) => e.id === id)?.name ?? id);
+  const selectedConnection = state.environments?.find(
+    (e) => e.id === environment,
+  );
+  const connectionReady =
+    environment === "local" || selectedConnection?.status === "connected";
+  const connectionVersion = selectedConnection?.updated_at;
   const [role, setRole] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [agentProject, setAgentProject] = useState(project?.id ?? "");
@@ -92,6 +103,8 @@ export default function Workspace({
     if (!agentForm) return;
     setModels([]);
     setCatalogError(false);
+    setCatalogLoading(false);
+    if (environment === NEW_SSH_CONNECTION || !connectionReady) return;
     if (demo) {
       setModels([
         {
@@ -122,7 +135,16 @@ export default function Workspace({
         if (!abort.signal.aborted) setCatalogLoading(false);
       });
     return () => abort.abort();
-  }, [agentForm, provider, environment, token, demo, runtimeEnabled]);
+  }, [
+    agentForm,
+    provider,
+    environment,
+    connectionReady,
+    connectionVersion,
+    token,
+    demo,
+    runtimeEnabled,
+  ]);
   const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
   const [sessionID, setSessionID] = useState("");
   const [sessionTitle, setSessionTitle] = useState("");
@@ -247,8 +269,8 @@ export default function Workspace({
             {project?.path ??
               selectedAgent?.workspace ??
               t(
-                "无需项目，连接本机或 SSH Agent 开始对话",
-                "Chat with a local or SSH agent — no project required",
+                "添加 Agent 即可开始对话，无需先创建项目",
+                "Add an agent to start a conversation — no project required",
               )}
           </p>
         </div>
@@ -302,6 +324,11 @@ export default function Workspace({
                 setAgentName("");
                 setProvider("codex");
                 setEnvironment(project?.environment_id ?? "local");
+                setConnectionDraft({
+                  host: "",
+                  python: "python3",
+                  previous: project?.environment_id ?? "local",
+                });
                 setRole("");
                 setWorkspace("");
                 setAgentProject(project?.id ?? "");
@@ -367,6 +394,7 @@ export default function Workspace({
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              if (environment === NEW_SSH_CONNECTION) return;
               await mutate(
                 editingAgentID
                   ? `/api/agents/${encodeURIComponent(editingAgentID)}`
@@ -437,36 +465,23 @@ export default function Workspace({
                 </select>
               </label>
             </div>
-            <label>
-              {t("运行位置", "Run on")}
-              <select
-                value={environment}
-                disabled={!!editingAgentID}
-                onChange={(e) => {
-                  setEnvironment(e.target.value);
-                  setWorkspace("");
-                  setModel("");
-                  setEffort("");
-                }}
-              >
-                <option value="local">{t("本机", "This Mac")}</option>
-                {(state.environments ?? [])
-                  .filter((e) => e.kind === "ssh")
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name} · SSH
-                    </option>
-                  ))}
-              </select>
-            </label>
-            {!editingAgentID && (
-              <p className="form-hint">
-                {t(
-                  "使用所选设备上的 CLI 与登录状态。新设备可在「设备与连接」中添加，同一设备可运行多个 Agent。",
-                  "Uses the CLI and login on this device. Add devices in Devices & connections; each device can run multiple agents.",
-                )}
-              </p>
-            )}
+            <AgentConnection
+              value={environment}
+              draft={connectionDraft}
+              onDraftChange={setConnectionDraft}
+              locked={!!editingAgentID}
+              environments={state.environments ?? []}
+              t={t}
+              busy={busy && !demo}
+              runtimeEnabled={runtimeEnabled && !demo}
+              mutate={mutate}
+              onChange={(id) => {
+                setEnvironment(id);
+                setWorkspace("");
+                setModel("");
+                setEffort("");
+              }}
+            />
             <div className="form-grid">
               <label>
                 {t("关联项目（可选）", "Project (optional)")}
@@ -640,7 +655,12 @@ export default function Workspace({
                 )}
               </p>
             )}
-            <button className="primary" disabled={busy || !agentName.trim()}>
+            <button
+              className="primary"
+              disabled={
+                busy || !agentName.trim() || environment === NEW_SSH_CONNECTION
+              }
+            >
               {editingAgentID
                 ? t("保存设置", "Save settings")
                 : t("创建 Agent", "Create agent")}
@@ -665,15 +685,11 @@ export default function Workspace({
               }}
               aria-pressed={agentID === agent.id}
             >
-              <div className={`provider-symbol ${agent.provider}`}>
-                {agent.provider === "codex" ? "C" : "✳"}
+              <div className="provider-symbol agent-symbol" aria-hidden="true">
+                {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
               </div>
               <div className="agent-info">
                 <strong>{agent.name}</strong>
-                <span>
-                  {agent.provider === "codex" ? "Codex" : "Claude"} ·{" "}
-                  {environmentName(agent.environment_id)}
-                </span>
                 <p>
                   {agent.role ||
                     t(
@@ -745,10 +761,7 @@ export default function Workspace({
             <div className="panel-heading">
               <div>
                 <h2>{t("会话", "Sessions")}</h2>
-                <p>
-                  {selectedAgent?.name} ·{" "}
-                  {environmentName(selectedAgent?.environment_id)}
-                </p>
+                <p>{selectedAgent?.name}</p>
               </div>
               <span className="count-badge">{relevantSessions.length}</span>
             </div>

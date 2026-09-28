@@ -804,6 +804,10 @@ class Store:
         with self.lock:
             return [(r[0],r[1]) for r in self.db.execute('SELECT DISTINCT provider,environment_id FROM agents ORDER BY environment_id,provider DESC')]
 
+    def connection_agent_names(self, provider, environment_id):
+        with self.lock:
+            return [r[0] for r in self.db.execute('SELECT name FROM agents WHERE provider=? AND environment_id=? ORDER BY created_at,rowid', (provider, environment_id))]
+
     def usage_bindings(self, local_only=False):
         with self.lock:
             return {(r['provider'], self.metric_identity(r['environment_id'],r['native_session_id'])): r['agent_id'] for r in self.db.execute(

@@ -2271,10 +2271,40 @@ input[readonly] {
   }
 }
 
-.environment-actions { margin-bottom: 24px; }
-.environment-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
-.environment-card { padding: 28px; }
-.environment-card h2 { margin: 8px 0; }
-.environment-card .button-row { margin-top: 24px; }
-.environment-providers { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
-.environment-name { display: block; margin: 4px 0; }
+.connection-setup {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--soft);
+}
+.connection-setup .panel-heading {
+  margin-bottom: 16px;
+}
+.connection-setup h3 {
+  margin: 0;
+}
+.connection-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0;
+}
+.connection-status .path-line {
+  margin: 0;
+}
+.connection-advanced {
+  margin: 16px 0;
+}
+.connection-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+.connection-advanced label {
+  margin-top: 12px;
+}
+.agent-symbol {
+  background: var(--soft);
+  color: var(--accent);
+}

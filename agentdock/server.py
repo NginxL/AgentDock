@@ -52,7 +52,7 @@ class API:
                 for provider,env in self.store.configured_connections():
                     value=self._quota(provider,env) or {"provider":provider,"status":"unknown","windows":[]}
                     if env!='local': value={**value,'environment_id':env,'environment_name':self.store.get_environment(env)['name']}
-                    quotas.append(value)
+                    quotas.append({**value, 'agent_names': self.store.connection_agent_names(provider, env)})
                 return 200,{'quotas':quotas}
             if method=="GET" and parsed.path=="/api/state":
                 state=self.store.state()

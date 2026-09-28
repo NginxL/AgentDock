@@ -43,7 +43,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 `environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话继承 Agent 的环境，Agent 环境不可更改。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。只有本机模型列表缓存五分钟。
 
-额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照还包含 `environment_name`。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
+额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照包含兼容字段 `environment_name`，以及该连接下的自定义名称数组 `agent_names`。菜单使用这些名称展示，不附加设备标签；名称不作为路由标识。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
 
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |

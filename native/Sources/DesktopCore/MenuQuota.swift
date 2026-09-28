@@ -10,6 +10,7 @@ public struct MenuQuotaResponse: Decodable {
 }
 
 public struct MenuQuota: Decodable {
+    public let agent_names: [String]?
     public let environment_id: String?
     public let environment_name: String?
     public let provider: String
@@ -23,6 +24,13 @@ public struct MenuQuota: Decodable {
         public let label: String
         public let remaining_percent: Double?
         public let reset_at: String?
+    }
+
+    public var displayName: String {
+        let names = (agent_names ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        let name = names.isEmpty ? (provider == "codex" ? "Codex" : "Claude") : names.joined(separator: " · ")
+        let singleLine = name.components(separatedBy: .newlines).joined(separator: " ")
+        return singleLine.count > 80 ? String(singleLine.prefix(79)) + "…" : singleLine
     }
 
     public func lines(language: DesktopLanguage, now: Date = Date(), timeZone: TimeZone = .current) -> [String] {

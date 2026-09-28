@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { StrictMode } from "react";
 import App from "./App";
-import type { DockState } from "./types";
+import type { DockState, Environment } from "./types";
 
 const state: DockState = {
   environments: [
@@ -99,6 +99,31 @@ async function setup(extra: Partial<DockState> = {}) {
       current = { ...current, agents: [...current.agents, agent] };
       data = agent;
     }
+    if (path === "/api/environments" && init?.method === "POST") {
+      const connection: Environment = {
+        ...JSON.parse(init.body as string),
+        id: "new-host",
+        kind: "ssh",
+        status: "disconnected",
+      };
+      current = {
+        ...current,
+        environments: [...(current.environments ?? []), connection],
+      };
+      data = connection;
+    }
+    if (path === "/api/environments/new-host/connect") {
+      current = {
+        ...current,
+        environments: current.environments?.map((e) =>
+          e.id === "new-host"
+            ? { ...e, status: "connected", updated_at: "connected-now" }
+            : e,
+        ),
+      };
+      data = current.environments?.find((e) => e.id === "new-host");
+    }
+    if (path.startsWith("/api/models/")) data = { models: [] };
     return { ok: true, json: async () => data };
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -112,32 +137,17 @@ async function setup(extra: Partial<DockState> = {}) {
   return fetchMock;
 }
 
-it.each([
-  ["本机", "local"],
-  ["Devbox", "remote"],
-])(
-  "creates an independent agent on %s from its device card without connecting or executing",
-  async (name, id) => {
+it.each(["local", "remote"])(
+  "creates an independent agent on %s entirely within Add agent",
+  async (id) => {
     const fetchMock = await setup();
-    fireEvent.change(screen.getByLabelText("当前项目"), {
-      target: { value: "p" },
+    expect(screen.queryByRole("button", { name: "设备与连接" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+    fireEvent.change(screen.getByLabelText("运行位置"), {
+      target: { value: id },
     });
-    fireEvent.click(screen.getByRole("button", { name: "设备与连接" }));
-    const card = screen.getByRole("heading", { name }).closest("section")!;
-    fireEvent.click(
-      within(card).getByRole("button", { name: "在此设备添加 Agent" }),
-    );
-    expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
-      id,
-    );
-    expect(
-      (screen.getByLabelText("关联项目（可选）") as HTMLSelectElement).value,
-    ).toBe("");
-    expect((screen.getByLabelText("当前项目") as HTMLSelectElement).value).toBe(
-      "",
-    );
     fireEvent.change(screen.getByLabelText("名称"), {
-      target: { value: "New helper" },
+      target: { value: "My helper" },
     });
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
     await waitFor(() => expect(screen.queryByLabelText("运行位置")).toBeNull());
@@ -147,58 +157,111 @@ it.each([
     expect(writes).toHaveLength(1);
     expect(writes[0][0]).toBe("/api/agents");
     expect(JSON.parse(writes[0][1]!.body as string)).toMatchObject({
+      name: "My helper",
+      provider: "codex",
       environment_id: id,
       project_id: null,
       permission_mode: "ask",
-      name: "New helper",
     });
-    fireEvent.click(screen.getByRole("button", { name: "设备与连接" }));
-    fireEvent.click(screen.getByRole("button", { name: "协作工作台" }));
-    expect(screen.queryByLabelText("运行位置")).toBeNull();
   },
 );
 
-it("opens the actual agent form from the empty billing page and translates device labels", async () => {
+it("opens agent creation from the empty billing page and keeps connection setup inside it in both languages", async () => {
   await setup({ agents: [] });
   fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
   fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  fireEvent.change(screen.getByLabelText("运行位置"), {
+    target: { value: "new-ssh-connection" },
+  });
+  expect(screen.getByLabelText("SSH 地址或 Host 别名")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+  expect(
+    screen.queryByRole("button", { name: "Devices & connections" }),
+  ).toBeNull();
+  expect(screen.getByLabelText("Run on")).toBeTruthy();
+  expect(screen.getByLabelText("SSH destination or Host alias")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close SSH setup" }));
+  expect((screen.getByLabelText("Run on") as HTMLSelectElement).value).toBe(
     "local",
   );
-  fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
-  expect(screen.getByLabelText("Run on")).toBeTruthy();
-  expect(
-    screen.getByRole("button", { name: "Devices & connections" }),
-  ).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Devices & connections" }),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Add SSH device" }));
-  expect(screen.getByLabelText("Device name")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Add SSH device" }));
-  expect(screen.queryByLabelText("Device name")).toBeNull();
+  expect(screen.queryByLabelText("SSH destination or Host alias")).toBeNull();
 });
 
-it("toggles device setup, preserves its draft, and keeps the close button", async () => {
-  const fetchMock = await setup();
-  fireEvent.click(screen.getByRole("button", { name: "设备与连接" }));
-  const button = screen.getByRole("button", { name: "添加 SSH 设备" });
-  fireEvent.click(button);
-  fireEvent.change(screen.getByLabelText("设备名称"), {
-    target: { value: "Draft device" },
+it("connects a new host inside the agent form, preserves the agent draft, and discovers remote models only after connection", async () => {
+  const fetchMock = await setup({
+    runtime: { enabled: true, version: "0.3.0" },
   });
-  expect(button.getAttribute("aria-expanded")).toBe("true");
-  fireEvent.click(button);
-  expect(screen.queryByLabelText("设备名称")).toBeNull();
-  expect(button.getAttribute("aria-expanded")).toBe("false");
-  fireEvent.click(button);
-  expect((screen.getByLabelText("设备名称") as HTMLInputElement).value).toBe(
-    "Draft device",
+  fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+  fireEvent.change(screen.getByLabelText("名称"), {
+    target: { value: "My assistant" },
+  });
+  fireEvent.change(screen.getByLabelText("运行位置"), {
+    target: { value: "new-ssh-connection" },
+  });
+  expect(
+    (screen.getByRole("button", { name: "创建 Agent" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(
+    fetchMock.mock.calls.some(([path]) =>
+      path.includes("environment_id=new-ssh"),
+    ),
+  ).toBe(false);
+  fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
+    target: { value: "builder@devbox" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "连接并使用" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([path]) => path === "/api/models/codex?environment_id=new-host",
+      ),
+    ).toBe(true),
   );
-  fireEvent.click(screen.getByRole("button", { name: "关闭设备表单" }));
-  expect(screen.queryByLabelText("设备名称")).toBeNull();
-  expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(
-    false,
+  expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe(
+    "My assistant",
+  );
+  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+    "new-host",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
+  await waitFor(() => expect(screen.queryByLabelText("运行位置")).toBeNull());
+  const writes = fetchMock.mock.calls.filter(
+    ([, init]) => init?.method === "POST",
+  );
+  expect(writes.map(([path]) => path)).toEqual([
+    "/api/environments",
+    "/api/environments/new-host/connect",
+    "/api/agents",
+  ]);
+  expect(JSON.parse(writes[2][1]!.body as string)).toMatchObject({
+    name: "My assistant",
+    environment_id: "new-host",
+    provider: "codex",
+  });
+});
+
+it("shows user names without provider or device suffixes and selects equal names by ID", async () => {
+  await setup({ agents: state.agents.map((a) => ({ ...a, name: "Helper" })) });
+  const cards = screen.getAllByRole("button", { name: /Helper.*待命/ });
+  expect(cards).toHaveLength(2);
+  for (const card of cards) {
+    expect(within(card).queryByText("Codex")).toBeNull();
+    expect(within(card).queryByText("Devbox")).toBeNull();
+    expect(within(card).queryByText("本机")).toBeNull();
+  }
+  fireEvent.click(cards[1]);
+  expect(cards[1].getAttribute("aria-pressed")).toBe("true");
+  expect(cards[0].getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
+  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+    "remote",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
+  fireEvent.click(cards[0]);
+  fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
+  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+    "local",
   );
 });
 
@@ -210,12 +273,34 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "My draft" },
   });
+  fireEvent.change(screen.getByLabelText("运行位置"), {
+    target: { value: "remote" },
+  });
+  fireEvent.change(screen.getByLabelText("运行位置"), {
+    target: { value: "new-ssh-connection" },
+  });
+  fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
+    target: { value: "builder@new-host" },
+  });
+  fireEvent.change(screen.getByLabelText("远端 Python"), {
+    target: { value: "/usr/bin/python3" },
+  });
   fireEvent.click(add);
   expect(screen.queryByLabelText("名称")).toBeNull();
   expect(add.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(add);
   expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe(
     "My draft",
+  );
+  expect(
+    (screen.getByLabelText("SSH 地址或 Host 别名") as HTMLInputElement).value,
+  ).toBe("builder@new-host");
+  expect((screen.getByLabelText("远端 Python") as HTMLInputElement).value).toBe(
+    "/usr/bin/python3",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "关闭 SSH 连接配置" }));
+  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+    "remote",
   );
   fireEvent.click(settings);
   expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe(

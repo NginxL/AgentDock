@@ -87,9 +87,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         quotaItems.removeAll()
         var index = 3
         for snapshot in snapshots {
-            let name = snapshot.provider == "codex" ? "Codex" : "Claude"
-            let environment = snapshot.environment_id == nil || snapshot.environment_id == "local" ? t("本机", "This Mac") : snapshot.environment_name ?? t("远端", "Remote")
-            let header = NSMenuItem(title: name + " · " + environment + (snapshot.plan.map { " · " + $0 } ?? ""), action: nil, keyEquivalent: "")
+            let header = NSMenuItem(title: snapshot.displayName + (snapshot.plan.map { " · " + $0 } ?? ""), action: nil, keyEquivalent: "")
             header.isEnabled = false
             var group = [header]
             for text in snapshot.lines(language: language).prefix(12) {

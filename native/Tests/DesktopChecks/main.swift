@@ -48,6 +48,14 @@ do {
     expect(many.filter { $0.contains("80%") }.count == 4 && many.last == "更多额度请打开工作台", "Long provider lists are bounded with a workbench link hint")
     let empty = try JSONDecoder().decode(MenuQuotaResponse.self, from: Data(#"{"quotas":[]}"#.utf8))
     expect(empty.quotas.isEmpty, "A first launch with no quota cache decodes cleanly")
+    let named = try quota(["agent_names": ["Helper", "Helper"], "environment_name": "Private devbox"])
+    expect(named.displayName == "Helper · Helper", "Menu uses custom names, preserves equal names, and hides connection labels")
+    let renamed = try quota(["agent_names": ["My assistant"]])
+    expect(renamed.displayName == "My assistant", "A renamed agent is displayed without provider or device suffixes")
+    let oldServer = try quota([:])
+    expect(oldServer.displayName == "Codex", "Older server responses remain readable")
+    let longName = try quota(["agent_names": [String(repeating: "a", count: 120)]])
+    expect(longName.displayName.count == 80, "Menu names are bounded")
 } catch { failures.append("Unexpected error: \(error)") }
 print("\(checks) checks, \(failures.count) failures")
 if !failures.isEmpty { failures.forEach { print($0) }; exit(1) }

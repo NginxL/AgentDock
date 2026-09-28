@@ -43,7 +43,7 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 
 `environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions inherit their agent's environment. Agent environments cannot change. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Only local model catalogs are cached for five minutes.
 
-Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID; menu snapshots also include `environment_name`. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
+Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID. Menu snapshots retain `environment_name` for compatibility and include `agent_names`, the custom names associated with that connection. The menu displays these names without device labels; names are not routing identifiers. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
 
 | Method / route | JSON fields / result |
 | --- | --- |

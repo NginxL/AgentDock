@@ -7,9 +7,9 @@ AgentDock stores workbench state locally and calls installed agent CLIs over SSH
 ## Setup
 
 1. Confirm that `ssh devbox` works without interaction and the host key is in `known_hosts`. Put custom ports, jump hosts and key paths in your system SSH configuration.
-2. Open **Devices & connections → Add SSH device**. Enter a name, an SSH Host alias or `user@host`, and the remote Python command, then choose **Save device**.
-3. Choose **Connect / check**. The host needs Python 3.9+ and an installed, authenticated native CLI. The connection check reads versions without submitting a model task.
-4. Choose **Add agent on this device** on the device card to open the form with that device selected. Alternatively, use **Workspace → Add agent → Run on** to select a saved device. Models are discovered on that environment; an empty selection retains native settings. A blank workspace creates a private agent directory; an explicit directory must already exist.
+2. Open **Workspace → Add agent**, choose a provider and enter a custom name. Under **Run on**, select a saved connection or **New SSH connection…**. For a new connection, enter an SSH Host alias or `user@host`; use **Advanced connection settings** if you need a different Python command.
+3. Choose **Connect and use** for a new connection or **Connect / check** for a saved one. The host needs Python 3.9+ and an installed, authenticated native CLI. The check installs the private runner and reads versions without submitting a model task.
+4. Complete the agent settings and choose **Create agent**. Models are discovered on that environment; an empty selection retains native settings. A blank workspace creates a private agent directory; an explicit directory must already exist. Connection details remain in **Agent settings**, while everyday lists show custom names. Identically named agents still keep their own connection and session bindings.
 5. Create a conversation and send a message. The status shows queued, running, completed or failed. Expand the status row to watch progress, or leave it collapsed. The final reply appears separately.
 
 An agent's environment and provider stay fixed to prevent resuming a conversation on the wrong host. Projects are optional. When the project belongs to another environment, choose a separate working directory or use the agent's private directory.
