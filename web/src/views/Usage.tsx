@@ -338,6 +338,34 @@ export function QuotaWindow({
 
 function quotaError(code: string | undefined, fallback: string, t: Translate) {
   const messages: Record<string, [string, string]> = {
+    outdated_cache: [
+      "额度缓存已过期，请点击“读取额度”更新。",
+      "Cached quota is outdated. Fetch usage to read current limits.",
+    ],
+    disabled: [
+      "启用执行后才能读取额度。",
+      "Enable execution before fetching usage.",
+    ],
+    helper_unconfigured: [
+      "请先配置本地额度读取组件。",
+      "Configure the local usage helper first.",
+    ],
+    helper_config_invalid: [
+      "额度读取组件的命令配置无效，请检查本地配置。",
+      "The usage helper command is invalid. Check the local configuration.",
+    ],
+    refresh_throttled: [
+      "刷新过于频繁，请稍后再试。",
+      "Please wait before refreshing again.",
+    ],
+    invalid_snapshot: [
+      "读取到的额度数据格式无效，请稍后重试。",
+      "The usage helper returned an invalid snapshot. Try again later.",
+    ],
+    read_failed: [
+      "额度读取失败，请检查本机客户端的登录状态和权限。",
+      "Could not read usage. Check the local client login and permissions.",
+    ],
     authorization_required: [
       "请点击“连接 Claude”，授权读取已有的钥匙串凭据。",
       "Choose Connect Claude to approve access to the existing Keychain credential.",

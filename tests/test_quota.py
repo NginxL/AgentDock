@@ -95,6 +95,7 @@ class QuotaTests(unittest.TestCase):
         raw = self.snapshot(fetchedAt=old, windows=[{"title": "Five hours", "usedPercent": 23, "resetsAt": old}])
         quota = QuotaService(self.store, self.command(raw), True).refresh("codex")
         self.assertEqual(quota["status"], "stale")
+        self.assertEqual(quota["error_code"], "outdated_cache")
         self.assertIsNone(quota["windows"][0]["remaining_percent"])
 
     def test_invalid_values_fail_closed(self):

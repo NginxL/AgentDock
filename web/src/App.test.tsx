@@ -78,6 +78,42 @@ afterEach(() => {
 });
 
 describe("desktop connection and built-in usage", () => {
+  it("localizes expired cache guidance without hiding the last known quota", async () => {
+    fetchMock.mockImplementation(async () =>
+      response({
+        ...state,
+        quotas: [
+          {
+            provider: "codex",
+            source: "AgentDock",
+            status: "stale",
+            error_code: "outdated_cache",
+            error: "Cached quota is outdated. Refresh to read current limits.",
+            windows: [{ label: "Weekly", remaining_percent: 95 }],
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(
+      screen.getByText("额度缓存已过期，请点击“读取额度”更新。"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        "Cached quota is outdated. Refresh to read current limits.",
+      ),
+    ).toBeNull();
+    expect(screen.getByText(/95%/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(
+      screen.getByText(
+        "Cached quota is outdated. Fetch usage to read current limits.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("connects from the native in-memory credential in StrictMode without persisting it", async () => {
     window.__AGENTDOCK_DESKTOP_TOKEN__ = "native-fixture-token";
     render(

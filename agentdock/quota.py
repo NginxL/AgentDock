@@ -101,17 +101,17 @@ class QuotaService:
             with self._lifecycle:
                 self._ensure_open()
             if not self.execution_enabled:
-                return self._failure(provider, "Quota reads are disabled until execution is enabled.", "disabled")
+                return self._failure(provider, "Quota reads are disabled until execution is enabled.", "disabled", code="disabled")
             if not self.command:
-                return self._failure(provider, "Configure the local usage helper first.")
+                return self._failure(provider, "Configure the local usage helper first.", code="helper_unconfigured")
             if (not all(isinstance(arg, str) and arg and "\x00" not in arg for arg in self.command)):
-                return self._failure(provider, "Usage helper command configuration is invalid.")
+                return self._failure(provider, "Usage helper command configuration is invalid.", code="helper_config_invalid")
             now = time.monotonic()
             if not authorize and provider in self._last_attempt and now - self._last_attempt[provider] < 60:
                 cached = self.cached(provider)
                 if cached:
                     return self._expire(cached)
-                return self._failure(provider, "Please wait before refreshing again.")
+                return self._failure(provider, "Please wait before refreshing again.", code="refresh_throttled")
             self._last_attempt[provider] = now
             try:
                 raw = self._probe(provider, authorize=True) if authorize else self._probe(provider)
@@ -123,9 +123,9 @@ class QuotaService:
             except TimeoutError:
                 return self._failure(provider, "Usage helper timed out; its process was stopped.", code="timeout")
             except (ValueError, UnicodeError, TypeError):
-                return self._failure(provider, "Usage helper returned an invalid quota snapshot.")
+                return self._failure(provider, "Usage helper returned an invalid quota snapshot.", code="invalid_snapshot")
             except (OSError, RuntimeError):
-                return self._failure(provider, "Usage helper could not read this provider. Check its local login and permissions.")
+                return self._failure(provider, "Usage helper could not read this provider. Check its local login and permissions.", code="read_failed")
             self._save(provider, quota)
             return quota
 
@@ -233,7 +233,9 @@ class QuotaService:
                 old = True
         if old and quota.get("status") in ("available", "unknown", "stale"):
             quota["status"] = "stale"
-            quota.setdefault("error", "Cached quota is outdated. Refresh to read current limits.")
+            outdated = "Cached quota is outdated. Refresh to read current limits."
+            if not quota.get("error") or quota.get("error") == outdated:
+                quota.update(error=outdated, error_code="outdated_cache")
         return quota
 
     def _failure(self, provider, error, status="unavailable", code=None):
