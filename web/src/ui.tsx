@@ -146,7 +146,7 @@ export function Stat({
         <Icon name={icon} />
         {label}
       </span>
-      <strong>{value.toString().padStart(2, "0")}</strong>
+      <strong>{value}</strong>
     </div>
   );
 }
