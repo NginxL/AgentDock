@@ -4,7 +4,7 @@
 
 ## Implementation status
 
-AgentDock 0.2 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. AgentMeter remains a separate application that supplies quota snapshots through `--probe`.
+AgentDock 0.2 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. The macOS application bundles a dedicated usage helper that supplies sanitized quota snapshots through `--probe`.
 
 | Area | Implemented | Acceptance boundary |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ AgentDock 0.2 combines a React interface, a Python standard-library service, and
 | Native providers | Codex app-server JSON-RPC; Claude Code stream-json control messages; retained native IDs, text/tool events, permission decisions, deadlines, and process-group cleanup. | Wire contracts have been checked against documentation and local CLI metadata. Real login and model execution remain unverified. |
 | Collaboration | Automatic dispatch, workspace-aware queuing, native-session continuation, result return, retry deduplication, depth and run limits, and cancellation of task descendants. | Real model behavior during delegation and long-running collaboration requires live acceptance. |
 | Shared memory | Project isolation, literal keyword search, version conflicts, agent proposals, human approval, soft archive, and database history. | Vector search, automatic extraction, a complete history browser, and cross-project sharing are not implemented. |
-| Quotas | AgentMeter probes for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Real Keychain prompts, account compatibility, and agreement with official usage pages remain unverified. |
+| Quotas | Built-in usage helpers for Codex and Claude, timeout/throttle handling, unknown/stale/error states, and separate manual subscription records. | Local Codex/Claude reads passed; interactive Keychain prompts, additional accounts and comparison with official usage pages remain unverified. |
 | Recovery | Additive database migration, historical mailbox preservation, one owner per native session, overlapping-workspace exclusion, database instance locking, and no automatic task replay after restart. | Existing Codex App or unrelated terminal sessions cannot be imported. Remote devices, automatic worktrees, and remote multi-user access are not implemented. |
 
 ## Provider compatibility
@@ -32,7 +32,7 @@ Official protocol material: [Codex app-server](https://learn.chatgpt.com/docs/ap
 
 ## Isolated verification
 
-Backend checks use temporary SQLite databases, fake native CLI processes, and fake AgentMeter probes. Dispatcher integration tests use a temporary loopback HTTP endpoint and the actual MCP bridge, but all coding agents are deterministic local fixtures. No real model, provider login, or live quota endpoint is involved.
+Backend checks use temporary SQLite databases, fake native CLI processes, and fake Built-in usage helpers. Dispatcher integration tests use a temporary loopback HTTP endpoint and the actual MCP bridge, but all coding agents are deterministic local fixtures. No real model, provider login, or live quota endpoint is involved.
 
 Frontend checks use simulated DOM and HTTP responses. The production build validates TypeScript and generates static assets. The offline demonstration renders fictional projects, conversations, and quota values; it disables execution, mutation, and provider requests. Screenshots of that mode illustrate the interface only.
 
@@ -53,9 +53,12 @@ cd web
 npm ci --ignore-scripts
 npm test
 npm run build
+cd ..
+swift run --package-path native MeterChecks
+swift run --package-path native MeterProviderChecks
 ```
 
-[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
+[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
 ## Code review map
 
@@ -74,10 +77,10 @@ Real execution is a separate, explicitly enabled acceptance step. Use trusted di
 1. Verify native CLI authentication and the configured CLI versions. Complete two turns with each provider and confirm that the second turn resumes the same native conversation.
 2. Verify permission allow, denial, expiry, cancellation, and restart behavior. Confirm queued tasks do not launch after cancellation and unfinished tasks do not replay after restart.
 3. Run a Codex → Claude → Codex collaboration and a nested delegation. Confirm the original sender receives the final result in its original conversation and that limits stop repeated delegation.
-4. Verify shared-memory proposal review, version conflicts, and project isolation. Compare real AgentMeter remaining quotas and reset times with official usage pages, including failure and stale-cache states.
+4. Verify shared-memory proposal review, version conflicts, and project isolation. Compare real remaining quotas and reset times with official usage pages, including failure and stale-cache states.
 5. Inspect both interface languages using live sessions. Confirm errors, queued work, approvals, results, and unknown quota states are understandable and contain no exposed credentials.
 
-Real agent execution, real quota refresh, and existing desktop-session import have **not** passed live acceptance; existing-session import is not implemented. The preview does not install a background service, start at login, register global MCP configuration, or alter AgentMeter or provider logins.
+Desktop startup, automatic local connection, shutdown cleanup, and live Codex/Claude quota reads have passed local macOS checks. Interactive Keychain prompts, additional account configurations, and agreement with official usage pages remain unverified. Real agent execution and collaboration still require live acceptance; existing-session import is not implemented. The installer does not register a background service, login item, or global MCP configuration, and does not alter provider logins.
 
 ---
 

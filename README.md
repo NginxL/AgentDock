@@ -43,12 +43,28 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Streams output and displays permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
-| Usage & subscriptions | Integrates [AgentMeter](https://github.com/NginxL/AgentMeter) for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
+| Usage & subscriptions | Built-in usage reader for remaining Codex/Claude quotas, reset times, and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
+
+## macOS application
+
+Requires macOS 14+, Python 3.9+, Node.js 20.19+, and Apple Command Line Tools. From the repository directory:
+
+```bash
+python3 scripts/install-macos.py
+```
+
+The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. The app enables execution, but agents run only after a task is submitted; fetching usage requires an explicit click. Closing the window or quitting stops its local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
+
+If Claude requires Keychain access, choose **Connect Claude** and approve the macOS prompt yourself. Ordinary refreshes never open a Keychain permission dialog.
+
+To migrate AgentMeter billing records, run `python3 scripts/install-macos.py --import-agentmeter`. Migration backs up the original preferences, preserves existing AgentDock records, and does not change provider logins or remove the old app.
+
+To update, quit the app, run `git pull --ff-only`, and rerun the installer. Configuration and history are preserved; the previous app is saved under the data directory's `backups`. Builds are locally compiled and ad-hoc signed, not Apple-notarized.
 
 ## Getting started
 
-Requires macOS or Linux, Python 3.9+, Node.js 20.19+, and npm. Execution also requires a compatible, separately installed Codex or Claude Code CLI with its normal local authentication configured. AgentMeter is optional.
+Requires macOS or Linux, Python 3.9+, Node.js 20.19+, and npm. Execution also requires a compatible, separately installed Codex or Claude Code CLI with its normal local authentication configured. The Mac application includes the usage reader; AgentMeter is not required. Linux quota reads require a separately configured compatible helper.
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
@@ -81,13 +97,13 @@ Teammate dispatches and result-return turns execute automatically while executio
     "codex": ["codex", "app-server"],
     "claude": ["claude"]
   },
-  "agentmeter_command": ["/Applications/AgentMeter.app/Contents/MacOS/AgentMeter"]
+  "quota_command": ["/absolute/path/to/AgentDockUsage"]
 }
 ```
 
 Use absolute executable paths if the CLIs are not on the server's `PATH`. Keep machine-specific configuration in the ignored `config.local.json`. Provider commands cannot be supplied by the UI or an agent.
 
-AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. It does not use the Claude Agent SDK, require a new API key, or read provider credential stores. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
+AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. Task execution uses native CLI authentication without the Claude Agent SDK or a new API key. The built-in usage helper reads existing local credentials on demand. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
 
 ## How collaboration works
 
@@ -113,7 +129,7 @@ Sessions belonging to the same agent, or using equal/overlapping working directo
 
 State is stored in `~/.local/share/agentdock`; only one instance can own the database. History, task records, and shared memory are local. Running an agent sends task context to its configured model service; quota refresh may contact provider services.
 
-This version manages **sessions created by AgentDock**. Attaching existing desktop/terminal conversations, remote devices, and multiple users is not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay with the CLIs and AgentMeter, and per-run MCP tokens expire and are revoked after execution.
+This version manages **sessions created by AgentDock**. Attaching existing desktop/terminal conversations, remote devices, and multiple users is not implemented. Provider permissions appear in the UI; the workbench itself is not an OS sandbox. Credentials stay in the providers’ local stores, and per-run MCP tokens expire and are revoked after execution.
 
 When upgrading from 0.1, replace ACP commands with the native commands above. Historical messages remain readable as legacy records and are never dispatched automatically. Sessions without a native binding start a new provider conversation; old stored text is not silently replayed as native history.
 
@@ -130,7 +146,7 @@ Tests use temporary stores, fake CLI processes, and fictional UI data. They do n
 
 ## License
 
-[MIT](LICENSE). External CLIs and AgentMeter are separately installed programs with their own licenses and service terms. See [notices](NOTICE.md).
+[MIT](LICENSE). External CLIs are separately installed programs with their own licenses and service terms. See [notices](NOTICE.md).
 
 ---
 

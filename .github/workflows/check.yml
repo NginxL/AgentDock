@@ -32,3 +32,10 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run build
+  desktop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build --package-path native -c release
+      - run: swift run --package-path native MeterChecks
+      - run: swift run --package-path native MeterProviderChecks

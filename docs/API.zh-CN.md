@@ -42,7 +42,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/proposals/{id}/approve` | `expected_version`。必须同时匹配提议中的预期版本和当前记忆版本。 |
 | `POST /api/proposals/{id}/reject` | 空对象。拒绝待处理的提议。 |
 | `POST /api/approvals/{id}` | `option_id`，必须为 AgentDock 返回的、仍待处理的审批选项之一。 |
-| `POST /api/quotas/refresh` | `provider`（`codex` / `claude`）。显式触发 AgentMeter 探测，必须启用执行。 |
+| `POST /api/quotas/refresh` | `provider`（`codex` / `claude`）。显式触发 内置额度探测，必须启用执行。 |
+| `POST /api/quotas/authorize` | `provider: "claude"`。仅管理员可调用，须启用执行并使用内置组件。允许显示钥匙串授权提示，最多等待 180 秒；普通刷新不会显示提示。 |
 | `POST /api/subscriptions` | `provider`；可选 `plan`、`renewal_date`（`YYYY-MM-DD` 或 null）、`monthly_cost`（非负有限数值或 null）、`currency`（三个字母，默认为 `USD`）。 |
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。

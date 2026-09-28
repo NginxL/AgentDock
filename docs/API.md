@@ -42,7 +42,8 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 | `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal's expected version and the current memory version. |
 | `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
 | `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
-| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Explicit AgentMeter probe; requires execution enabled. |
+| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Explicit Built-in usage helper; requires execution enabled. |
+| `POST /api/quotas/authorize` | `provider: "claude"`. Administrator-only; requires execution and the built-in helper. Allows a Keychain access prompt with a 180-second deadline. Ordinary refresh never prompts. |
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.

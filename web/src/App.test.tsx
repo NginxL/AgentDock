@@ -13,6 +13,7 @@ import { conversationEvents, eventText } from "./ui";
 import { ApiError, remainingPercent, request } from "./api";
 import { demoState } from "./demo";
 import type { DockState } from "./types";
+import { StrictMode } from "react";
 
 const state: DockState = {
   projects: [
@@ -71,8 +72,73 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  delete window.__AGENTDOCK_DESKTOP_TOKEN__;
   window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
+});
+
+describe("desktop connection and built-in usage", () => {
+  it("connects from the native in-memory credential in StrictMode without persisting it", async () => {
+    window.__AGENTDOCK_DESKTOP_TOKEN__ = "native-fixture-token";
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await screen.findByRole("heading", { name: "协作工作台" });
+    expect(window.__AGENTDOCK_DESKTOP_TOKEN__).toBeUndefined();
+    expect(window.location.href).not.toContain("native-fixture-token");
+    expect(JSON.stringify(localStorage)).not.toContain("native-fixture-token");
+    expect(document.body.textContent).not.toContain("native-fixture-token");
+    expect(
+      fetchMock.mock.calls.some(
+        ([, options]) =>
+          options?.headers?.Authorization === "Bearer native-fixture-token",
+      ),
+    ).toBe(true);
+  });
+
+  it("only requests Claude Keychain access after the explicit connection action", async () => {
+    fetchMock.mockImplementation(async () =>
+      response({
+        ...state,
+        runtime: { ...state.runtime, enabled: true },
+        quotas: [
+          {
+            provider: "claude",
+            source: "AgentDock",
+            windows: [],
+            status: "unavailable",
+            error: "safe fallback",
+            error_code: "authorization_required",
+          },
+        ],
+      }),
+    );
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(
+      screen.getByText("请点击“连接 Claude”，授权读取已有的钥匙串凭据。"),
+    ).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.every(([path]) => path !== "/api/quotas/authorize"),
+    ).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "连接 Claude（钥匙串授权）" }),
+    );
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([path]) => path === "/api/quotas/authorize"),
+      ).toBe(true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
+    expect(
+      screen.getByText(
+        "Choose Connect Claude to approve access to the existing Keychain credential.",
+      ),
+    ).toBeTruthy();
+  });
 });
 async function connect() {
   fireEvent.change(screen.getByLabelText("访问令牌"), {

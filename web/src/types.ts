@@ -115,6 +115,7 @@ export interface Quota {
   status: string;
   error?: string;
   source: string;
+  error_code?: string;
 }
 export interface Subscription {
   provider: string;

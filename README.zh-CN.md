@@ -43,12 +43,28 @@ AgentDock 将 Codex 和 Claude Code 接入同一个本地工作台，管理会�
 | 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
 | 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
 | 共享记忆 | 项目知识与私有对话分开管理；支持来源、版本、关键词检索、智能体提议审核和归档历史。 |
-| 额度与订阅 | 接入 [AgentMeter](https://github.com/NginxL/AgentMeter)，展示 Codex／Claude 剩余额度、重置时间及过期或错误状态；续费日期与订阅费用单独记录。 |
+| 额度与订阅 | 内置额度读取组件，展示 Codex／Claude 剩余额度、重置时间及过期或错误状态；续费日期与订阅费用单独记录。 |
 | 本地工作台 | 紧凑项目导航、会话与执行记录面板、中英文切换，以及不发送接口请求的只读演示。 |
+
+## macOS 应用
+
+需要 macOS 14+、Python 3.9+、Node.js 20.19+ 和 Apple Command Line Tools。在仓库目录运行：
+
+```bash
+python3 scripts/install-macos.py
+```
+
+应用安装到 `~/Applications/AgentDock.app`。双击打开即可连接本机工作台，无需复制访问令牌。应用启用任务执行能力，但只有提交任务才会调用 Agent；额度也需要点击“读取额度”。关闭应用窗口或退出应用会停止其本地服务及正在执行的任务，历史与配置保存在 `~/.local/share/agentdock`。
+
+如果 Claude 提示需要钥匙串权限，点击“连接 Claude”，在 macOS 提示中自行授权。普通刷新不会弹出钥匙串授权框。
+
+从 AgentMeter 迁移订阅记录可运行 `python3 scripts/install-macos.py --import-agentmeter`。迁移会备份原配置、保留已有 AgentDock 记录，不修改提供方登录或删除旧应用。
+
+更新时退出应用，在仓库运行 `git pull --ff-only`，然后重新执行安装命令。配置和历史保留，原应用副本保存到数据目录的 `backups`。当前安装包在本机构建并临时签名，未经过 Apple 公证。
 
 ## 快速开始
 
-需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。执行任务还需要单独安装兼容的 Codex 或 Claude Code CLI，并完成其正常本地登录配置。AgentMeter 为可选组件。
+需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。执行任务还需要单独安装兼容的 Codex 或 Claude Code CLI，并完成其正常本地登录配置。Mac 安装版内置额度读取组件，不需要 AgentMeter。Linux 的额度读取需要另外配置兼容的本地查询命令。
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
@@ -81,13 +97,13 @@ python3 -m agentdock --config config.local.json --enable-execution
     "codex": ["codex", "app-server"],
     "claude": ["claude"]
   },
-  "agentmeter_command": ["/Applications/AgentMeter.app/Contents/MacOS/AgentMeter"]
+  "quota_command": ["/absolute/path/to/AgentDockUsage"]
 }
 ```
 
 如果服务的 `PATH` 中没有相应 CLI，请使用可执行文件的绝对路径。机器专属配置保存在 Git 忽略的 `config.local.json` 中。界面和智能体均不能指定执行命令。
 
-AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，不使用 Claude Agent SDK、不要求新增 API Key，也不读取提供方的凭据存储。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
+AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，执行认证沿用原生 CLI，无需 Claude Agent SDK 或新增 API Key；内置额度组件按需读取现有本机登录。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
 
 ## 协作流程
 
@@ -113,7 +129,7 @@ sequenceDiagram
 
 状态保存在 `~/.local/share/agentdock`，同一数据库只允许一个实例占用。历史、任务记录和共享记忆存储在本地。执行智能体会将任务上下文发送到其配置的模型服务；刷新额度也可能访问提供方服务。
 
-当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 和 AgentMeter 管理，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
+当前版本管理**由 AgentDock 创建的会话**，尚未接入已有桌面或终端会话、远程设备及多用户访问。提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据仍由原生 CLI 管理，额度组件只在本机按需读取，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
 
 从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 
@@ -130,7 +146,7 @@ npm --prefix web run build
 
 ## 许可证
 
-采用 [MIT 许可证](LICENSE)。外部 CLI 与 AgentMeter 需要单独安装，适用各自的许可证和服务条款，详见[声明](NOTICE.zh-CN.md)。
+采用 [MIT 许可证](LICENSE)。外部 CLI 需要单独安装，适用各自的许可证和服务条款，详见[声明](NOTICE.zh-CN.md)。
 
 ---
 

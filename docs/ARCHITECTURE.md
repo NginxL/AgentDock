@@ -17,7 +17,7 @@ flowchart LR
   Codex --> MCP[Scoped MCP tools]
   Claude --> MCP
   MCP --> API
-  API --> Meter[AgentMeter probe]
+  API --> Meter[Built-in usage helper]
 ```
 
 | Component | Code | Responsibility |
@@ -28,7 +28,7 @@ flowchart LR
 | Dispatcher | `agentdock/runtime.py` | Explicit submission, automatic dispatch and result return, task settlement, approval deadlines and cancellation. |
 | Native transports | `agentdock/providers.py` | Codex App Server and Claude stream-json protocols, stream parsing, session identity checks, bounded output and process cleanup. |
 | Agent tools | `agentdock/mcp.py` | Five tools: agent discovery, addressed dispatch, task status, memory search and memory proposals. |
-| Quota bridge | `agentdock/quota.py` | Explicit Codex/Claude probes through a separately installed AgentMeter, sanitized snapshots and freshness rules. |
+| Quota bridge | `agentdock/quota.py` | Explicit Codex/Claude probes through the built-in macOS helper, sanitized snapshots and freshness rules. |
 
 The browser's `?demo=1` mode reads fictional fixtures and makes no API requests. It cannot execute agents, dispatch tasks or refresh quotas.
 
@@ -42,7 +42,7 @@ Agent names and optional roles are defined by the user, independently of the CLI
 
 The prompt contains the current task and a bounded reference block with the agent role and approved project memory. Private conversation history remains with the native CLI. Shared memories and teammate results are marked as reference data, not authority; this labeling does not guarantee resistance to prompt injection.
 
-Authentication and model selection follow the locally installed CLI's configuration. AgentDock does not read credential stores, export login tokens or require a new API key. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
+Authentication and model selection follow the locally installed CLI's configuration. Execution uses the CLI’s authentication; the built-in usage helper reads existing local credentials on demand and never exports them to the workbench. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
 
 ## Queue and task settlement
 
@@ -104,11 +104,11 @@ The UI presents versions, provenance and proposal review. Full revision browsing
 
 ## Quotas and subscriptions
 
-Only an explicit refresh invokes `configured AgentMeter command + --probe + codex|claude`. Probes have a 35-second timeout and a 60-second throttle. No probe runs on import, startup, state reads, demo mode or while execution is disabled.
+Only an explicit refresh invokes `configured quota_command + --probe + codex|claude`. Probes have a 35-second timeout and a 60-second throttle. No probe runs on import, startup, state reads, demo mode or while execution is disabled.
 
 Snapshots retain provider, plan, remaining percentages, reset timestamps, fetch time and status. Unknown values stay null. Readings older than 15 minutes become stale. After a reset time passes, its percentage becomes unknown until refreshed. A failed refresh preserves old readings with an error/stale state. Account identifiers and raw stderr are discarded.
 
-Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. AgentMeter owns its authentication and provider requests. Quota visibility grants no execution permission.
+Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. The bundled helper owns credential reads and usage requests; provider accounts are unchanged. Quota visibility grants no execution permission.
 
 ## Trust and persistence
 
@@ -123,3 +123,9 @@ Upgrading a 0.1 store preserves historical messages as `legacy` records without 
 ---
 
 **English** · [简体中文](ARCHITECTURE.zh-CN.md) · [Back to README](../README.md)
+
+## macOS installation and connection
+
+`native/Sources/AgentDockDesktop` provides a native window and nonpersistent WebView. The app owns a local Python child process. After that child reports readiness, the access token is injected only into the same-origin main page’s memory, never URLs, logs or browser storage. Quitting stops the service. External links open in the system browser.
+
+`quota_command` selects the bundled `AgentDockUsage`; legacy `agentmeter_command` remains supported. Ordinary reads prohibit Keychain interaction; only an explicit administrator authorization request allows a prompt. Codex queries its native app server. Claude reads existing local credentials for the official usage endpoint; the helper does not refresh, copy or persist credentials.

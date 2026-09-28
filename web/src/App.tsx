@@ -16,6 +16,12 @@ import Usage from "./views/Usage";
 
 type Tab = "workspace" | "messages" | "memory" | "usage";
 
+declare global {
+  interface Window {
+    __AGENTDOCK_DESKTOP_TOKEN__?: string;
+  }
+}
+
 export default function App() {
   const [demo, setDemo] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1",
@@ -37,6 +43,34 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("workspace");
   const [projectID, setProjectID] = useState("");
   const [projectForm, setProjectForm] = useState(false);
+  const desktopToken = useRef(window.__AGENTDOCK_DESKTOP_TOKEN__ ?? "");
+
+  useEffect(() => {
+    const credential = desktopToken.current;
+    delete window.__AGENTDOCK_DESKTOP_TOKEN__;
+    if (!credential || demo) return;
+    let cancelled = false;
+    setConnecting(true);
+    void request<DockState>(credential, "/api/state")
+      .then((next) => {
+        if (cancelled) return;
+        tokenRef.current = credential;
+        setToken(credential);
+        setState(next);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setError(
+            "无法连接本地服务，请重新打开 AgentDock。 / Reopen AgentDock to reconnect.",
+          );
+      })
+      .finally(() => {
+        if (!cancelled) setConnecting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [demo]);
 
   useEffect(() => {
     if (demo) setState(demoState(lang));

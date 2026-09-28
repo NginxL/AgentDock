@@ -46,8 +46,8 @@ export default function Usage({
         eyebrow={t("账户概览", "ACCOUNT OVERVIEW")}
         title={t("额度与订阅", "Usage & billing")}
         description={t(
-          "按需调用本机 AgentMeter 读取 Codex / Claude 额度。订阅信息由你登记，额度未知时明确显示未知。",
-          "Fetch Codex / Claude quotas on demand through local AgentMeter. Enter billing details yourself; missing quota is always shown as unknown.",
+          "按需读取 Codex / Claude 额度。订阅信息由你登记，额度未知时明确显示未知。",
+          "Fetch Codex / Claude quotas on demand. Enter billing details yourself; missing quota is always shown as unknown.",
         )}
       />
       <div className="usage-grid">
@@ -96,13 +96,17 @@ export default function Usage({
                     <p>{t("尚无可用额度数据", "No available quota data")}</p>
                   </div>
                 )}
-                {quota?.error && <p className="inline-error">{quota.error}</p>}
+                {quota?.error && (
+                  <p className="inline-error">
+                    {quotaError(quota.error_code, quota.error, t)}
+                  </p>
+                )}
               </div>
               <div className="quota-source">
                 <span>
                   {quota?.source === "demo"
                     ? t("演示数据", "Demo data")
-                    : "AgentMeter"}{" "}
+                    : quota?.source || "AgentDock"}{" "}
                   · <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
                 <button
@@ -116,6 +120,20 @@ export default function Usage({
                   {t("读取额度", "Fetch usage")}
                 </button>
               </div>
+              {provider === "claude" && quota?.source !== "AgentMeter" && (
+                <button
+                  className="text-button"
+                  disabled={busy || !runtimeEnabled}
+                  onClick={() =>
+                    void mutate("/api/quotas/authorize", { provider: "claude" })
+                  }
+                >
+                  {t(
+                    "连接 Claude（钥匙串授权）",
+                    "Connect Claude (Keychain access)",
+                  )}
+                </button>
+              )}
               <div className="billing-info">
                 <div className="record-heading">
                   <h3>{t("手动订阅记录", "Manual billing record")}</h3>
@@ -247,8 +265,8 @@ export default function Usage({
           <h3>{t("只展示有来源的数据", "Show only data with a source")}</h3>
           <p>
             {t(
-              "额度来自你安装的 AgentMeter，账户凭据不传入浏览器。当前工作台不估算 token 费用，也不会把额度重置当作续费时间。",
-              "Quotas come from your installed AgentMeter; account credentials never enter the browser. This workspace does not estimate token costs or treat quota reset as subscription renewal.",
+              "内置读取组件使用提供方的本机登录，账户凭据不传入浏览器。当前工作台不估算 token 费用，也不会把额度重置当作续费时间。",
+              "The built-in reader uses existing provider logins; account credentials never enter the browser. This workspace does not estimate token costs or treat quota reset as subscription renewal.",
             )}
           </p>
         </div>
@@ -268,6 +286,10 @@ export function QuotaWindow({
 }) {
   const remaining = remainingPercent(window.remaining_percent);
   const labels: Record<string, string> = {
+    主要窗口: t("主要窗口", "Primary window"),
+    次要窗口: t("次要窗口", "Secondary window"),
+    "5 小时": t("5 小时", "5 hours"),
+    "7 天": t("7 天", "7 days"),
     Weekly: t("每周额度", "Weekly"),
     "Weekly window": t("每周额度", "Weekly window"),
     "5-hour window": t("5 小时额度", "5-hour window"),
@@ -312,4 +334,39 @@ export function QuotaWindow({
       </p>
     </div>
   );
+}
+
+function quotaError(code: string | undefined, fallback: string, t: Translate) {
+  const messages: Record<string, [string, string]> = {
+    authorization_required: [
+      "请点击“连接 Claude”，授权读取已有的钥匙串凭据。",
+      "Choose Connect Claude to approve access to the existing Keychain credential.",
+    ],
+    not_installed: [
+      "未找到服务的命令行客户端，请检查安装。",
+      "The provider CLI was not found. Check its installation.",
+    ],
+    not_signed_in: [
+      "请先在官方客户端登录订阅账号。",
+      "Sign in to a subscription account in the official client first.",
+    ],
+    expired: [
+      "登录已过期，请在官方客户端重新登录。",
+      "Login has expired. Sign in again in the official client.",
+    ],
+    rate_limited: [
+      "提供方暂时限流，请稍后重试。",
+      "The provider is rate limiting requests. Try again later.",
+    ],
+    timeout: [
+      "额度读取超时，请稍后重试。",
+      "The usage request timed out. Try again later.",
+    ],
+    unavailable: [
+      "额度暂不可用，请检查登录、订阅与网络。",
+      "Usage is unavailable. Check the login, subscription and network.",
+    ],
+  };
+  const message = code ? messages[code] : undefined;
+  return message ? t(...message) : fallback;
 }

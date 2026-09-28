@@ -60,6 +60,10 @@ class API:
             elif parsed.path=="/api/quotas/refresh":
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 result=self.quota.refresh(p.get("provider"))
+            elif parsed.path=="/api/quotas/authorize":
+                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
+                if p.get("provider")!="claude": raise Invalid("Only Claude requires Keychain authorization")
+                result=self.quota.refresh("claude", authorize=True)
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
@@ -153,8 +157,8 @@ def main(argv=None):
         if not isinstance(config,dict): parser.error("config must be an object")
     commands=config.get("commands",{"codex":["codex","app-server"],"claude":["claude"]})
     if not isinstance(commands,dict) or any(k not in ("codex","claude") or not isinstance(v,list) or not v or any(not isinstance(x,str) or not x for x in v) for k,v in commands.items()): parser.error("commands must contain codex/claude argument lists")
-    command=config.get("agentmeter_command")
-    if command is not None and (not isinstance(command,list) or not command or any(not isinstance(x,str) or not x for x in command)): parser.error("agentmeter_command must be an argument list")
+    command=config.get("quota_command",config.get("agentmeter_command"))
+    if command is not None and (not isinstance(command,list) or not command or any(not isinstance(x,str) or not x or "\x00" in x for x in command)): parser.error("quota_command must be an argument list")
     data=Path(args.data_dir).expanduser(); data.mkdir(parents=True,exist_ok=True,mode=0o700); data.chmod(0o700)
     # Never rotate a live instance's token while trying to start another one.
     store=Store(data/"agentdock.sqlite3")
@@ -174,7 +178,7 @@ def main(argv=None):
     from .quota import QuotaService
     runtime_config={"execution_enabled":args.enable_execution,"commands":commands,"base_url":"http://127.0.0.1:"+str(args.port),"python":sys.executable,"package_root":str(Path(__file__).resolve().parent.parent),"approval_timeout":120,"run_timeout":900}
     runtime=Runtime(store,runtime_config)
-    quota=QuotaService(store,command,args.enable_execution)
+    quota=QuotaService(store,command,args.enable_execution,source="AgentMeter" if "agentmeter_command" in config and "quota_command" not in config else "AgentDock")
     api=API(store,runtime,quota,token,args.port,args.enable_execution)
     server.RequestHandlerClass=handler_for(api,Path(__file__).resolve().parent.parent/"web/dist")
     def stop(*_): threading.Thread(target=server.shutdown,daemon=True).start()
