@@ -71,6 +71,7 @@ function setup(
       mutate={mutate}
     />,
   );
+  fireEvent.click(screen.getByRole("button", { name: /^Helper/ }));
   return {
     mutate,
     input: screen.getByLabelText("给 Agent 的任务") as HTMLTextAreaElement,

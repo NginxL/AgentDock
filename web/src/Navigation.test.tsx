@@ -86,6 +86,7 @@ const state: DockState = {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   delete window.__AGENTDOCK_DESKTOP_TOKEN__;
   vi.unstubAllGlobals();
 });
@@ -251,14 +252,17 @@ it("shows user names without provider or device suffixes and selects equal names
     expect(within(card).queryByText("本机")).toBeNull();
   }
   fireEvent.click(cards[1]);
-  expect(cards[1].getAttribute("aria-pressed")).toBe("true");
-  expect(cards[0].getAttribute("aria-pressed")).toBe("false");
+  expect(window.location.hash).toBe("#/agents/b");
+  expect(
+    screen.getByRole("heading", { name: "Helper", level: 1 }),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
   expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "remote",
   );
   fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
-  fireEvent.click(cards[0]);
+  fireEvent.click(screen.getByRole("button", { name: "返回 Agent 列表" }));
+  fireEvent.click(screen.getAllByRole("button", { name: /Helper.*待命/ })[0]);
   fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
   expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "local",
@@ -268,7 +272,6 @@ it("shows user names without provider or device suffixes and selects equal names
 it("toggles agent forms without losing a collapsed draft, and switches targets instead of closing the wrong form", async () => {
   await setup();
   const add = screen.getByRole("button", { name: "添加 Agent" });
-  const settings = screen.getByRole("button", { name: "设置 Local helper" });
   fireEvent.click(add);
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "My draft" },
@@ -302,18 +305,22 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
   expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "remote",
   );
+  fireEvent.click(add);
+  fireEvent.click(screen.getByRole("button", { name: /^Local helper/ }));
+  const settings = screen.getByRole("button", { name: "设置 Local helper" });
   fireEvent.click(settings);
   expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe(
     "Local helper",
   );
   expect(settings.getAttribute("aria-expanded")).toBe("true");
-  expect(add.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", { name: "添加 Agent" })).toBeNull();
   fireEvent.click(settings);
   expect(screen.queryByLabelText("名称")).toBeNull();
   fireEvent.click(settings);
   fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
   expect(screen.queryByLabelText("名称")).toBeNull();
-  fireEvent.click(add);
+  fireEvent.click(screen.getByRole("button", { name: "返回 Agent 列表" }));
+  fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
   fireEvent.click(screen.getByRole("button", { name: "取消添加 Agent" }));
   expect(screen.queryByLabelText("名称")).toBeNull();
 });

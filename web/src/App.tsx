@@ -24,7 +24,7 @@ import Tokens from "./views/Tokens";
 import { useMetrics } from "./metrics";
 import { clearModelCatalog } from "./modelCatalog";
 
-type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
+import { useNavigation, type Tab } from "./navigation";
 
 declare global {
   interface Window {
@@ -64,12 +64,14 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<Tab>("workspace");
+  const { tab, projectID, agentID: agentPageID, navigate } = useNavigation();
+  const setTab = (tab: Tab) => navigate({ tab, agentID: "" });
+  const setProjectID = (projectID: string) =>
+    navigate({ projectID, agentID: "" });
   const [usageVisit, setUsageVisit] = useState(0);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const [quotaRefreshFailed, setQuotaRefreshFailed] = useState(false);
   const quotaRequest = useRef<AbortController | null>(null);
-  const [projectID, setProjectID] = useState("");
   const [projectForm, setProjectForm] = useState(false);
   const [agentEnvironment, setAgentEnvironment] = useState<string | null>(null);
   const desktopToken = useRef(window.__AGENTDOCK_DESKTOP_TOKEN__ ?? "");
@@ -119,10 +121,10 @@ export default function App() {
     setToken("");
     setEntryToken("");
     setState(null);
-    setProjectID("");
+    navigate({ tab: "workspace", projectID: "", agentID: "" }, true);
     setNotice("");
     setError("");
-  }, []);
+  }, [navigate]);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const currentToken = tokenRef.current;
@@ -276,8 +278,8 @@ export default function App() {
       state &&
       !state.projects.some((project) => project.id === projectID)
     )
-      setProjectID("");
-  }, [state, projectID]);
+      navigate({ projectID: "", agentID: "" }, true);
+  }, [state, projectID, navigate]);
 
   async function connect(event: FormEvent) {
     event.preventDefault();
@@ -496,6 +498,10 @@ export default function App() {
     );
 
   const project = state.projects.find((p) => p.id === projectID);
+  const pageAgent =
+    tab === "workspace"
+      ? state.agents.find((a) => a.id === agentPageID)
+      : undefined;
   const agents = state.agents.filter(
     (a) => !projectID || a.project_id === projectID,
   );
@@ -608,12 +614,28 @@ export default function App() {
           <div className="breadcrumb">
             {project?.name ?? "AgentDock"}
             <span>/</span>
-            <strong>
-              {t(
-                nav.find((n) => n.key === tab)!.zh,
-                nav.find((n) => n.key === tab)!.en,
-              )}
-            </strong>
+            {pageAgent ? (
+              <button
+                className="breadcrumb-page"
+                aria-label={t("返回工作台", "Back to workspace")}
+                onClick={() => setTab("workspace")}
+              >
+                {t("协作工作台", "Workspace")}
+              </button>
+            ) : (
+              <strong>
+                {t(
+                  nav.find((n) => n.key === tab)!.zh,
+                  nav.find((n) => n.key === tab)!.en,
+                )}
+              </strong>
+            )}
+            {pageAgent && (
+              <>
+                <span>/</span>
+                <strong>{pageAgent.name}</strong>
+              </>
+            )}
           </div>
           <div className="top-actions">
             {languageButton}
@@ -630,28 +652,33 @@ export default function App() {
             )}
           </div>
         </header>
-        <main id="main-content" className="main-content">
-          <div
-            className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
-          >
-            <Icon name="shield" size={18} />
-            <span>
-              {demo
-                ? t(
-                    "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
-                    "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
-                  )
-                : state.runtime.enabled
+        <main
+          id="main-content"
+          className={`main-content ${pageAgent ? "agent-content" : ""}`}
+        >
+          {(!pageAgent || demo || !state.runtime.enabled) && (
+            <div
+              className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
+            >
+              <Icon name="shield" size={18} />
+              <span>
+                {demo
                   ? t(
-                      "执行已启用 · 任务会提交到原生会话，协作派工会自动执行并回传结果。",
-                      "Execution enabled · Tasks use native sessions. Delegated work runs automatically and returns its result.",
+                      "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
+                      "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
                     )
-                  : t(
-                      "执行已关闭 · 可以查看记录、管理项目和共享记忆。运行、派工和额度读取暂不可用。",
-                      "Execution disabled · Review records, manage projects and shared memory. Runs, dispatch and quota fetching are unavailable.",
-                    )}
-            </span>
-          </div>
+                  : state.runtime.enabled
+                    ? t(
+                        "执行已启用 · 任务会提交到原生会话，协作派工会自动执行并回传结果。",
+                        "Execution enabled · Tasks use native sessions. Delegated work runs automatically and returns its result.",
+                      )
+                    : t(
+                        "执行已关闭 · 可以查看记录、管理项目和共享记忆。运行、派工和额度读取暂不可用。",
+                        "Execution disabled · Review records, manage projects and shared memory. Runs, dispatch and quota fetching are unavailable.",
+                      )}
+              </span>
+            </div>
+          )}
           {error && (
             <div className="alert error" role="alert">
               <span>{error}</span>
@@ -726,6 +753,10 @@ export default function App() {
                   runtimeEnabled={state.runtime.enabled}
                   busy={!!busy || demo}
                   mutate={mutate}
+                  agentPageID={agentPageID}
+                  onNavigateAgent={(id, replace) =>
+                    navigate({ tab: "workspace", agentID: id }, replace)
+                  }
                   initialEnvironment={agentEnvironment ?? undefined}
                   onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
                 />

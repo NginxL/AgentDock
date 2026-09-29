@@ -59,6 +59,7 @@ it.each<Language>(["zh", "en"])(
       mutate,
     };
     const view = render(<Workspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /^My agent/ }));
     expect(screen.queryByText(agent.workspace)).toBeNull();
     const button = await screen.findByRole("button", {
       name: t("删除会话", "Delete session"),

@@ -14,7 +14,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 ## Workspace
 
-![AgentDock English workspace with native sessions, task status, and usage](docs/images/workspace.en.jpg)
+![AgentDock English workspace with agent overview, TPS, and usage](docs/images/workspace.en.jpg)
 
 *Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional. Agent A/B are example names with no preset roles; users define their names and responsibilities.*
 
@@ -95,9 +95,11 @@ Choose **Workspace → Add agent**, select a provider and enter a name. Under **
 
 Agent lists, conversation headings and quota summaries use your custom names without automatic device or provider labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
 
+Click an **agent card** to open its dedicated conversation page. Switch or create conversations on the left, follow messages and execution details on the right, and compose messages at the bottom. Use the header to return to the agent list, open settings or delete the agent. Browser back and forward are supported. Moving between the list and conversation pages preserves each agent’s selected conversation and unsent drafts; drafts stay only in the current page’s memory.
+
 Create a conversation and send a message to your agent. **Enter** sends; **Shift + Enter** inserts a new line. Confirming text with an input method does not send the draft. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
-![Expandable execution details and final response, fictional demo data](docs/images/conversation.en.png)
+![Dedicated agent conversation page with session navigation and execution details, fictional demo data](docs/images/conversation.en.png)
 
 Click **Model** or **Reasoning effort** below the conversation input to choose from the conversation's original runtime location. Changes apply to future messages in this conversation. Submitted and queued messages retain their original choices. Changing models resets effort to Auto; **Use agent defaults** restores inheritance.
 
@@ -109,7 +111,7 @@ Each task shows the model identifier and reasoning effort reported by the CLI. A
 
 Each conversation has private Codex / Claude Code history, runtime state and caches, separate from the original client’s session list. Automatic working directories are also per conversation; explicitly selected project directories remain shared. Choose **Delete session** and confirm to remove its records, private directory and SSH run files. Stop active tasks first. Shared projects, native logins and other conversations are kept.
 
-To remove a configured agent, select its card and choose **Delete agent** beside **Agent settings** at the top of the workspace. Check the agent name and conversation count before confirming. This removes its conversations and private files while preserving shared project files, shared memory, native CLI settings and other agents. Unfinished tasks block deletion; remote conversations require a working SSH connection for cleanup.
+To remove a configured agent, open its card and choose **Delete agent** beside **Agent settings** at the top of its conversation page. Check the agent name and conversation count before confirming. This removes its conversations and private files while preserving shared project files, shared memory, native CLI settings and other agents. Unfinished tasks block deletion; remote conversations require a working SSH connection for cleanup.
 
 Choose **Access permissions** when adding an agent or opening **Agent settings**. Each local or SSH agent has its own setting:
 

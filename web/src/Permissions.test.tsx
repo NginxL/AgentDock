@@ -48,6 +48,10 @@ function setup(
       mutate={mutate}
     />,
   );
+  if (agents.length)
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp("^" + agents[0].name) }),
+    );
   return mutate;
 }
 
@@ -118,6 +122,7 @@ it("loads saved permissions, permits downgrading, and resets new agents to the d
       expect.any(Function),
     ),
   );
+  fireEvent.click(screen.getByRole("button", { name: "Back to agents" }));
   fireEvent.click(screen.getByRole("button", { name: "Add agent" }));
   expect(
     (screen.getByLabelText("Access permissions") as HTMLSelectElement).value,

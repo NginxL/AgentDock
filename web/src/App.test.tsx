@@ -260,6 +260,7 @@ describe("user-defined agent roles", () => {
     );
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
       true,
@@ -278,7 +279,7 @@ describe("user-defined agent roles", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "保存设置" })).toBeNull(),
     );
-    expect(screen.getByText("未设置角色 · 按任务要求执行")).toBeTruthy();
+    expect(current.agents[0].role).toBe("");
     expect(current.sessions[0].native_session_id).toBe(
       "existing-native-session",
     );
@@ -309,6 +310,7 @@ describe("user-defined agent roles", () => {
     });
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     fireEvent.change(screen.getByLabelText("角色说明（可选）"), {
       target: { value: "My unsaved role" },
@@ -318,8 +320,9 @@ describe("user-defined agent roles", () => {
     expect(
       (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
     ).toBe("My unsaved role");
-    expect(screen.getByText("Review changes")).toBeTruthy();
+    expect(state.agents[0].role).toBe("Review changes");
     fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
+    fireEvent.click(screen.getByRole("button", { name: "返回 Agent 列表" }));
     fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
     expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe("");
     expect(
@@ -336,6 +339,7 @@ describe("user-defined agent roles", () => {
   it("translates role controls without changing user content", async () => {
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
     fireEvent.click(screen.getByRole("button", { name: "Switch to English" }));
     expect(
@@ -360,6 +364,7 @@ describe("user-defined agent roles", () => {
     window.history.replaceState({}, "", "/?demo=1");
     render(<App />);
     await screen.findByRole("heading", { name: "协作工作台" });
+    fireEvent.click(screen.getByRole("button", { name: /^Agent A/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置 Agent A" }));
     expect(
       (screen.getByRole("button", { name: "保存设置" }) as HTMLButtonElement)
@@ -457,13 +462,8 @@ describe("selection after delayed mutation refresh", () => {
         response({ ...state, agents: [...state.agents, agent] }),
       );
     });
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole("button", { name: /New helper/, pressed: true })
-          .getAttribute("aria-pressed"),
-      ).toBe("true"),
-    );
+    await screen.findByRole("heading", { name: "New helper", level: 1 });
+    expect(window.location.hash).toBe("#/agents/agent-new?project=project-a");
     expect(screen.queryByRole("button", { name: "运行任务" })).toBeNull();
   });
 
@@ -497,6 +497,7 @@ describe("selection after delayed mutation refresh", () => {
     });
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     await screen.findByLabelText("给 Agent 的任务");
     const poll = intervalSpy.mock.calls.find(
       ([, delay]) => delay === 8000,
@@ -580,6 +581,7 @@ describe("connection boundaries", () => {
   it("does not fetch usage implicitly and disables execution while runtime is off", async () => {
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.change(await screen.findByLabelText("给 Agent 的任务"), {
       target: { value: "Do work" },
     });
@@ -1070,6 +1072,7 @@ describe("native session workflow", () => {
     );
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     expect(await screen.findByText("任务排队中")).toBeTruthy();
     const prompt = screen.getByLabelText(
       "给 Agent 的任务",
@@ -1091,6 +1094,7 @@ describe("native session workflow", () => {
     );
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     expect(await screen.findByText("任务排队中")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /^取消$/ }));
     await waitFor(() =>
@@ -1152,6 +1156,7 @@ describe("native session workflow", () => {
       );
       render(<App />);
       await connect();
+      fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
       fireEvent.click(
         await screen.findByRole("button", { name: "取消会话任务" }),
       );
@@ -1197,6 +1202,7 @@ describe("native session workflow", () => {
     );
     render(<App />);
     await connect();
+    fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
     expect(screen.getByText("等待协作结果")).toBeTruthy();
     expect(screen.queryByText("已回传")).toBeNull();
@@ -1220,6 +1226,7 @@ describe("offline demonstration", () => {
     render(<App />);
     await screen.findByRole("heading", { name: "协作工作台" });
     expect(screen.getByText(/演示模式/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Agent A/ }));
     expect(
       screen.getByRole("heading", { name: demoState("zh").sessions[0].title }),
     ).toBeTruthy();

@@ -528,6 +528,21 @@ input[readonly] {
   font-weight: 500;
   color: #505462;
 }
+.breadcrumb-page {
+  padding: 0;
+  background: transparent;
+  color: #505462;
+  font-size: inherit;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.breadcrumb-page:hover {
+  color: var(--accent);
+}
+.breadcrumb strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .breadcrumb > span {
   color: #696a6e;
 }
@@ -768,6 +783,14 @@ input[readonly] {
 }
 .agent-card:hover {
   background: #faf9fe;
+}
+.agent-card-link {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: space-between;
+  color: var(--accent);
+  font-size: 11px;
+  padding-top: 2px;
 }
 .provider-symbol {
   width: 31px;
@@ -2582,5 +2605,181 @@ input[readonly] {
   }
   .inference-pill button span:first-child {
     max-width: 150px;
+  }
+}
+
+/* Dedicated agent pages keep navigation and the composer in view. */
+.main-content.agent-content {
+  height: calc(100dvh - 56px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-width: none;
+}
+.agent-content > .runtime-banner,
+.agent-content > .alert {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+.agent-content > #project-form {
+  overflow-y: auto;
+  max-height: 50%;
+  flex-shrink: 0;
+}
+.agent-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent-page > .page-heading {
+  flex-shrink: 0;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.agent-page-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.agent-page-title h1 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-page-title h1:focus {
+  outline: none;
+}
+.back-to-agents {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.back-to-agents span {
+  font-size: 20px;
+  line-height: 1;
+}
+.agent-page > .inset-form {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0;
+}
+.agent-page .workspace-grid {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: 224px minmax(0, 1fr);
+}
+.agent-page .session-panel {
+  min-height: 0;
+  padding-bottom: 12px;
+}
+.agent-page .session-list {
+  min-height: 0;
+  max-height: none;
+}
+.agent-page .session-create {
+  flex-shrink: 0;
+}
+.agent-page .conversation-panel {
+  min-height: 0;
+  min-width: 0;
+}
+.agent-page .conversation-panel > .panel-heading {
+  flex-shrink: 0;
+  min-height: 60px;
+}
+.agent-page .conversation-panel .event-feed {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overscroll-behavior: contain;
+}
+.agent-page .prompt-form {
+  flex-shrink: 0;
+}
+.agent-page .prompt-form textarea {
+  max-height: 24vh;
+}
+.agent-page .session-delete {
+  flex-shrink: 0;
+  max-height: 40%;
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .agent-page .workspace-grid {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+  .agent-page .session-panel {
+    border-right: 1px solid var(--line) !important;
+    border-bottom: 0 !important;
+  }
+  .agent-page .session-list {
+    display: block;
+  }
+  .agent-page .session-item {
+    min-width: 0;
+    max-width: none;
+  }
+  .agent-page .session-create {
+    display: block;
+  }
+  .agent-page .session-create label {
+    position: static;
+    width: auto;
+    height: auto;
+  }
+  .agent-page .session-create input {
+    margin: 8px 0 10px;
+  }
+  .agent-page .session-create .secondary {
+    width: 100%;
+  }
+}
+@media (max-width: 600px) {
+  .main-content.agent-content {
+    height: auto;
+    min-height: calc(100dvh - 56px);
+    overflow: visible;
+  }
+  .agent-page .workspace-grid {
+    display: flex;
+    flex-direction: column;
+  }
+  .agent-page .session-panel {
+    max-height: 275px;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--line) !important;
+  }
+  .agent-page .session-list {
+    display: flex;
+  }
+  .agent-page .session-item {
+    min-width: 150px;
+  }
+  .agent-page .session-create {
+    display: flex;
+  }
+  .agent-page .session-create label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+  }
+  .agent-page .session-create input {
+    margin: 0;
+  }
+  .agent-page .session-create .secondary {
+    width: auto;
+  }
+  .agent-page .conversation-panel .event-feed {
+    flex: auto;
+    height: 45vh;
+  }
+  .agent-page-title h1 {
+    font-size: 20px;
+  }
+  .agent-page .page-heading {
+    flex-wrap: wrap;
   }
 }

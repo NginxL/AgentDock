@@ -69,6 +69,7 @@ it.each<Language>(["zh", "en"])(
       mutate,
     };
     const view = render(<Workspace {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /^My agent/ }));
     let remove = screen.getByRole("button", {
       name: t("删除 Agent", "Delete agent"),
     });
@@ -96,6 +97,11 @@ it.each<Language>(["zh", "en"])(
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("alertdialog")).toBeNull();
     fireEvent.click(remove);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("返回 Agent 列表", "Back to agents"),
+      }),
+    );
     fireEvent.click(screen.getByRole("button", { name: /Other agent/ }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     remove = screen.getByRole("button", {
@@ -107,6 +113,11 @@ it.each<Language>(["zh", "en"])(
     );
     expect(screen.getByRole("alertdialog").textContent).toContain(
       t("0 个会话", "0 conversations"),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("返回 Agent 列表", "Back to agents"),
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: /^My agent/ }));
     expect(screen.queryByRole("alertdialog")).toBeNull();

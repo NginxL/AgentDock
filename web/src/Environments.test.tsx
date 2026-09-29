@@ -106,6 +106,7 @@ it.each(["zh", "en"] as const)(
         mutate={mutate}
       />,
     );
+    fireEvent.click(screen.getByRole("button", { name: /^Helper/ }));
     const toggle = screen.getByRole("button", {
       name: t("设置 Helper", "Configure Helper"),
     });

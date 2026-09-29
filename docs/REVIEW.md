@@ -99,6 +99,8 @@ Desktop startup, automatic local connection, shutdown cleanup, and live Codex/Cl
 
 ## 0.3 verification
 
+Dedicated conversation-page tests cover agent entry, return navigation, browser back and forward, unavailable links, and separate conversation selections and drafts per agent. The overview does not fetch conversation events; opening an agent fetches only the selected conversation.
+
 Automated coverage includes independent agent execution, project-memory isolation, overlapping directories, legacy database migration, model/effort forwarding, usage events, repeated message blocks, live/history deduplication, archived copies, append/truncation, and idle versus unknown TPS. Native quota checks cover source timestamps, unknown resets, invalid percentages and ambiguous organizations.
 
 Local smoke tests ran two consecutive turns each with Codex and Claude, verified the same native session retained a test marker, and received usage events. Native model discovery and Claude Desktop snapshot reads passed. Automated tests use offline fixtures; live checks are separate from CI and do not establish compatibility across all models, accounts or releases.

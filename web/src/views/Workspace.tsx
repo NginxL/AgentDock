@@ -48,6 +48,8 @@ export default function Workspace({
   runtimeEnabled,
   busy,
   mutate,
+  agentPageID,
+  onNavigateAgent,
   initialEnvironment,
   onInitialEnvironmentUsed,
 }: {
@@ -65,6 +67,8 @@ export default function Workspace({
   runtimeEnabled: boolean;
   busy: boolean;
   mutate: Mutate;
+  agentPageID?: string;
+  onNavigateAgent?: (id: string, replace?: boolean) => void;
   initialEnvironment?: string;
   onInitialEnvironmentUsed?: () => void;
 }) {
@@ -120,18 +124,39 @@ export default function Workspace({
     : catalog.models;
   const catalogError = catalog.failed;
   const catalogLoading = catalog.loading;
-  const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
-  const [sessionID, setSessionID] = useState("");
+  const [internalAgentID, setInternalAgentID] = useState("");
+  const agentID = agentPageID ?? internalAgentID;
+  function setAgentID(id: string, replace = false) {
+    if (onNavigateAgent) onNavigateAgent(id, replace);
+    else setInternalAgentID(id);
+  }
+  const [sessionSelections, setSessionSelections] = useState<
+    Record<string, string>
+  >({});
+  const relevantSessions = sessions.filter((s) => s.agent_id === agentID);
+  const sessionID = relevantSessions.some(
+    (s) => s.id === sessionSelections[agentID],
+  )
+    ? sessionSelections[agentID]
+    : (relevantSessions[0]?.id ?? "");
+  function setSessionID(id: string) {
+    setSessionSelections((current) => ({ ...current, [agentID]: id }));
+  }
   const [deletingSession, setDeletingSession] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [prompts, setPrompts] = useState<Record<string, string>>({});
+  const prompt = prompts[sessionID] ?? "";
+  function setPrompt(value: string) {
+    setPrompts((current) => ({ ...current, [sessionID]: value }));
+  }
+  const pageTitle = useRef<HTMLHeadingElement>(null);
+  const previousAgent = useRef(agentID);
   const submittingPrompt = useRef(false);
   const composingPrompt = useRef(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [eventError, setEventError] = useState("");
   const [eventLoading, setEventLoading] = useState(false);
   const lastSeq = useRef(0);
-  const relevantSessions = sessions.filter((s) => s.agent_id === agentID);
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
   const editingAgent = agents.find((a) => a.id === editingAgentID);
@@ -170,12 +195,19 @@ export default function Workspace({
     activeRuns.length > 0 ||
     pendingDeliveries.length > 0;
   useEffect(() => {
-    if (!agents.some((a) => a.id === agentID)) setAgentID(agents[0]?.id ?? "");
+    if (agentID && !agents.some((a) => a.id === agentID)) setAgentID("", true);
   }, [agents, agentID]);
   useEffect(() => {
-    if (!relevantSessions.some((s) => s.id === sessionID))
-      setSessionID(relevantSessions[0]?.id ?? "");
-  }, [relevantSessions, sessionID]);
+    if (previousAgent.current === agentID) return;
+    previousAgent.current = agentID;
+    setAgentForm(false);
+    setEditingAgentID(null);
+    draftTarget.current = null;
+    setDeletingSession(null);
+    setSessionTitle("");
+    composingPrompt.current = false;
+    pageTitle.current?.focus({ preventScroll: true });
+  }, [agentID]);
   useEffect(() => {
     setEvents([]);
     setEventError("");
@@ -245,10 +277,22 @@ export default function Workspace({
   }, [sessionID, token, lang, demo, demo ? state.events : null]);
 
   return (
-    <>
+    <section className={selectedAgent ? "agent-page" : "workspace-overview"}>
       <div className="page-heading">
-        <div>
-          <h1>{t("协作工作台", "Workspace")}</h1>
+        <div className="agent-page-title">
+          {selectedAgent && (
+            <button
+              className="icon-button back-to-agents"
+              onClick={() => setAgentID("")}
+              aria-label={t("返回 Agent 列表", "Back to agents")}
+              title={t("返回 Agent 列表", "Back to agents")}
+            >
+              <span aria-hidden="true">←</span>
+            </button>
+          )}
+          <h1 ref={pageTitle} tabIndex={-1}>
+            {selectedAgent?.name ?? t("协作工作台", "Workspace")}
+          </h1>
         </div>
         <div className="button-row">
           {selectedAgent && (
@@ -332,64 +376,73 @@ export default function Workspace({
               }}
             />
           )}
-          <button
-            className="primary"
-            disabled={busy && !demo}
-            aria-expanded={agentForm && editingAgentID === null}
-            aria-controls="agent-form"
-            onClick={() => {
-              if (agentForm && editingAgentID === null) {
-                setAgentForm(false);
-                return;
-              }
-              if (draftTarget.current !== "new") {
-                setEditingAgentID(null);
-                setAgentName("");
-                setProvider("codex");
-                setEnvironment(project?.environment_id ?? "local");
-                setConnectionDraft({
-                  host: "",
-                  python: "python3",
-                  previous: project?.environment_id ?? "local",
-                });
-                setRole("");
-                setWorkspace("");
-                setAgentProject(project?.id ?? "");
-                setModel("");
-                setEffort("");
-                setPermissionMode("ask");
-                draftTarget.current = "new";
-              }
-              setAgentForm(true);
-            }}
-          >
-            <Icon name="plus" size={18} />
-            {t("添加 Agent", "Add agent")}
-          </button>
+          {!selectedAgent && (
+            <button
+              className="primary"
+              disabled={busy && !demo}
+              aria-expanded={agentForm && editingAgentID === null}
+              aria-controls="agent-form"
+              onClick={() => {
+                if (agentForm && editingAgentID === null) {
+                  setAgentForm(false);
+                  return;
+                }
+                if (draftTarget.current !== "new") {
+                  setEditingAgentID(null);
+                  setAgentName("");
+                  setProvider("codex");
+                  setEnvironment(project?.environment_id ?? "local");
+                  setConnectionDraft({
+                    host: "",
+                    python: "python3",
+                    previous: project?.environment_id ?? "local",
+                  });
+                  setRole("");
+                  setWorkspace("");
+                  setAgentProject(project?.id ?? "");
+                  setModel("");
+                  setEffort("");
+                  setPermissionMode("ask");
+                  draftTarget.current = "new";
+                }
+                setAgentForm(true);
+              }}
+            >
+              <Icon name="plus" size={18} />
+              {t("添加 Agent", "Add agent")}
+            </button>
+          )}
         </div>
       </div>
-      <div className="stat-grid">
-        <Stat value={agents.length} label={t("Agent", "Agents")} icon="dock" />
-        <Stat
-          value={sessions.filter((s) => s.status === "running").length}
-          label={t("运行中", "Running")}
-          icon="bolt"
-        />
-        <Stat
-          value={
-            state.memories.filter(
-              (m) => !!project && m.project_id === project.id && !isArchived(m),
-            ).length
-          }
-          label={t("已审阅记忆", "Reviewed memories")}
-          icon="memory"
-        />
-        <Stat
-          value={approvals.length}
-          label={t("等待授权", "Awaiting approval")}
-          icon="shield"
-        />
-      </div>
+      {!selectedAgent && (
+        <div className="stat-grid">
+          <Stat
+            value={agents.length}
+            label={t("Agent", "Agents")}
+            icon="dock"
+          />
+          <Stat
+            value={sessions.filter((s) => s.status === "running").length}
+            label={t("运行中", "Running")}
+            icon="bolt"
+          />
+          <Stat
+            value={
+              state.memories.filter(
+                (m) =>
+                  !!project && m.project_id === project.id && !isArchived(m),
+              ).length
+            }
+            label={t("已审阅记忆", "Reviewed memories")}
+            icon="memory"
+          />
+          <Stat
+            value={approvals.length}
+            label={t("等待授权", "Awaiting approval")}
+            icon="shield"
+          />
+        </div>
+      )}
       {agentForm && (
         <section className="panel inset-form" id="agent-form">
           <div className="panel-heading">
@@ -695,94 +748,104 @@ export default function Workspace({
           </form>
         </section>
       )}
-      {!!agents.length && (
-        <section className="panel workspace-tps">
-          <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
-        </section>
-      )}
-      {agents.length ? (
-        <div className="agent-grid">
-          {agents.map((agent) => (
-            <button
-              className={`agent-card ${agentID === agent.id ? "active" : ""}`}
-              key={agent.id}
-              onClick={() => {
-                setAgentID(agent.id);
-                setPrompt("");
-              }}
-              aria-pressed={agentID === agent.id}
-            >
-              <div className="provider-symbol agent-symbol" aria-hidden="true">
-                {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
-              </div>
-              <div className="agent-info">
-                <strong>{agent.name}</strong>
-                <p>
-                  {agent.role ||
-                    t(
-                      "未设置角色 · 按任务要求执行",
-                      "No role set · Follows each task",
-                    )}
-                </p>
-                <span className="model-summary">
-                  {agent.model || t("客户端默认模型", "Client default model")}
-                  {agent.effort ? ` · ${agent.effort}` : ""}
-                </span>
-                {(() => {
-                  const quota = listOf(state.quotas).find(
-                    (q) =>
-                      q.provider === agent.provider &&
-                      (q.environment_id ?? "local") ===
-                        (agent.environment_id ?? "local"),
-                  );
-                  const value =
-                    quota &&
-                    ["ok", "available", "success"].includes(quota.status)
-                      ? remainingPercent(quota.windows[0]?.remaining_percent)
-                      : null;
-                  return (
-                    <span className="agent-quota">
-                      {t("当前额度", "Current usage")}:{" "}
-                      {value === null
-                        ? t("未知", "Unknown")
-                        : `${value}% ${t("剩余", "left")}`}
+      {!selectedAgent && (
+        <>
+          {!!agents.length && (
+            <section className="panel workspace-tps">
+              <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
+            </section>
+          )}
+          {agents.length ? (
+            <div className="agent-grid">
+              {agents.map((agent) => (
+                <button
+                  className="agent-card"
+                  key={agent.id}
+                  onClick={() => setAgentID(agent.id)}
+                >
+                  <div
+                    className="provider-symbol agent-symbol"
+                    aria-hidden="true"
+                  >
+                    {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
+                  </div>
+                  <div className="agent-info">
+                    <strong>{agent.name}</strong>
+                    <p>
+                      {agent.role ||
+                        t(
+                          "未设置角色 · 按任务要求执行",
+                          "No role set · Follows each task",
+                        )}
+                    </p>
+                    <span className="model-summary">
+                      {agent.model ||
+                        t("客户端默认模型", "Client default model")}
+                      {agent.effort ? ` · ${agent.effort}` : ""}
                     </span>
-                  );
-                })()}
-              </div>
+                    {(() => {
+                      const quota = listOf(state.quotas).find(
+                        (q) =>
+                          q.provider === agent.provider &&
+                          (q.environment_id ?? "local") ===
+                            (agent.environment_id ?? "local"),
+                      );
+                      const value =
+                        quota &&
+                        ["ok", "available", "success"].includes(quota.status)
+                          ? remainingPercent(
+                              quota.windows[0]?.remaining_percent,
+                            )
+                          : null;
+                      return (
+                        <span className="agent-quota">
+                          {t("当前额度", "Current usage")}:{" "}
+                          {value === null
+                            ? t("未知", "Unknown")
+                            : `${value}% ${t("剩余", "left")}`}
+                        </span>
+                      );
+                    })()}
+                  </div>
 
-              <span
-                className={`small-status ${sessions.some((s) => s.agent_id === agent.id && s.status === "running") ? "live" : ""}`}
+                  <span
+                    className={`small-status ${sessions.some((s) => s.agent_id === agent.id && s.status === "running") ? "live" : ""}`}
+                  >
+                    {sessions.some(
+                      (s) => s.agent_id === agent.id && s.status === "running",
+                    )
+                      ? t("运行中", "Running")
+                      : t("待命", "Idle")}
+                  </span>
+                  <TPS
+                    meter={metrics?.agents[agent.id]}
+                    t={t}
+                    compact
+                    stale={metricsFailed}
+                  />
+                  <span className="agent-card-link">
+                    {t("进入会话", "Open conversations")}{" "}
+                    <span aria-hidden="true">→</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <section className="panel">
+              <Empty
+                icon="dock"
+                title={t("添加第一位 Agent", "Add your first agent")}
               >
-                {sessions.some(
-                  (s) => s.agent_id === agent.id && s.status === "running",
-                )
-                  ? t("运行中", "Running")
-                  : t("待命", "Idle")}
-              </span>
-              <TPS
-                meter={metrics?.agents[agent.id]}
-                t={t}
-                compact
-                stale={metricsFailed}
-              />
-            </button>
-          ))}
-        </div>
-      ) : (
-        <section className="panel">
-          <Empty
-            icon="dock"
-            title={t("添加第一位 Agent", "Add your first agent")}
-          >
-            {t(
-              "先创建 Agent，再建立会话并明确发起任务。",
-              "Create an agent, open a session, and explicitly start a task.",
-            )}
-          </Empty>
-        </section>
+                {t(
+                  "先创建 Agent，再建立会话并明确发起任务。",
+                  "Create an agent, open a session, and explicitly start a task.",
+                )}
+              </Empty>
+            </section>
+          )}
+        </>
       )}
-      {!!agents.length && (
+      {selectedAgent && !agentForm && (
         <div className="workspace-grid">
           <section className="panel session-panel">
             <div className="panel-heading">
@@ -859,9 +922,10 @@ export default function Workspace({
                 <button
                   key={session.id}
                   className={`session-item ${session.id === sessionID ? "active" : ""}`}
+                  aria-current={session.id === sessionID ? "true" : undefined}
                   onClick={() => {
                     setSessionID(session.id);
-                    setPrompt("");
+                    setDeletingSession(null);
                   }}
                 >
                   <strong>{session.title}</strong>
@@ -1116,11 +1180,21 @@ export default function Workspace({
           </section>
         </div>
       )}
-      {approvals.some((a) => a.session_id !== sessionID) && (
+      {approvals.some(
+        (a) =>
+          a.session_id !== sessionID &&
+          (!selectedAgent ||
+            relevantSessions.some((s) => s.id === a.session_id)),
+      ) && (
         <section className="panel inset-form">
           <h2>{t("其他会话等待授权", "Approvals in other sessions")}</h2>
           {approvals
-            .filter((a) => a.session_id !== sessionID)
+            .filter(
+              (a) =>
+                a.session_id !== sessionID &&
+                (!selectedAgent ||
+                  relevantSessions.some((s) => s.id === a.session_id)),
+            )
             .map((approval) => (
               <ApprovalCard
                 key={approval.id}
@@ -1132,6 +1206,6 @@ export default function Workspace({
             ))}
         </section>
       )}
-    </>
+    </section>
   );
 }
