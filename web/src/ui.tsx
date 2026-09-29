@@ -58,6 +58,18 @@ export function errorMessage(message: string, t: Translate): string {
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
+    agent: (
+      <>
+        <rect x="5" y="7" width="14" height="13" rx="3" />
+        <path d="M12 3v4M10 3h4M2 12v4M22 12v4M9 12v3M15 12v3" />
+      </>
+    ),
+    timer: (
+      <>
+        <circle cx="12" cy="14" r="8" />
+        <path d="M10 2h4M19 5l1.5-1.5M12 14l3-4" />
+      </>
+    ),
     folder: (
       <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Zm0 2h18" />
     ),

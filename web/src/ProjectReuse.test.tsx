@@ -249,6 +249,25 @@ it("switches drafts without mixing recipients and sends everyday messages only t
   expect(writes.some(([path]) => path.includes("a-chat"))).toBe(false);
 });
 
+it("preserves an open conversation and its unsent draft while filtering and grouping the sidebar", async () => {
+  await setup("#/conversations?session=a-chat");
+  fireEvent.change(screen.getByLabelText("给 Agent 的任务"), {
+    target: { value: "Keep this review draft" },
+  });
+  fireEvent.change(screen.getByLabelText("对话范围"), {
+    target: { value: "daily" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "按 Agent 分组" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "仅显示最近 24 小时活跃的对话" }),
+  );
+  expect(
+    (screen.getByLabelText("给 Agent 的任务") as HTMLTextAreaElement).value,
+  ).toBe("Keep this review draft");
+  expect(screen.getByRole("heading", { name: "Review request" })).toBeTruthy();
+  expect(window.location.hash).toBe("#/conversations?session=a-chat");
+});
+
 it("creates a daily conversation without project membership and restores selection through browser history", async () => {
   const { state, writes } = await setup();
   fireEvent.click(screen.getByRole("button", { name: "新建对话" }));

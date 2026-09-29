@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DockState, Language, Mutate, Session, Translate } from "../types";
 import { DateText, Empty, Icon, statusLabel } from "../ui";
 import ProviderIcon from "../ProviderIcon";
+import ConversationAgentFilter from "../ConversationAgentFilter";
 import Workspace from "./Workspace";
 
 export default function Conversations({
@@ -32,6 +33,10 @@ export default function Conversations({
   currentSessionID.current = sessionID;
   const [scope, setScope] = useState("all");
   const [query, setQuery] = useState("");
+  const [filterAgents, setFilterAgents] = useState<string[]>([]);
+  const [recentOnly, setRecentOnly] = useState(false);
+  const [grouped, setGrouped] = useState(false);
+  const [now, setNow] = useState(Date.now);
   const [creating, setCreating] = useState(false);
   const [newScope, setNewScope] = useState("");
   const [agentID, setAgentID] = useState("");
@@ -44,46 +49,134 @@ export default function Conversations({
   const matchesScope = (s: Session, value: string) =>
     value === "all" ||
     (value === "daily" ? !s.project_id : s.project_id === value);
+  const matchesQuery = (session: Session) => {
+    const owner = state.agents.find((a) => a.id === session.agent_id);
+    return `${session.title} ${owner?.name ?? ""} ${projectName(session)}`
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase());
+  };
+  const isRecent = (session: Session) =>
+    Date.parse(session.updated_at) >= now - 24 * 60 * 60 * 1000;
+  useEffect(() => {
+    if (!recentOnly) return;
+    // The window keeps rolling even when no new server events arrive.
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [recentOnly]);
+  useEffect(() => {
+    // Deleted agents must not leave an invisible, stale filter behind.
+    setFilterAgents((ids) => {
+      const remaining = ids.filter((id) =>
+        state.agents.some((a) => a.id === id),
+      );
+      return remaining.length === ids.length ? ids : remaining;
+    });
+  }, [state.agents]);
   useEffect(() => {
     // History navigation can restore a conversation outside the current filter.
     if (selected && !matchesScope(selected, scope))
       setScope(selected.project_id || "daily");
+    if (
+      selected &&
+      filterAgents.length &&
+      !filterAgents.includes(selected.agent_id)
+    )
+      setFilterAgents([]);
+    if (selected && recentOnly && !isRecent(selected)) setRecentOnly(false);
+    if (selected && !matchesQuery(selected)) setQuery("");
   }, [selected?.id]);
   const visible = state.sessions
     .filter((session) => {
-      const owner = state.agents.find((a) => a.id === session.agent_id);
       return (
         matchesScope(session, scope) &&
-        `${session.title} ${owner?.name ?? ""} ${projectName(session)}`
-          .toLocaleLowerCase()
-          .includes(query.trim().toLocaleLowerCase())
+        (!filterAgents.length || filterAgents.includes(session.agent_id)) &&
+        (!recentOnly || isRecent(session)) &&
+        matchesQuery(session)
       );
     })
     .sort(
       (a, b) =>
-        b.updated_at.localeCompare(a.updated_at) || a.id.localeCompare(b.id),
+        (Date.parse(b.updated_at) || 0) - (Date.parse(a.updated_at) || 0) ||
+        a.id.localeCompare(b.id),
     );
+  // Map insertion order retains each group's most recently active conversation.
+  const groups = new Map<string, Session[]>();
+  for (const session of visible) {
+    const key = grouped ? session.agent_id : "all";
+    const items = groups.get(key) ?? [];
+    items.push(session);
+    groups.set(key, items);
+  }
   const choices = state.agents.filter((a) => (a.project_id ?? "") === newScope);
   return (
     <section className="conversation-hub">
       <aside className="panel conversation-index">
-        <div className="panel-heading">
+        <div className="panel-heading conversation-heading">
           <h1>{t("对话", "Conversations")}</h1>
-          <button
-            className="icon-button"
-            aria-label={t("新建对话", "New conversation")}
-            aria-expanded={creating}
-            aria-controls="new-conversation"
-            onClick={() => {
-              if (!creating) {
-                setNewScope(scope === "all" || scope === "daily" ? "" : scope);
-                setAgentID("");
-              }
-              setCreating(!creating);
-            }}
+          <div
+            className="conversation-toolbar"
+            role="group"
+            aria-label={t("对话工具", "Conversation tools")}
           >
-            <Icon name="plus" />
-          </button>
+            <ConversationAgentFilter
+              agents={state.agents.filter(
+                (a) =>
+                  scope === "all" ||
+                  (scope === "daily" ? !a.project_id : a.project_id === scope),
+              )}
+              projects={state.projects}
+              selected={filterAgents}
+              onChange={setFilterAgents}
+              t={t}
+            />
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t(
+                "仅显示最近 24 小时活跃的对话",
+                "Show only conversations active in the last 24 hours",
+              )}
+              title={t(
+                "仅显示最近 24 小时活跃的对话",
+                "Show only conversations active in the last 24 hours",
+              )}
+              aria-pressed={recentOnly}
+              onClick={() => {
+                setNow(Date.now());
+                setRecentOnly(!recentOnly);
+              }}
+            >
+              <Icon name="timer" />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t("按 Agent 分组", "Group by agent")}
+              title={t("按 Agent 分组", "Group by agent")}
+              aria-pressed={grouped}
+              onClick={() => setGrouped(!grouped)}
+            >
+              <Icon name="memory" />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={t("新建对话", "New conversation")}
+              title={t("新建对话", "New conversation")}
+              aria-expanded={creating}
+              aria-controls="new-conversation"
+              onClick={() => {
+                if (!creating) {
+                  setNewScope(
+                    scope === "all" || scope === "daily" ? "" : scope,
+                  );
+                  setAgentID("");
+                }
+                setCreating(!creating);
+              }}
+            >
+              <Icon name="plus" />
+            </button>
+          </div>
         </div>
         <div className="conversation-filters">
           <input
@@ -97,8 +190,7 @@ export default function Conversations({
             value={scope}
             onChange={(e) => {
               setScope(e.target.value);
-              if (selected && !matchesScope(selected, e.target.value))
-                onSelect("");
+              setFilterAgents([]);
             }}
           >
             <option value="all">{t("全部对话", "All conversations")}</option>
@@ -128,6 +220,7 @@ export default function Conversations({
                   setTitle("");
                   setScope(newScope || "daily");
                   setQuery("");
+                  setFilterAgents([]);
                   onSelect(session.id);
                 },
               );
@@ -202,40 +295,71 @@ export default function Conversations({
           </form>
         )}
         <div className="conversation-index-list">
-          {visible.map((session) => {
-            const owner = state.agents.find((a) => a.id === session.agent_id);
-            return (
-              <SessionListItem
-                key={session.id}
-                session={session}
-                state={state}
-                selected={session.id === sessionID}
-                className="conversation-index-item"
-                busy={busy}
-                mutate={mutate}
-                t={t}
-                onSelect={() => onSelect(session.id)}
-                onDeleted={() => {
-                  if (currentSessionID.current === session.id) onSelect("");
-                }}
-              >
-                {owner && <ProviderIcon provider={owner.provider} size={22} />}
-                <span>
-                  <strong>{session.title}</strong>
-                  <small>
-                    {projectName(session)} · {owner?.name}
-                  </small>
-                  <small>
-                    {statusLabel(session.status, t)} ·{" "}
-                    <DateText date={session.updated_at} lang={lang} />
-                  </small>
-                </span>
-              </SessionListItem>
-            );
-          })}
+          {Array.from(groups, ([key, sessions]) => (
+            <div
+              key={key}
+              className="conversation-group"
+              role={grouped ? "group" : undefined}
+              aria-label={
+                grouped
+                  ? `${state.agents.find((a) => a.id === key)?.name ?? t("已移除的 Agent", "Removed agent")} · ${projectName(sessions[0])}`
+                  : undefined
+              }
+            >
+              {grouped && (
+                <div className="conversation-group-heading">
+                  <span>
+                    <strong>
+                      {state.agents.find((a) => a.id === key)?.name ??
+                        t("已移除的 Agent", "Removed agent")}
+                    </strong>
+                    <small>{projectName(sessions[0])}</small>
+                  </span>
+                  <span className="count">{sessions.length}</span>
+                </div>
+              )}
+              {sessions.map((session) => {
+                const owner = state.agents.find(
+                  (a) => a.id === session.agent_id,
+                );
+                return (
+                  <SessionListItem
+                    key={session.id}
+                    session={session}
+                    state={state}
+                    selected={session.id === sessionID}
+                    className="conversation-index-item"
+                    busy={busy}
+                    mutate={mutate}
+                    t={t}
+                    onSelect={() => onSelect(session.id)}
+                    onDeleted={() => {
+                      if (currentSessionID.current === session.id) onSelect("");
+                    }}
+                  >
+                    {owner && (
+                      <ProviderIcon provider={owner.provider} size={22} />
+                    )}
+                    <span>
+                      <strong>{session.title}</strong>
+                      <small>
+                        {projectName(session)} · {owner?.name}
+                      </small>
+                      <small>
+                        {statusLabel(session.status, t)} ·{" "}
+                        <DateText date={session.updated_at} lang={lang} />
+                      </small>
+                    </span>
+                  </SessionListItem>
+                );
+              })}
+            </div>
+          ))}
           {!visible.length && (
             <p className="muted conversation-empty">
-              {t("暂无对话", "No conversations")}
+              {query.trim() || filterAgents.length || recentOnly
+                ? t("没有符合条件的对话", "No matching conversations")
+                : t("暂无对话", "No conversations")}
             </p>
           )}
         </div>
