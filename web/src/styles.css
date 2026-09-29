@@ -2330,3 +2330,135 @@ input[readonly] {
   color: var(--muted, #6b7080);
   overflow-wrap: anywhere;
 }
+
+.agent-delete {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.danger-text {
+  color: #ac4747;
+}
+.agent-delete-confirm {
+  margin-top: 12px;
+  padding: 18px;
+  border: 1px solid #eed8d8;
+  border-radius: 12px;
+  background: #fffafa;
+}
+.agent-delete-confirm .panel-heading {
+  margin-bottom: 0;
+}
+.agent-delete-confirm p {
+  margin: 12px 0 18px;
+}
+
+.inference-controls {
+  position: relative;
+  min-width: 0;
+}
+.inference-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--soft);
+  padding: 2px;
+}
+.inference-pill button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 7px 11px;
+  color: var(--ink);
+  border-radius: 20px;
+  font-size: 13px;
+}
+.inference-pill button span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
+}
+.inference-pill button:hover,
+.inference-pill button[aria-expanded="true"] {
+  background: var(--line);
+}
+.inference-divider {
+  height: 15px;
+  width: 1px;
+  background: var(--line);
+  flex-shrink: 0;
+}
+.inference-popover {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 320px;
+  max-width: min(80vw, 360px);
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 12px 40px #20203720;
+  padding: 9px;
+}
+.inference-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1px 5px 6px 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.inference-options {
+  max-height: 250px;
+  overflow-y: auto;
+}
+.inference-options > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 11px 13px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--ink);
+}
+.inference-options > button > span:first-child {
+  overflow-wrap: anywhere;
+}
+.inference-options > button:hover,
+.inference-options > button[aria-checked="true"] {
+  background: var(--soft);
+}
+.inference-options > button > span:last-child {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.inference-popover p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 9px;
+  line-height: 1.5;
+}
+.inference-reset {
+  font-size: 12px;
+  margin: 6px 8px 2px;
+}
+@media (max-width: 650px) {
+  .prompt-footer {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .inference-pill button span:first-child {
+    max-width: 150px;
+  }
+}

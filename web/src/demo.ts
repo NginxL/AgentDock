@@ -30,6 +30,8 @@ export function demoState(lang: Language): DockState {
         project_id: "demo-project",
         provider: "codex",
         name: "Agent A",
+        model: "example-model",
+        effort: "high",
         role: "",
       },
       {

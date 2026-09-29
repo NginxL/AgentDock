@@ -42,6 +42,8 @@ Each conversation stores native history, indexes and caches in `sessions/<sessio
 
 Automatic workspaces live in the conversation’s `workspace` subdirectory; explicit project directories stay shared. Deletion requires this session and linked tasks to be idle, then removes private files and records. A failed remote cleanup leaves the record available for retry. Upgrades migrate only AgentDock-owned native histories. Codex successfully resumes the private copy before removing its legacy duplicate through the native API; unrelated desktop and terminal sessions are not imported.
 
+Agent deletion checks all owned sessions and unresolved deliveries before cleanup. It uses the same private-directory cleanup for each session, then removes the agent and session records in one database transaction. Cleanup failure keeps all database records for an explicit retry; already removed private files cannot be restored. Shared project files, approved memory, connections and other agents are retained.
+
 Agent names and optional roles are defined by the user, independently of the CLI provider. Each turn reads the latest saved role when building its prompt. Role edits preserve existing native bindings and history; they do not rewrite a prompt already sent to a provider.
 
 The prompt contains the current task and a bounded reference block with the agent role and approved project memory. Private conversation history remains with the native CLI. Shared memories and teammate results are marked as reference data, not authority; this labeling does not guarantee resistance to prompt injection.
@@ -153,7 +155,9 @@ An `NSStatusItem` and native `NSMenu` keep a menu-bar entry available while the 
 
 An agent may have no project. Conversations without an explicit workspace receive a private `sessions/<session-id>/workspace` directory; explicitly selected project directories remain shared. Session ownership and workspace freeze at creation. Workspace exclusion applies equally to independent agents. Their MCP tools cannot read project memories or dispatch project tasks.
 
-`catalog.py` discovers models and efforts through Codex `model/list` and the Claude control handshake, drops account fields and caches metadata for five minutes. Saved agent settings reach future Codex `turn/start` requests as `model/effort`, or Claude as `--model/--effort`. Omitted settings preserve native client/session behavior without modifying global configuration.
+`catalog.py` discovers model and effort capabilities through Codex `model/list` and the Claude control handshake, omits account fields and caches local results for five minutes. The composer queries the agent's environment. Conversations inherit agent defaults while `sessions.model_override=0`; a selection stores conversation `model` and `effort` overrides, and restoring defaults clears them.
+
+Enqueueing captures the effective `model` and `effort` in `runs`. Local adapters and SSH requests use that snapshot, so later edits cannot change submitted tasks. Reply turns retain the original requesting task's settings. Codex receives `model/effort` on `turn/start`; Claude receives `--model/--effort`. Omitted values preserve native client/session behavior without changing global configuration.
 
 The scanner and all usage aggregates are scoped to native sessions bound to registered agents. With no bindings, the scanner skips source files. Quotas and menu entries follow the distinct providers of configured agents, and unconfigured providers are never probed. Existing unlinked records and CLI files are preserved but excluded.
 

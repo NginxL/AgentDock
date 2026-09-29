@@ -10,6 +10,11 @@ import type {
 
 export function errorMessage(message: string, t: Translate): string {
   const translations: Record<string, string> = {
+    "Stop active tasks before deleting an agent":
+      "请先停止该 Agent 的未完成任务，再删除。",
+    "Wait for linked tasks before deleting an agent":
+      "请等待该 Agent 的协作任务结束后再删除。",
+    "Invalid session model settings": "请选择有效的会话模型与推理等级。",
     "Stop active tasks before deleting a session":
       "请先停止当前任务，再删除会话。",
     "Wait for linked tasks before deleting a session":

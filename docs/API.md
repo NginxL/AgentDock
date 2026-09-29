@@ -62,9 +62,11 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
 | `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`, `permission_mode`. Model, workspace and permission settings require no queued or running tasks. `project_id` and `workspace` may change only before any conversation exists. Provider is immutable. |
+| `POST /api/agents/{id}/delete` | Empty object; human authentication required. Deletes the agent and all its sessions through private-directory cleanup. Rejects queued, running or unresolved linked tasks. Shared projects, memory and other agents are kept. |
 | `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
+| `POST /api/sessions/{id}/settings` | Required `model` and `effort` (each nullable), or `{ "inherit": true }` to restore agent defaults. Human authentication required. Affects only future messages in this conversation; submitted tasks keep their settings. |
 | `POST /api/sessions/{id}/delete` | Empty object; requires human authentication. Rejects active or linked unfinished tasks. Removes private directories, runs and events; remote cleanup must succeed before local records are removed. Shared project directories and native logins are kept. |
 | `POST /api/runs/{id}/cancel` | Empty object. Cancels the logical task containing this run, including its existing queued/active descendants. Returns `{ "ok": true }`. |
 | `GET /api/sessions/{id}/events?after=0` | `{ "events": [...] }`, ordered by increasing `seq`, at most 500 per request. |
@@ -88,8 +90,8 @@ Names and roles are user-defined and independent of `provider`. Updates require 
 | Record | Relevant fields |
 | --- | --- |
 | Agent | `id`, `project_id`, `environment_id`, `name`, `provider`, `role`, `workspace`, `model`, `effort`, `permission_mode`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
-| Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
-| Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `result`, `error`, timestamps. |
+| Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `model`, `effort`, `model_override`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
+| Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `model`, `effort`, `result`, `error`, timestamps. Model and effort are captured at submission. |
 | Delivery (`messages`) | `id`, `project_id`, `sender_id`, `recipient_id`, `sender_session_id`, `recipient_session_id`, `sender_run_id`, `run_id`, `reply_run_id`, `body`, `status`, `result`, `error`, `correlation_id`, `idempotency_key`, timestamps. |
 | Approval | `id`, `run_id`, `session_id`, `project_id`, `request`, `options`, `status`, `picked_option_id`, `created_at`. State returns pending approvals only. |
 

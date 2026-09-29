@@ -13,9 +13,26 @@ class APITests(unittest.TestCase):
         self.h={'Host':'127.0.0.1:47831','Authorization':'Bearer test-admin','Content-Type':'application/json','Origin':'http://127.0.0.1:47831'}
     def tearDown(self): self.store.close(); self.tmp.cleanup()
     def call(self,method,path,payload=None,headers=None): return self.api.dispatch(method,path,self.h if headers is None else headers,json.dumps(payload or {}).encode())
+    def test_session_model_settings_require_admin_and_do_not_execute(self):
+        agent=self.store.add_agent(None,'A','codex')
+        session=self.store.add_session(agent['id'],'S')
+        route='/api/sessions/'+session['id']+'/settings'
+        status,updated=self.call('POST',route,{'model':'selected-model','effort':'high'})
+        self.assertEqual((status,updated['model'],updated['model_override']),(200,'selected-model',1))
+        self.assertEqual(self.call('POST',route,{'model':'new','effort':None},headers={**self.h,'Authorization':'Bearer invalid'})[0],401)
+        self.assertEqual(self.call('POST',route,{'effort':'high'})[0],400)
+        self.assertEqual(self.runtime.mock_calls,[])
+
     def test_auth_host_origin(self):
         for override in ({'Authorization':''},{'Host':'evil.example:47831'},{'Origin':'https://evil.example'},{'Sec-Fetch-Site':'cross-site'}): self.assertEqual(self.call('GET','/api/state',headers={**self.h,**override})[0],401 if 'Authorization' in override else 403)
         status,state=self.call('GET','/api/state'); self.assertEqual(status,200); self.assertFalse(state['runtime']['enabled']); self.assertNotIn('test-admin',json.dumps(state))
+    def test_agent_delete_requires_human_authentication(self):
+        self.runtime.delete_agent.return_value = {'ok':True}
+        route = '/api/agents/fixture/delete'
+        self.assertEqual(self.call('POST',route,headers={**self.h,'Authorization':'Bearer invalid'})[0],401)
+        self.runtime.delete_agent.assert_not_called()
+        self.assertEqual(self.call('POST',route),(200,{'ok':True}))
+        self.runtime.delete_agent.assert_called_once_with('fixture')
     def test_review_mode_never_invokes_runtime_or_quota(self):
         self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],404)
         for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)

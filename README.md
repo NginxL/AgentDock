@@ -97,11 +97,17 @@ Create a conversation and send a message to your agent. **Task running** changes
 
 ![Expandable execution details and final response, fictional demo data](docs/images/conversation.en.png)
 
-**Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
+Click **Model** or **Reasoning effort** below the conversation input to choose from the selected agent's native model catalog. Changes apply to future messages in this conversation. Submitted and queued messages retain their original choices. Changing models resets effort to Auto; **Use agent defaults** restores inheritance.
+
+![Choose a conversation model below the input, fictional demo data](docs/images/inference.en.png)
+
+**Agent settings** controls the name, role, default model and default effort. Changing agent defaults requires current tasks to finish. Existing conversations retain context; their workspace and project stay fixed. Create another agent to use a different directory.
 
 Each task shows the model identifier and reasoning effort reported by the CLI. An assistant’s self-description is not used as configuration evidence.
 
 Each conversation has private Codex / Claude Code history, runtime state and caches, separate from the original client’s session list. Automatic working directories are also per conversation; explicitly selected project directories remain shared. Choose **Delete session** and confirm to remove its records, private directory and SSH run files. Stop active tasks first. Shared projects, native logins and other conversations are kept.
+
+To remove a configured agent, open **Agent settings → Delete agent** and confirm. This removes its conversations and private files while preserving shared project files, shared memory, native CLI settings and other agents. Unfinished tasks block deletion; remote conversations require a working SSH connection for cleanup.
 
 Choose **Access permissions** when adding an agent or opening **Agent settings**. Each local or SSH agent has its own setting:
 

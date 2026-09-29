@@ -83,6 +83,7 @@ class API:
             elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
             elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
+            elif len(parts)==4 and parts[:2]==["api","agents"] and parts[3]=='delete': return 200,self.runtime.delete_agent(parts[2])
             elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
             elif parsed.path=="/api/messages":
                 if p.get("sender_id","human")!="human": raise Forbidden("Human endpoint cannot impersonate an agent")
@@ -96,6 +97,7 @@ class API:
                 else: result=self.quota.refresh(p.get("provider"),environment_id=p['environment_id'])
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
                 if parts[3]=='delete': return 200,self.runtime.delete_session(parts[2])
+                if parts[3]=='settings': return 200,self.store.update_session_settings(parts[2],p)
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
                 elif parts[3]=="cancel": self.runtime.cancel(parts[2]); result={"ok":True}

@@ -80,6 +80,7 @@ class Store:
         self._migrate_independent_agents()
         self._migrate_environments()
         self._migrate_session_workspaces()
+        self._migrate_inference_settings()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -154,6 +155,31 @@ class Store:
         if value not in ("ask", "full_access"):
             raise Invalid("Invalid agent permission mode")
         return value
+
+    def _migrate_inference_settings(self):
+        with self.transaction():
+            for table, fields in {
+                'sessions': {'model': 'TEXT', 'effort': 'TEXT', 'model_override': 'INTEGER NOT NULL DEFAULT 0'},
+                'runs': {'model': 'TEXT', 'effort': 'TEXT'},
+            }.items():
+                existing = {r[1] for r in self.db.execute('PRAGMA table_info(' + table + ')')}
+                for name, definition in fields.items():
+                    if name not in existing:
+                        self.db.execute('ALTER TABLE ' + table + ' ADD COLUMN ' + name + ' ' + definition)
+
+    def update_session_settings(self, session_id, changes):
+        if isinstance(changes, dict) and set(changes) == {'inherit'} and changes['inherit'] is True:
+            model, effort, override = None, None, 0
+        elif isinstance(changes, dict) and set(changes) == {'model', 'effort'}:
+            model, effort = self._settings(changes['model'], changes['effort'])
+            override = 1
+        else:
+            raise Invalid('Invalid session model settings')
+        with self.transaction():
+            self._one('sessions', session_id)
+            self.db.execute('UPDATE sessions SET model=?,effort=?,model_override=?,updated_at=? WHERE id=?',
+                            (model, effort, override, now(), session_id))
+            return self._one('sessions', session_id)
 
     @staticmethod
     def _settings(model, effort):
@@ -405,26 +431,56 @@ class Store:
     def delete_session(self, session_id, cleanup):
         with self.transaction():
             session = self._one('sessions', session_id)
-            if self.db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running')", (session_id,)).fetchone():
-                raise Conflict('Stop active tasks before deleting a session')
-            if self.db.execute("SELECT 1 FROM messages WHERE (sender_session_id=? OR recipient_session_id=?) AND status IN ('queued','running','waiting')", (session_id,session_id)).fetchone():
-                raise Conflict('Wait for linked tasks before deleting a session')
+            self._check_session_deletion(session_id)
             runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session_id,))]
             cleanup(session, runs)  # Failure keeps the record available for retry.
-            native = session.get('native_session_id')
-            provider = self._one('agents',session['agent_id'])['provider']
-            if native:
-                identity = self.metric_identity(session['environment_id'], native)
-                for table in ('token_records','token_spans'):
-                    self.db.execute('DELETE FROM '+table+' WHERE provider=? AND native_id=?',(provider,identity))
-                self.db.execute('DELETE FROM token_activity_days WHERE native_id=?',(identity,))
-            for table in ('capabilities','proposals'):
-                self.db.execute('DELETE FROM '+table+' WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)',(session_id,))
-            self.db.execute('DELETE FROM approvals WHERE session_id=?',(session_id,))
-            self.db.execute('DELETE FROM events WHERE session_id=?',(session_id,))
-            self.db.execute('DELETE FROM messages WHERE sender_session_id=? OR recipient_session_id=?',(session_id,session_id))
-            self.db.execute('DELETE FROM runs WHERE session_id=?',(session_id,))
-            self.db.execute('DELETE FROM sessions WHERE id=?',(session_id,))
+            self._delete_session_records(session)
+        return {'ok': True}
+
+    def _check_session_deletion(self, session_id):
+        if self.db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running')", (session_id,)).fetchone():
+            raise Conflict('Stop active tasks before deleting a session')
+        if self.cancellable_tasks(session_id) or self.db.execute("SELECT 1 FROM messages WHERE (sender_session_id=? OR recipient_session_id=?) AND status IN ('queued','running','waiting')", (session_id,session_id)).fetchone():
+            raise Conflict('Wait for linked tasks before deleting a session')
+
+    def _delete_session_records(self, session):
+        session_id = session['id']
+        native = session.get('native_session_id')
+        provider = self._one('agents',session['agent_id'])['provider']
+        if native:
+            identity = self.metric_identity(session['environment_id'], native)
+            for table in ('token_records','token_spans'):
+                self.db.execute('DELETE FROM '+table+' WHERE provider=? AND native_id=?',(provider,identity))
+            self.db.execute('DELETE FROM token_activity_days WHERE native_id=?',(identity,))
+        for table in ('capabilities','proposals'):
+            self.db.execute('DELETE FROM '+table+' WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)',(session_id,))
+        self.db.execute('DELETE FROM approvals WHERE session_id=?',(session_id,))
+        self.db.execute('DELETE FROM events WHERE session_id=?',(session_id,))
+        self.db.execute('DELETE FROM messages WHERE sender_session_id=? OR recipient_session_id=?',(session_id,session_id))
+        self.db.execute('DELETE FROM runs WHERE session_id=?',(session_id,))
+        self.db.execute('DELETE FROM sessions WHERE id=?',(session_id,))
+
+    def delete_agent(self, agent_id, cleanup):
+        with self.transaction():
+            self._one('agents', agent_id)
+            sessions = self._all('SELECT * FROM sessions WHERE agent_id=?', (agent_id,))
+            if self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone():
+                raise Conflict('Stop active tasks before deleting an agent')
+            if self.db.execute("SELECT 1 FROM messages WHERE (sender_id=? OR recipient_id=?) AND status IN ('queued','running','waiting')", (agent_id,agent_id)).fetchone():
+                raise Conflict('Wait for linked tasks before deleting an agent')
+            # Check every session before touching files; retain all records if
+            # cleanup fails. File removal is idempotent so the user can retry.
+            for session in sessions:
+                if self.cancellable_tasks(session['id']):
+                    raise Conflict('Wait for linked tasks before deleting an agent')
+            for session in sessions:
+                runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session['id'],))]
+                cleanup(session, runs)
+            for session in sessions:
+                self._delete_session_records(session)
+            self.db.execute('DELETE FROM messages WHERE sender_id=? OR recipient_id=?', (agent_id,agent_id))
+            self.db.execute('DELETE FROM proposals WHERE agent_id=?', (agent_id,))
+            self.db.execute('DELETE FROM agents WHERE id=?', (agent_id,))
         return {'ok': True}
 
     def bind_native_session(self, session_id, native_session_id, run_id=None):
@@ -475,7 +531,9 @@ class Store:
         identifier = str(uuid.uuid4())
         task_run_id = sender["task_run_id"] if origin == "reply" else identifier
         run = dict(id=identifier,task_run_id=task_run_id,session_id=session_id,project_id=session["project_id"],agent_id=session["agent_id"],prompt=prompt,status="queued",error=None,created_at=now(),updated_at=now(),origin=origin,parent_run_id=parent_run_id,root_run_id=expected_root or identifier,depth=expected_depth,delivery_id=delivery_id,result=None)
-        self.db.execute("INSERT INTO runs(id,session_id,project_id,agent_id,prompt,status,error,created_at,updated_at,origin,parent_run_id,root_run_id,depth,delivery_id,task_run_id) VALUES(:id,:session_id,:project_id,:agent_id,:prompt,:status,:error,:created_at,:updated_at,:origin,:parent_run_id,:root_run_id,:depth,:delivery_id,:task_run_id)",run)
+        settings = sender if origin == 'reply' else (session if session['model_override'] else self._one('agents', session['agent_id']))
+        run.update(model=settings['model'], effort=settings['effort'])
+        self.db.execute("INSERT INTO runs(id,session_id,project_id,agent_id,prompt,status,error,created_at,updated_at,origin,parent_run_id,root_run_id,depth,delivery_id,task_run_id,model,effort) VALUES(:id,:session_id,:project_id,:agent_id,:prompt,:status,:error,:created_at,:updated_at,:origin,:parent_run_id,:root_run_id,:depth,:delivery_id,:task_run_id,:model,:effort)",run)
         self._refresh_session(session_id, "queued")
         self._event(run["project_id"], session_id, "run_queued", {"run_id":identifier,"origin":origin,"parent_run_id":parent_run_id,"delivery_id":delivery_id})
         return run

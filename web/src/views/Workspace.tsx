@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
+import InferenceControls from "../InferenceControls";
+import AgentDeletion from "../AgentDeletion";
 import AgentConnection, {
   NEW_SSH_CONNECTION,
   type SSHConnectionDraft,
@@ -578,8 +580,8 @@ export default function Workspace({
                       "Model list unavailable. Keep client settings and reopen this panel to retry.",
                     )
                   : t(
-                      "模型、思考强度与访问权限对后续消息生效。已有会话保持上下文；建立会话后，工作目录及项目固定。",
-                      "Model, effort and permissions apply to future messages. Conversations keep their context; workspace and project stay fixed once a conversation exists.",
+                      "模型与思考强度作为 Agent 默认设置，会话可单独覆盖。访问权限用于后续消息；建立会话后，工作目录及项目固定。",
+                      "Model and effort set agent defaults; conversations can override them. Permissions apply to future messages. Workspace and project stay fixed once a conversation exists.",
                     )}
             </p>
             <label>
@@ -656,6 +658,47 @@ export default function Workspace({
                 : t("创建 Agent", "Create agent")}
             </button>
           </form>
+          {editingAgent && (
+            <AgentDeletion
+              key={editingAgent.id}
+              agent={editingAgent}
+              sessionCount={
+                sessions.filter((s) => s.agent_id === editingAgent.id).length
+              }
+              active={
+                (state.runs ?? []).some(
+                  (r) =>
+                    r.agent_id === editingAgent.id &&
+                    ["queued", "running"].includes(r.status),
+                ) ||
+                sessions.some(
+                  (s) =>
+                    s.agent_id === editingAgent.id &&
+                    ["queued", "running", "waiting"].includes(s.status),
+                ) ||
+                state.messages.some(
+                  (m) =>
+                    (m.sender_id === editingAgent.id ||
+                      m.recipient_id === editingAgent.id) &&
+                    ["queued", "running", "waiting"].includes(m.status ?? ""),
+                )
+              }
+              busy={busy}
+              mutate={mutate}
+              t={t}
+              onDeleted={() => {
+                setAgentForm(false);
+                setEditingAgentID(null);
+                draftTarget.current = null;
+                if (agentID === editingAgent.id) {
+                  setAgentID("");
+                  setSessionID("");
+                  setEvents([]);
+                  setPrompt("");
+                }
+              }}
+            />
+          )}
         </section>
       )}
       {!!agents.length && (
@@ -976,17 +1019,19 @@ export default function Workspace({
                     )}
                   />
                   <div className="prompt-footer">
-                    <span>
-                      {runtimeEnabled
-                        ? t(
-                            "执行可能修改所选工作目录中的文件。",
-                            "Execution may change files in this workspace.",
-                          )
-                        : t(
-                            "服务尚未启用执行。",
-                            "Execution is disabled on the service.",
-                          )}
-                    </span>
+                    {selectedAgent && selectedSession && (
+                      <InferenceControls
+                        key={sessionID}
+                        agent={selectedAgent}
+                        session={selectedSession}
+                        token={token}
+                        busy={busy}
+                        runtimeEnabled={runtimeEnabled}
+                        demo={demo}
+                        mutate={mutate}
+                        t={t}
+                      />
+                    )}
                     <div className="button-row">
                       {hasSessionTasks && (
                         <button
