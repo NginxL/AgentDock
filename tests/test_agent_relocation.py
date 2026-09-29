@@ -152,6 +152,8 @@ class AgentRelocationTests(unittest.TestCase):
         (directory / 'private-history').write_text('history')
         self.store.update_agent(agent['id'], {'environment_id': self.remote})
         remote = self.store.add_session(agent['id'], 'Remote')
+        run = self.store.begin_run(remote['id'], 'Previous remote turn')
+        self.store.finish_run(run['id'], 'completed')
         self.store.update_agent(agent['id'], {'environment_id': 'local'})
         with self.assertRaises(Conflict): self.store.remove_environment(self.remote)
         runtime = Runtime(self.store, {'execution_enabled': True})

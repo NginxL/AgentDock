@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import SessionListItem from "../SessionListItem";
+import { useEffect, useRef, useState } from "react";
 import type { DockState, Language, Mutate, Session, Translate } from "../types";
 import { DateText, Empty, Icon, statusLabel } from "../ui";
 import ProviderIcon from "../ProviderIcon";
@@ -27,6 +28,8 @@ export default function Conversations({
   lang: Language;
   t: Translate;
 }) {
+  const currentSessionID = useRef(sessionID);
+  currentSessionID.current = sessionID;
   const [scope, setScope] = useState("all");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -202,11 +205,19 @@ export default function Conversations({
           {visible.map((session) => {
             const owner = state.agents.find((a) => a.id === session.agent_id);
             return (
-              <button
+              <SessionListItem
                 key={session.id}
-                className={`conversation-index-item ${session.id === sessionID ? "active" : ""}`}
-                aria-current={session.id === sessionID ? "true" : undefined}
-                onClick={() => onSelect(session.id)}
+                session={session}
+                state={state}
+                selected={session.id === sessionID}
+                className="conversation-index-item"
+                busy={busy}
+                mutate={mutate}
+                t={t}
+                onSelect={() => onSelect(session.id)}
+                onDeleted={() => {
+                  if (currentSessionID.current === session.id) onSelect("");
+                }}
               >
                 {owner && <ProviderIcon provider={owner.provider} size={22} />}
                 <span>
@@ -219,7 +230,7 @@ export default function Conversations({
                     <DateText date={session.updated_at} lang={lang} />
                   </small>
                 </span>
-              </button>
+              </SessionListItem>
             );
           })}
           {!visible.length && (

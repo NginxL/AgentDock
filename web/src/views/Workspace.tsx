@@ -1,3 +1,4 @@
+import SessionListItem from "../SessionListItem";
 import { followSession } from "../sessionEvents";
 import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
@@ -166,7 +167,6 @@ export default function Workspace({
   function setSessionID(id: string) {
     setSessionSelections((current) => ({ ...current, [agentID]: id }));
   }
-  const [deletingSession, setDeletingSession] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState("");
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const prompt = prompts[sessionID] ?? "";
@@ -227,7 +227,6 @@ export default function Workspace({
     setProjectAgentForm(false);
     setEditingAgentID(null);
     draftTarget.current = null;
-    setDeletingSession(null);
     setSessionTitle("");
     composingPrompt.current = false;
     pageTitle.current?.focus({ preventScroll: true });
@@ -906,77 +905,29 @@ export default function Workspace({
                 </div>
                 <span className="count-badge">{relevantSessions.length}</span>
               </div>
-              {selectedSession && (
-                <div className="session-delete">
-                  <button
-                    className="text-button"
-                    disabled={busy || hasSessionTasks}
-                    aria-expanded={deletingSession === sessionID}
-                    onClick={() =>
-                      setDeletingSession(
-                        deletingSession === sessionID ? null : sessionID,
-                      )
-                    }
-                  >
-                    {t("删除会话", "Delete session")}
-                  </button>
-                  {deletingSession === sessionID && (
-                    <div
-                      role="alertdialog"
-                      aria-label={t("删除会话", "Delete session")}
-                    >
-                      <button
-                        className="icon-button"
-                        aria-label={t("关闭", "Close")}
-                        onClick={() => setDeletingSession(null)}
-                      >
-                        ×
-                      </button>
-                      <p>
-                        {t(
-                          "删除此会话及其专属文件？此操作无法撤销。共用项目目录会保留。",
-                          "Delete this conversation and its private files? This cannot be undone. Shared project directories are kept.",
-                        )}
-                      </p>
-                      <div className="button-row">
-                        <button
-                          className="secondary"
-                          disabled={busy}
-                          onClick={() => setDeletingSession(null)}
-                        >
-                          {t("取消", "Cancel")}
-                        </button>
-                        <button
-                          className="danger"
-                          disabled={busy || hasSessionTasks}
-                          onClick={async () => {
-                            await mutate(
-                              `/api/sessions/${encodeURIComponent(sessionID)}/delete`,
-                              {},
-                              () => {
-                                setDeletingSession(null);
-                                setSessionID("");
-                                setEvents([]);
-                              },
-                            );
-                          }}
-                        >
-                          {t("确认删除", "Delete permanently")}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
               <div className="session-list">
                 {relevantSessions.map((session) => (
-                  <button
+                  <SessionListItem
                     key={session.id}
-                    className={`session-item ${session.id === sessionID ? "active" : ""}`}
-                    aria-current={session.id === sessionID ? "true" : undefined}
-                    onClick={() => {
-                      setSessionID(session.id);
-                      setDeletingSession(null);
+                    session={session}
+                    state={state}
+                    selected={session.id === sessionID}
+                    className="session-item"
+                    busy={busy}
+                    mutate={mutate}
+                    t={t}
+                    onSelect={() => setSessionID(session.id)}
+                    onDeleted={() => {
+                      setPrompts((current) => {
+                        const next = { ...current };
+                        delete next[session.id];
+                        return next;
+                      });
+                      setSessionSelections((current) =>
+                        current[agentID] === session.id
+                          ? { ...current, [agentID]: "" }
+                          : current,
+                      );
                     }}
                   >
                     <strong>{session.title}</strong>
@@ -985,7 +936,7 @@ export default function Workspace({
                       <span>·</span>
                       <DateText date={session.updated_at} lang={lang} />
                     </span>
-                  </button>
+                  </SessionListItem>
                 ))}
                 {!relevantSessions.length && (
                   <p className="muted small-text">

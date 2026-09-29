@@ -81,7 +81,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/sessions/{id}/settings` | `{ "model": string或null, "effort": string或null }` 覆盖当前会话设置，或 `{ "inherit": true }` 恢复使用 Agent 默认值。仅影响后续提交的消息，不启动 CLI，不更改 Agent 或原生配置。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
-| `POST /api/sessions/{id}/delete` | 空对象；用户认证接口。阻止删除运行中或仍有关联任务的会话，清理专属目录、运行记录与事件；远端清理成功后才移除本机记录。共用项目目录与原生登录保留。 |
+| `POST /api/sessions/{id}/delete` | 空对象；用户认证接口。阻止删除运行中或仍有关联任务的会话，清理专属目录、运行记录与事件；从未运行且无原生绑定的远端会话无需连接；其余远端会话自动准备当前清理程序，清理成功后才移除本机记录。SSH 清理失败返回 `409` 并保留记录供重试。共用项目目录与原生登录保留。 |
 | `POST /api/runs/{id}/cancel` | 空对象。取消指定运行所属的逻辑任务，包括它现有的排队或正在执行的后代任务。返回 `{ "ok": true }`。 |
 | `GET /api/sessions/{id}/events?after=0` | 返回 `{ "events": [...] }`，按递增的 `seq` 排序，每次最多返回 500 条。 |
 | `GET /api/sessions/{id}/events/stream?after=0` | 使用相同的管理员认证返回 SSE。`data` 为 `{ "events": [...] }`，`id` 为本批最后一个 `seq`；断线后携带最后接收的游标重连。 |

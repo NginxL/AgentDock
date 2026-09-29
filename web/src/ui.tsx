@@ -21,6 +21,8 @@ export function errorMessage(message: string, t: Translate): string {
       "请等待关联的协作任务结束后再删除会话。",
     "Enable execution to clean up a remote session":
       "请启用执行后再删除远端会话。",
+    "Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.":
+      "远端会话清理失败，请检查 SSH 连接后重试。会话记录已保留。",
     "Could not prepare isolated Codex session storage; no prompt was sent.":
       "无法准备独立的 Codex 会话目录，任务尚未发送。",
     "Invalid agent permission mode": "请选择有效的 Agent 访问权限。",

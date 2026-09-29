@@ -382,7 +382,7 @@ export default function App() {
       if (
         e instanceof ApiError &&
         e.status === 409 &&
-        errorMessage(e.message, t) === e.message
+        errorMessage(e.message, (zh) => zh) === e.message
       )
         setError(
           t(

@@ -80,8 +80,12 @@ class AgentDeletionTests(unittest.TestCase):
         env = self.store.add_environment('Remote', 'fixture-host')
         agent = self.store.add_agent(None, 'A', 'codex', environment_id=env['id'])
         sessions = [self.store.add_session(agent['id'], str(i)) for i in range(2)]
+        for session in sessions:
+            run = self.store.begin_run(session['id'], 'Previous turn')
+            self.store.finish_run(run['id'], 'completed')
         self.runtime.remote.rpc = Mock(side_effect=[{'ok':True}, OSError('offline')])
-        with self.assertRaises(OSError): self.runtime.delete_agent(agent['id'])
+        with self.assertRaisesRegex(Conflict, 'Check the SSH connection and retry'):
+            self.runtime.delete_agent(agent['id'])
         self.assertEqual(len(self.store.state()['sessions']), 2)
         self.assertEqual(self.store.get_agent(agent['id'])['id'], agent['id'])
         self.runtime.remote.rpc = Mock(return_value={'ok':True})

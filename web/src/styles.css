@@ -2753,20 +2753,76 @@ input[readonly] {
 .connection-advanced label {
   margin-top: 12px;
 }
-.session-delete {
-  padding: 0 20px 12px;
+.session-list-row {
+  min-width: 0;
+  margin-bottom: 3px;
+  flex-shrink: 0;
 }
-.session-delete [role="alertdialog"] {
+.session-row-main {
   position: relative;
-  padding: 16px;
-  border: 1px solid var(--line, #e6e6ee);
-  border-radius: 12px;
 }
-.session-delete [role="alertdialog"] > .icon-button {
-  float: right;
+.session-row-main > .session-item,
+.session-row-main > .conversation-index-item {
+  padding-right: 42px;
+  margin-bottom: 0;
 }
-.session-delete p {
+.session-row-main .session-remove {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--muted);
+}
+.session-row-main:hover .session-remove,
+.session-list-row:focus-within .session-remove,
+.session-remove[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.session-remove:hover:not(:disabled) {
+  color: #b44848;
+  background: #fff0f0;
+}
+.session-delete-confirm {
+  padding: 12px;
+  margin: 6px 0 10px;
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.session-delete-confirm .panel-heading {
+  border: 0;
+  padding: 0;
+  gap: 4px;
+}
+.session-delete-confirm strong {
+  font-size: 13px;
+}
+.session-delete-confirm p {
+  font-size: 12px;
   line-height: 1.6;
+  color: var(--muted);
+  margin: 10px 0;
+}
+.session-delete-confirm .button-row {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.session-delete-confirm .button-row button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+@media (hover: none) {
+  .session-row-main .session-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 .task-model {
   font-size: 12px;
@@ -3008,11 +3064,6 @@ input[readonly] {
 }
 .agent-page .prompt-form textarea {
   max-height: 24vh;
-}
-.agent-page .session-delete {
-  flex-shrink: 0;
-  max-height: 40%;
-  overflow-y: auto;
 }
 @media (max-width: 900px) {
   .agent-page .workspace-grid {

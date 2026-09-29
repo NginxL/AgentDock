@@ -1417,3 +1417,42 @@ describe("independent agents and usage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+it.each(["zh", "en"] as const)(
+  "explains remote cleanup failure without losing the session (%s)",
+  async (language) => {
+    window.__AGENTDOCK_DESKTOP_TOKEN__ = "deletion-fixture";
+    window.__AGENTDOCK_DESKTOP_LANGUAGE__ = language;
+    window.history.replaceState({}, "", "/#/conversations?session=session-a");
+    const message =
+      "Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.";
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path === "/api/sessions/session-a/delete")
+        return response({ error: message }, 409);
+      return response(path.includes("/events?") ? { events: [] } : state);
+    });
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name:
+          language === "zh"
+            ? "删除会话「First task」"
+            : "Delete session “First task”",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: language === "zh" ? "确认删除" : "Delete permanently",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        language === "zh"
+          ? "远端会话清理失败，请检查 SSH 连接后重试。会话记录已保留。"
+          : message,
+      ),
+    );
+    expect(screen.getByRole("heading", { name: "First task" })).toBeTruthy();
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+  },
+);

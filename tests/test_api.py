@@ -91,6 +91,28 @@ class APITests(unittest.TestCase):
         self.runtime.delete_agent.assert_not_called()
         self.assertEqual(self.call('POST',route),(200,{'ok':True}))
         self.runtime.delete_agent.assert_called_once_with('fixture')
+    def test_empty_remote_session_deletion_and_safe_cleanup_errors(self):
+        from agentdock.runtime import Runtime
+        runtime=Runtime(self.store, {'execution_enabled':True})
+        runtime.remote.rpc=Mock(side_effect=OSError('private connection details'))
+        self.api.runtime=runtime
+        try:
+            env=self.store.add_environment('Remote','fixture')
+            agent=self.store.add_agent(None,'A','codex',environment_id=env['id'])
+            empty=self.store.add_session(agent['id'],'Empty')
+            route='/api/sessions/'+empty['id']+'/delete'
+            self.assertEqual(self.call('POST',route,headers={**self.h,'Authorization':'Bearer wrong'})[0],401)
+            self.assertEqual(self.call('POST',route),(200,{'ok':True}))
+            runtime.remote.rpc.assert_not_called()
+            used=self.store.add_session(agent['id'],'Used')
+            run=self.store.begin_run(used['id'],'Fixture')
+            self.store.finish_run(run['id'],'completed')
+            code,result=self.call('POST','/api/sessions/'+used['id']+'/delete')
+            self.assertEqual(code,409)
+            self.assertIn('Check the SSH connection and retry',result['error'])
+            self.assertNotIn('private connection details',result['error'])
+            self.assertEqual(self.store.get_session(used['id'])['id'],used['id'])
+        finally: runtime.close()
     def test_review_mode_never_invokes_runtime_or_quota(self):
         self.assertEqual(self.call('POST','/api/quotas/authorize',{'provider':'claude'})[0],404)
         for path in ('/api/sessions/x/run','/api/sessions/x/cancel','/api/quotas/refresh','/api/approvals/x','/api/messages','/api/runs/x/cancel'): self.assertEqual(self.call('POST',path,{'prompt':'go','provider':'codex'})[0],403)

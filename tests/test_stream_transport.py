@@ -1,6 +1,7 @@
 """Real framed pipes, detached fake native workers, and durable replay; no network/model."""
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import threading
@@ -51,6 +52,19 @@ class StreamTransportTests(unittest.TestCase):
             directory = pool.submit(self.manager.rpc, self.environment, {'op':'directories', 'path':'~'})
             self.assertEqual(directory.result(timeout=5)['path'], str(self.fixture.home.resolve()))
             self.assertEqual([turn.result(timeout=8)[0] for turn in turns], ['hello world', 'hello world'])
+        self.assertEqual(len(self.channels), 1)
+
+    def test_cleanup_after_upgrade_bootstraps_a_fresh_channel(self):
+        # Mirror an app restart: no live channel and only an older remote bundle.
+        shutil.rmtree(self.fixture.home/'.local/share/agentdock/ssh/runtimes'/self.manager.digest)
+        controller=self.fixture.store.controller_id
+        session=str(uuid.uuid4())
+        path=self.fixture.home/'.local/share/agentdock/ssh/controllers'/controller/'sessions'/session
+        path.mkdir(parents=True)
+        (path/'history').write_text('owned fixture')
+        self.assertEqual(self.manager.rpc(self.environment, {'op':'delete_session',
+            'controller':controller, 'session_id':session, 'run_ids':[]}, install=True), {'ok':True})
+        self.assertFalse(path.exists())
         self.assertEqual(len(self.channels), 1)
 
     def test_disconnect_replays_events_without_restarting_native_turn(self):

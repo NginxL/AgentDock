@@ -125,10 +125,38 @@ class SessionStorageTests(unittest.TestCase):
         env=self.store.add_environment('remote','fixture')
         remote=self.store.add_agent(None,'B','codex',environment_id=env['id'])
         session=self.store.add_session(remote['id'],'Remote')
+        run=self.store.begin_run(session['id'],'Previous turn')
+        self.store.finish_run(run['id'],'completed')
         runtime=Runtime(self.store,{'execution_enabled':True})
         runtime.remote.rpc=Mock(side_effect=OSError('offline'))
         try:
-            with self.assertRaises(OSError): runtime.delete_session(session['id'])
+            with self.assertRaisesRegex(Conflict, 'Check the SSH connection and retry'):
+                runtime.delete_session(session['id'])
+            self.assertEqual(self.store.get_session(session['id'])['id'],session['id'])
+        finally: runtime.close()
+
+    def test_never_started_remote_session_needs_no_connection_or_execution(self):
+        env=self.store.add_environment('Remote','fixture')
+        agent=self.store.add_agent(None,'A','codex',environment_id=env['id'])
+        session=self.store.add_session(agent['id'],'Empty')
+        runtime=Runtime(self.store,{'execution_enabled':False})
+        runtime.remote.rpc=Mock(side_effect=OSError('offline'))
+        try:
+            self.assertEqual(runtime.delete_session(session['id']), {'ok':True})
+            runtime.remote.rpc.assert_not_called()
+            self.assertEqual(self.store.state()['sessions'], [])
+        finally: runtime.close()
+
+    def test_remote_cleanup_requires_explicit_success_even_without_run_records(self):
+        env=self.store.add_environment('Remote','fixture')
+        agent=self.store.add_agent(None,'A','codex',environment_id=env['id'])
+        session=self.store.add_session(agent['id'],'Legacy native session')
+        self.store.bind_native_session(session['id'],str(uuid.uuid4()))
+        runtime=Runtime(self.store,{'execution_enabled':True})
+        runtime.remote.rpc=Mock(return_value={})
+        try:
+            with self.assertRaisesRegex(Conflict, 'session has been kept'):
+                runtime.delete_session(session['id'])
             self.assertEqual(self.store.get_session(session['id'])['id'],session['id'])
         finally: runtime.close()
 

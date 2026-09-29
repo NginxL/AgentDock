@@ -208,10 +208,10 @@ it("shows project and everyday conversations, filters them, and opens the right 
     target: { value: "A" },
   });
   expect(
-    screen.queryByRole("button", { name: /Everyday question/ }),
+    screen.queryByRole("button", { name: /^Everyday question/ }),
   ).toBeNull();
-  expect(screen.queryByRole("button", { name: /Feature request/ })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /Review request/ }));
+  expect(screen.queryByRole("button", { name: /^Feature request/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^Review request/ }));
   expect(window.location.hash).toBe("#/conversations?session=a-chat");
   expect(screen.getByRole("heading", { name: "Review request" })).toBeTruthy();
   expect(screen.queryByRole("heading", { name: "会话" })).toBeNull();
@@ -224,18 +224,18 @@ it("switches drafts without mixing recipients and sends everyday messages only t
   fireEvent.change(screen.getByLabelText("给 Agent 的任务"), {
     target: { value: "Review draft" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Everyday question/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Everyday question/ }));
   expect(
     (screen.getByLabelText("给 Agent 的任务") as HTMLTextAreaElement).value,
   ).toBe("");
   fireEvent.change(screen.getByLabelText("给 Agent 的任务"), {
     target: { value: "Daily draft" },
   });
-  fireEvent.click(screen.getByRole("button", { name: /Review request/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Review request/ }));
   expect(
     (screen.getByLabelText("给 Agent 的任务") as HTMLTextAreaElement).value,
   ).toBe("Review draft");
-  fireEvent.click(screen.getByRole("button", { name: /Everyday question/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Everyday question/ }));
   fireEvent.keyDown(screen.getByLabelText("给 Agent 的任务"), {
     key: "Enter",
     code: "Enter",
@@ -266,7 +266,7 @@ it("creates a daily conversation without project membership and restores selecti
     { agent_id: "base", title: "新对话" },
   ]);
   expect(state.sessions.at(-1)?.project_id).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /Everyday question/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Everyday question/ }));
   act(() => window.history.back());
   await screen.findByRole("heading", { name: "新对话" });
   act(() => window.history.forward());

@@ -95,10 +95,20 @@ class Runtime:
         from .session_storage import remove_session_directory
         session_id = session['id']
         if session['environment_id'] != 'local':
-            if not self.enabled: raise Forbidden('Enable execution to clean up a remote session')
-            self.remote.rpc(session['environment_id'], {'op':'delete_session', 'controller':self.store.controller_id,
-                'session_id':session_id,'run_ids':runs,'provider':self.store.get_agent(session['agent_id'])['provider'],
-                'native_session_id':session.get('native_session_id')})
+            # Creating a remote conversation only inserts a local record. A run
+            # is persisted before any remote files can be created.
+            if runs or session.get('native_session_id'):
+                if not self.enabled: raise Forbidden('Enable execution to clean up a remote session')
+                try:
+                    result = self.remote.rpc(session['environment_id'], {'op':'delete_session', 'controller':self.store.controller_id,
+                        'session_id':session_id,'run_ids':runs,'provider':self.store.get_agent(session['agent_id'])['provider'],
+                        'native_session_id':session.get('native_session_id')}, install=True)
+                    # App upgrades change the runtime digest. Prepare the private
+                    # cleanup code without requiring a CLI probe or model call.
+                    if not isinstance(result, dict) or result.get('ok') is not True:
+                        raise ProviderError('Remote cleanup was not acknowledged')
+                except (ProviderError, OSError):
+                    raise Conflict('Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.') from None
         elif session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='codex':
             from .codex_home import retire_legacy
             retire_legacy(self._command('codex'), dict(os.environ), session['native_session_id'])

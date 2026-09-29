@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -245,7 +246,7 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(run['result'],'hello world')
         self.assertEqual([e['kind'] for e in self.store.session_events(session['id'])][-2:],['assistant_message','run_finished'])
 
-    def test_deleting_a_session_cleans_its_remote_workspace_and_run_files_only(self):
+    def test_deleting_after_upgrade_prepares_cleanup_and_removes_only_owned_files(self):
         agent, first=self.make_agent()
         second=self.store.add_session(agent['id'],'Keep this session')
         self.runtime=Runtime(self.store,{'execution_enabled':True,'commands':{},'python':sys.executable,'package_root':str(self.home),'base_url':'http://127.0.0.1:1','run_timeout':8})
@@ -257,10 +258,24 @@ class RemoteTests(unittest.TestCase):
         controller=self.home/'.local/share/agentdock/ssh/controllers'/self.store.controller_id
         self.assertTrue((controller/'sessions'/first['id']).is_dir())
         self.assertTrue((controller/run['id']).is_dir())
+        # The app was upgraded, so its current runtime has not been uploaded yet.
+        shutil.rmtree(self.home/'.local/share/agentdock/ssh/runtimes'/self.manager.digest)
+        self.store.update_environment_status(self.environment['id'],'connected',{'digest':'old-version'})
+        native_settings=self.home/'.codex/config.toml'
+        native_settings.parent.mkdir(exist_ok=True)
+        native_settings.write_text('model = "fixture-model"\n')
+        unrelated=controller/'sessions'/second['id']; unrelated.mkdir(parents=True)
+        (unrelated/'keep.txt').write_text('other session')
         self.runtime.delete_session(first['id'])
         self.assertFalse((controller/'sessions'/first['id']).exists())
         self.assertFalse((controller/run['id']).exists())
         self.assertEqual(self.store.get_session(second['id'])['title'],'Keep this session')
+        self.assertEqual((unrelated/'keep.txt').read_text(),'other session')
+        self.assertEqual(native_settings.read_text(),'model = "fixture-model"\n')
+        # Repeating cleanup after an interrupted response is harmless.
+        self.assertEqual(self.manager.rpc(self.environment['id'], {'op':'delete_session',
+            'controller':self.store.controller_id, 'session_id':first['id'],
+            'run_ids':[run['id']], 'provider':'codex'}), {'ok':True})
 
 
 class EnvironmentTests(unittest.TestCase):
