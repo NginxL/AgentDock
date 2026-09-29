@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Agent, Mutate, Translate } from "./types";
 
 export default function AgentDeletion({
@@ -19,40 +19,54 @@ export default function AgentDeletion({
   t: Translate;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const dialogID = useId();
+  const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!confirm) return;
+    cancel.current?.focus();
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setConfirm(false);
         trigger.current?.focus();
       }
     };
+    const outside = (event: PointerEvent) => {
+      if (!container.current?.contains(event.target as Node)) setConfirm(false);
+    };
     document.addEventListener("keydown", escape);
-    return () => document.removeEventListener("keydown", escape);
+    document.addEventListener("pointerdown", outside);
+    return () => {
+      document.removeEventListener("keydown", escape);
+      document.removeEventListener("pointerdown", outside);
+    };
   }, [confirm]);
   return (
-    <div className="agent-delete">
+    <div className="agent-delete" ref={container}>
       <button
         type="button"
         ref={trigger}
-        className="text-button danger-text"
+        className="secondary danger-text"
         aria-expanded={confirm}
+        aria-controls={confirm ? dialogID : undefined}
+        aria-haspopup="dialog"
+        title={
+          active
+            ? t(
+                "请先结束该 Agent 的未完成任务，再删除。",
+                "Finish this agent’s pending tasks before deleting it.",
+              )
+            : undefined
+        }
         disabled={busy || active}
         onClick={() => setConfirm(!confirm)}
       >
         {t("删除 Agent", "Delete agent")}
       </button>
-      {active && (
-        <p className="form-hint">
-          {t(
-            "请先结束该 Agent 的未完成任务，再删除。",
-            "Finish this agent’s pending tasks before deleting it.",
-          )}
-        </p>
-      )}
       {confirm && (
         <div
+          id={dialogID}
           className="agent-delete-confirm"
           role="alertdialog"
           aria-label={t("删除 Agent", "Delete agent")}
@@ -79,6 +93,7 @@ export default function AgentDeletion({
           <div className="button-row">
             <button
               type="button"
+              ref={cancel}
               className="secondary"
               disabled={busy}
               onClick={() => setConfirm(false)}
@@ -93,7 +108,10 @@ export default function AgentDeletion({
                 await mutate(
                   `/api/agents/${encodeURIComponent(agent.id)}/delete`,
                   {},
-                  onDeleted,
+                  () => {
+                    setConfirm(false);
+                    onDeleted();
+                  },
                 );
               }}
             >

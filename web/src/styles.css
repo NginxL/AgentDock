@@ -588,6 +588,7 @@ input[readonly] {
   overflow-wrap: anywhere;
 }
 .page-heading {
+  position: relative;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2332,25 +2333,32 @@ input[readonly] {
 }
 
 .agent-delete {
-  margin-top: 24px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+  display: flex;
 }
 .danger-text {
   color: #ac4747;
 }
 .agent-delete-confirm {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  right: 0;
+  width: min(460px, 100%);
   margin-top: 12px;
   padding: 18px;
   border: 1px solid #eed8d8;
   border-radius: 12px;
   background: #fffafa;
+  box-shadow: 0 12px 32px #2020341a;
 }
 .agent-delete-confirm .panel-heading {
   margin-bottom: 0;
 }
 .agent-delete-confirm p {
   margin: 12px 0 18px;
+}
+.agent-delete-confirm strong {
+  overflow-wrap: anywhere;
 }
 
 .inference-controls {

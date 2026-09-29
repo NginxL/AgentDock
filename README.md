@@ -107,7 +107,7 @@ Each task shows the model identifier and reasoning effort reported by the CLI. A
 
 Each conversation has private Codex / Claude Code history, runtime state and caches, separate from the original client’s session list. Automatic working directories are also per conversation; explicitly selected project directories remain shared. Choose **Delete session** and confirm to remove its records, private directory and SSH run files. Stop active tasks first. Shared projects, native logins and other conversations are kept.
 
-To remove a configured agent, open **Agent settings → Delete agent** and confirm. This removes its conversations and private files while preserving shared project files, shared memory, native CLI settings and other agents. Unfinished tasks block deletion; remote conversations require a working SSH connection for cleanup.
+To remove a configured agent, select its card and choose **Delete agent** beside **Agent settings** at the top of the workspace. Check the agent name and conversation count before confirming. This removes its conversations and private files while preserving shared project files, shared memory, native CLI settings and other agents. Unfinished tasks block deletion; remote conversations require a working SSH connection for cleanup.
 
 Choose **Access permissions** when adding an agent or opening **Agent settings**. Each local or SSH agent has its own setting:
 

@@ -12,7 +12,7 @@ import type { DockState, Language } from "./types";
 
 afterEach(cleanup);
 it.each<Language>(["zh", "en"])(
-  "deletes only the configured agent after confirmation (%s)",
+  "exposes deletion directly and confirms only the selected agent (%s)",
   async (lang) => {
     const agent = {
       id: "agent-a",
@@ -59,7 +59,7 @@ it.each<Language>(["zh", "en"])(
       t,
       lang,
       state,
-      agents: [agent],
+      agents: [agent, { ...agent, id: "agent-b", name: "Other agent" }],
       sessions: [session],
       approvals: [],
       token: "fixture",
@@ -69,15 +69,15 @@ it.each<Language>(["zh", "en"])(
       mutate,
     };
     const view = render(<Workspace {...props} />);
-    const settings = screen.getByRole("button", {
-      name: t("设置 My agent", "Configure My agent"),
-    });
-    fireEvent.click(settings);
-    const remove = screen.getByRole("button", {
+    let remove = screen.getByRole("button", {
       name: t("删除 Agent", "Delete agent"),
     });
+    expect(screen.queryByLabelText(t("名称", "Name"))).toBeNull();
     fireEvent.click(remove);
-    expect(screen.getByRole("alertdialog").textContent).toContain("1");
+    expect(screen.getByRole("alertdialog").textContent).toContain("My agent");
+    expect(screen.getByRole("alertdialog").textContent).toContain(
+      t("1 个会话", "1 conversations"),
+    );
     expect(mutate).not.toHaveBeenCalled();
     fireEvent.click(remove);
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -91,6 +91,29 @@ it.each<Language>(["zh", "en"])(
     fireEvent.click(remove);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(document.activeElement).toBe(remove);
+    fireEvent.click(remove);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(remove);
+    fireEvent.click(screen.getByRole("button", { name: /Other agent/ }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    remove = screen.getByRole("button", {
+      name: t("删除 Agent", "Delete agent"),
+    });
+    fireEvent.click(remove);
+    expect(screen.getByRole("alertdialog").textContent).toContain(
+      "Other agent",
+    );
+    expect(screen.getByRole("alertdialog").textContent).toContain(
+      t("0 个会话", "0 conversations"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^My agent/ }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    remove = screen.getByRole("button", {
+      name: t("删除 Agent", "Delete agent"),
+    });
+    expect(mutate).not.toHaveBeenCalled();
     view.rerender(
       <Workspace {...props} sessions={[{ ...session, status: "running" }]} />,
     );
@@ -103,6 +126,14 @@ it.each<Language>(["zh", "en"])(
     ).toBe(true);
     view.rerender(<Workspace {...props} />);
     fireEvent.click(remove);
+    mutate.mockResolvedValueOnce(false);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: t("确认删除", "Delete permanently"),
+      }),
+    );
+    await waitFor(() => expect(mutate).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
     fireEvent.click(
       within(screen.getByRole("alertdialog")).getByRole("button", {
         name: t("确认删除", "Delete permanently"),
@@ -116,5 +147,11 @@ it.each<Language>(["zh", "en"])(
       ),
     );
     expect(screen.queryByRole("alertdialog")).toBeNull();
+    view.rerender(<Workspace {...props} agents={[]} sessions={[]} />);
+    expect(
+      screen.queryByRole("button", {
+        name: t("删除 Agent", "Delete agent"),
+      }),
+    ).toBeNull();
   },
 );

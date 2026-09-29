@@ -301,6 +301,49 @@ export default function Workspace({
               {t("Agent 设置", "Agent settings")}
             </button>
           )}
+          {selectedAgent && (
+            <AgentDeletion
+              key={selectedAgent.id}
+              agent={selectedAgent}
+              sessionCount={
+                sessions.filter((s) => s.agent_id === selectedAgent.id).length
+              }
+              active={
+                (state.runs ?? []).some(
+                  (r) =>
+                    r.agent_id === selectedAgent.id &&
+                    ["queued", "running"].includes(r.status),
+                ) ||
+                sessions.some(
+                  (s) =>
+                    s.agent_id === selectedAgent.id &&
+                    ["queued", "running", "waiting"].includes(s.status),
+                ) ||
+                state.messages.some(
+                  (m) =>
+                    (m.sender_id === selectedAgent.id ||
+                      m.recipient_id === selectedAgent.id) &&
+                    ["queued", "running", "waiting"].includes(m.status ?? ""),
+                )
+              }
+              busy={busy}
+              mutate={mutate}
+              t={t}
+              onDeleted={() => {
+                if (editingAgentID === selectedAgent.id) {
+                  setAgentForm(false);
+                  setEditingAgentID(null);
+                  draftTarget.current = null;
+                }
+                if (agentID === selectedAgent.id) {
+                  setAgentID("");
+                  setSessionID("");
+                  setEvents([]);
+                  setPrompt("");
+                }
+              }}
+            />
+          )}
           <button
             className="primary"
             disabled={busy && !demo}
@@ -658,47 +701,6 @@ export default function Workspace({
                 : t("创建 Agent", "Create agent")}
             </button>
           </form>
-          {editingAgent && (
-            <AgentDeletion
-              key={editingAgent.id}
-              agent={editingAgent}
-              sessionCount={
-                sessions.filter((s) => s.agent_id === editingAgent.id).length
-              }
-              active={
-                (state.runs ?? []).some(
-                  (r) =>
-                    r.agent_id === editingAgent.id &&
-                    ["queued", "running"].includes(r.status),
-                ) ||
-                sessions.some(
-                  (s) =>
-                    s.agent_id === editingAgent.id &&
-                    ["queued", "running", "waiting"].includes(s.status),
-                ) ||
-                state.messages.some(
-                  (m) =>
-                    (m.sender_id === editingAgent.id ||
-                      m.recipient_id === editingAgent.id) &&
-                    ["queued", "running", "waiting"].includes(m.status ?? ""),
-                )
-              }
-              busy={busy}
-              mutate={mutate}
-              t={t}
-              onDeleted={() => {
-                setAgentForm(false);
-                setEditingAgentID(null);
-                draftTarget.current = null;
-                if (agentID === editingAgent.id) {
-                  setAgentID("");
-                  setSessionID("");
-                  setEvents([]);
-                  setPrompt("");
-                }
-              }}
-            />
-          )}
         </section>
       )}
       {!!agents.length && (
