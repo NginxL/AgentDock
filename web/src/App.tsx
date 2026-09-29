@@ -409,8 +409,8 @@ export default function App() {
             </h1>
             <p>
               {t(
-                "连接 Codex 与 Claude 的原生会话，派发任务、跟踪协作、审阅共享记忆，并查看可用额度。",
-                "Connect native Codex and Claude sessions, dispatch tasks, follow collaboration, review shared memory and track usage.",
+                "连接已安装的 Agent CLI，例如 Codex、Claude Code，管理会话、任务协作、共享记忆与可用额度。",
+                "Connect installed agent CLIs such as Codex and Claude Code to manage conversations, collaboration, shared memory and usage.",
               )}
             </p>
             <div className="welcome-features">
@@ -424,7 +424,7 @@ export default function App() {
               </span>
               <span>
                 <Icon name="usage" />
-                {t("AgentMeter 额度", "AgentMeter usage")}
+                {t("额度与订阅", "Usage and billing")}
               </span>
             </div>
             <div className="preview-note">
@@ -484,8 +484,8 @@ export default function App() {
         <footer className="welcome-footer">
           AgentDock ·{" "}
           {t(
-            "使用本机 Codex / Claude CLI。已有客户端窗口的共享接入需单独验证。",
-            "Uses local Codex / Claude CLIs. Sharing an existing client window requires separate verification.",
+            "独立管理本机或 SSH 主机上的 Agent CLI 会话。",
+            "Manage independent agent CLI sessions locally or over SSH.",
           )}
         </footer>
       </div>

@@ -83,6 +83,11 @@ class NativeProvidersTest(unittest.TestCase):
         self.assertEqual(usage["native_id"], self.bound[0])
         self.assertNotIn("private-token", json.dumps(usage))
 
+    def test_effective_model_comes_from_native_protocol(self):
+        self.run_provider('codex', 'metadata')
+        metadata = next(p for k,p in self.events if k == 'model_info')
+        self.assertEqual(metadata, {'native_id':'native-codex-1', 'model':'gateway/configured-model', 'model_provider':'custom-relay', 'effort':'xhigh'})
+
     def contract(self):
         return [json.loads(line) for line in (self.cwd / "fake-contract.jsonl").read_text().splitlines()]
 

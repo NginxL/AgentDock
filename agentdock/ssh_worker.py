@@ -19,6 +19,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .providers import execute, ProviderError, ProviderCancelled
+from .session_storage import session_directory, remove_session_directory
 
 ROOT = Path.home() / '.local/share/agentdock/ssh'
 LEASE_SECONDS = 90
@@ -122,6 +123,27 @@ def rpc(request):
         from .catalog import Catalog
         return Catalog({'execution_enabled': True, 'commands': commands()}).read(request['provider'])
     if operation == 'quota': return quota(request['provider'])
+    if operation == 'delete_session':
+        parent = run_path(request['controller'], request['session_id']).parent
+        run_paths = [run_path(request['controller'], identifier) for identifier in request['run_ids']]
+        for item in run_paths:
+            saved = read(item/'request.json', {}).get('spec', {})
+            if saved and (saved.get('session_id') not in (None, request['session_id'])
+                    or saved.get('session_id') is None and saved.get('native_session_id') not in (None, request.get('native_session_id'))):
+                raise ValueError('Remote run belongs to another session')
+            state = read(item/'state.json', {})
+            if state.get('status') in ('starting','running') and time.time()-state.get('updated_at',0) < LEASE_SECONDS:
+                raise ValueError('Remote session is still running')
+        if request.get('provider') == 'codex' and request.get('native_session_id'):
+            from .codex_home import retire_legacy
+            retire_legacy(commands()['codex'], dict(os.environ), request['native_session_id'])
+        elif request.get('provider') == 'claude' and request.get('native_session_id'):
+            from .session_storage import retire_legacy_claude
+            retire_legacy_claude(dict(os.environ), request['native_session_id'])
+        remove_session_directory(parent/'sessions', request['session_id'])
+        for item in run_paths:
+            if item.exists(): shutil.rmtree(item)
+        return {'ok': True}
     path = run_path(request['controller'], request['run_id'])
     if operation == 'start':
         private(path)
@@ -245,6 +267,18 @@ def work(path):
     state = {'status': 'failed', 'error': 'Remote native CLI failed.'}
     try:
         cwd = spec['cwd']
+        home = session_directory(path.parent/'sessions', spec.get('session_id', path.name))
+        expected = '~/.local/share/agentdock/ssh/controllers/' + path.parent.name + '/sessions/' + home.name + '/workspace'
+        if cwd == expected:
+            destination = home/'workspace'
+            if not destination.exists():
+                legacy = spec.get('legacy_workspace')
+                if legacy and legacy.startswith('~/.local/share/agentdock/workspaces/'):
+                    source = Path(legacy).expanduser()
+                    if source.is_dir():
+                        private(home)
+                        shutil.copytree(source, destination, symlinks=True)
+            cwd = str(private(destination))
         # Only auto-create AgentDock-owned workspaces; explicit user paths must already exist.
         if cwd.startswith('~/.local/share/agentdock/workspaces/'):
             identifier = cwd.rsplit('/', 1)[-1]
@@ -262,7 +296,7 @@ def work(path):
             emit, lambda native_id: control('remote_bind', {'native_id': native_id}),
             lambda request, options: control('remote_approval', {'request': request, 'options': options}),
             timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'),
-            inherit_process_cwd=True, permission_mode=spec.get('permission_mode', 'ask'))
+            permission_mode=spec.get('permission_mode', 'ask'), session_home=str(home))
         state = {'status': 'completed', 'result': result}
     except ProviderCancelled:
         state = {'status': 'cancelled'}

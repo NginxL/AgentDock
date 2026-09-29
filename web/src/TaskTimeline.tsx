@@ -159,6 +159,10 @@ export default function TaskTimeline({
         .map((run) => {
           const runEvents = grouped.get(run.id) ?? [];
           const steps = executionSteps(runEvents);
+          const modelEvent = runEvents
+            .filter((event) => event.kind === "model_info")
+            .at(-1);
+          const modelInfo = modelEvent ? payload(modelEvent) : {};
           const answerEvent = runEvents
             .slice()
             .reverse()
@@ -222,6 +226,20 @@ export default function TaskTimeline({
                     </span>
                     <span>{label}</span>
                     <span className="task-chevron">›</span>
+                    {typeof modelInfo.model === "string" && (
+                      <small
+                        className="task-model"
+                        title={t(
+                          "客户端返回的模型标识",
+                          "Model identifier reported by the CLI",
+                        )}
+                      >
+                        {modelInfo.model}
+                        {typeof modelInfo.effort === "string"
+                          ? ` · ${modelInfo.effort}`
+                          : ""}
+                      </small>
+                    )}
                   </summary>
                   <div
                     className="task-steps"

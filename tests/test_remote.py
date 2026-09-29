@@ -73,7 +73,7 @@ class RemoteTests(unittest.TestCase):
 
     def run_turn(self, session, **changes):
         events, bound = [], []
-        spec={'provider':self.store.get_agent(session['agent_id'])['provider'], 'cwd':session['workspace'],
+        spec={'provider':self.store.get_agent(session['agent_id'])['provider'], 'cwd':session['workspace'], 'session_id':session['id'],
               'prompt':'Protocol fixture only', 'native_session_id':session.get('native_session_id'), 'timeout':8, **changes}
         result=self.manager.run(self.environment['id'],str(uuid.uuid4()),spec,threading.Event(),
             lambda k,p:events.append((k,p)),bound.append,lambda request,options:options[-1]['optionId'],lambda *a:[])
@@ -93,7 +93,7 @@ class RemoteTests(unittest.TestCase):
                 contract=Path(session['workspace'].replace('~',str(self.home),1))/'fake-contract.jsonl'
                 starts=[json.loads(line) for line in contract.read_text().splitlines() if json.loads(line).get('method') in ('thread/start','thread/resume')]
                 self.assertTrue(starts)
-                self.assertTrue(all('cwd' not in message['params'] for message in starts))
+                self.assertTrue(all(message['params']['cwd'] == str(contract.parent) for message in starts))
         self.assertNotIn('AGENTDOCK_CAPABILITY', json.dumps(self.requests))
 
     def test_runtime_forwards_explicit_permissions_and_resets_them_on_resume(self):
@@ -120,7 +120,7 @@ class RemoteTests(unittest.TestCase):
                 contract = Path(session['workspace'].replace('~', str(self.home), 1))/'fake-contract.jsonl'
                 starts = [json.loads(line) for line in contract.read_text().splitlines() if json.loads(line).get('method') in ('thread/start', 'thread/resume')]
                 self.assertEqual(len(starts), 2)
-                self.assertTrue(all('cwd' not in m['params'] for m in starts))
+                self.assertTrue(all(m['params']['cwd'] == str(contract.parent) for m in starts))
 
     def test_wrong_remote_directory_rejected_before_user_prompt(self):
         self.scenario='wrong_cwd'
@@ -157,7 +157,7 @@ class RemoteTests(unittest.TestCase):
         def tool(name,args):
             calls.append((name,args)); return [{'key':'fixture','content':'Reviewed shared memory'}]
         result=self.manager.run(self.environment['id'],str(uuid.uuid4()),
-            {'provider':'codex','cwd':session['workspace'],'prompt':'fixture','timeout':8},threading.Event(),
+            {'provider':'codex','cwd':session['workspace'],'session_id':session['id'],'prompt':'fixture','timeout':8},threading.Event(),
             lambda *a:None,lambda *a:None,lambda *a:None,tool)
         self.assertEqual(result,'hello world')
         self.assertEqual(calls,[('memory_search',{'query':'fixture'})])
@@ -169,7 +169,7 @@ class RemoteTests(unittest.TestCase):
         _,session=self.make_agent()
         stop=threading.Event(); errors=[]
         def run():
-            try: self.manager.run(self.environment['id'],str(uuid.uuid4()), {'provider':'codex','cwd':session['workspace'],'prompt':'fixture','timeout':8}, stop, lambda *a:None, lambda *a:None, lambda *a:None, lambda *a:None)
+            try: self.manager.run(self.environment['id'],str(uuid.uuid4()), {'provider':'codex','cwd':session['workspace'],'session_id':session['id'],'prompt':'fixture','timeout':8}, stop, lambda *a:None, lambda *a:None, lambda *a:None, lambda *a:None)
             except Exception as error: errors.append(error)
         thread=threading.Thread(target=run); thread.start()
         pidfile=Path(session['workspace'].replace('~',str(self.home),1))/'fake-pid'
@@ -189,7 +189,7 @@ class RemoteTests(unittest.TestCase):
         self.scenario='hang'
         _,session=self.make_agent(); run_id=str(uuid.uuid4())
         identity={'controller':self.store.controller_id,'run_id':run_id}
-        self.manager.rpc(self.environment['id'], {**identity,'op':'start','spec':{'provider':'codex','cwd':session['workspace'],'prompt':'fixture','timeout':15}})
+        self.manager.rpc(self.environment['id'], {**identity,'op':'start','spec':{'provider':'codex','cwd':session['workspace'],'session_id':session['id'],'prompt':'fixture','timeout':15}})
         path=self.home/'.local/share/agentdock/ssh/controllers'/identity['controller']/run_id
         deadline=time.monotonic()+5
         pidfile=Path(session['workspace'].replace('~',str(self.home),1))/'fake-pid'
@@ -212,6 +212,23 @@ class RemoteTests(unittest.TestCase):
         self.assertEqual(run['status'],'completed',run)
         self.assertEqual(run['result'],'hello world')
         self.assertEqual([e['kind'] for e in self.store.session_events(session['id'])][-2:],['assistant_message','run_finished'])
+
+    def test_deleting_a_session_cleans_its_remote_workspace_and_run_files_only(self):
+        agent, first=self.make_agent()
+        second=self.store.add_session(agent['id'],'Keep this session')
+        self.runtime=Runtime(self.store,{'execution_enabled':True,'commands':{},'python':sys.executable,'package_root':str(self.home),'base_url':'http://127.0.0.1:1','run_timeout':8})
+        self.runtime.remote=self.manager
+        run=self.runtime.start(first['id'],'Fixture')
+        deadline=time.monotonic()+8
+        while self.store.get_run(run['id'])['status'] in ('queued','running') and time.monotonic()<deadline: time.sleep(.03)
+        self.assertEqual(self.store.get_run(run['id'])['status'],'completed')
+        controller=self.home/'.local/share/agentdock/ssh/controllers'/self.store.controller_id
+        self.assertTrue((controller/'sessions'/first['id']).is_dir())
+        self.assertTrue((controller/run['id']).is_dir())
+        self.runtime.delete_session(first['id'])
+        self.assertFalse((controller/'sessions'/first['id']).exists())
+        self.assertFalse((controller/run['id']).exists())
+        self.assertEqual(self.store.get_session(second['id'])['title'],'Keep this session')
 
 
 class EnvironmentTests(unittest.TestCase):

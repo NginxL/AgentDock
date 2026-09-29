@@ -2308,3 +2308,25 @@ input[readonly] {
   background: var(--soft);
   color: var(--accent);
 }
+.session-delete {
+  padding: 0 20px 12px;
+}
+.session-delete [role="alertdialog"] {
+  position: relative;
+  padding: 16px;
+  border: 1px solid var(--line, #e6e6ee);
+  border-radius: 12px;
+}
+.session-delete [role="alertdialog"] > .icon-button {
+  float: right;
+}
+.session-delete p {
+  line-height: 1.6;
+}
+.task-model {
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 8px;
+  color: var(--muted, #6b7080);
+  overflow-wrap: anywhere;
+}

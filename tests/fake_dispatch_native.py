@@ -63,7 +63,7 @@ def run_codex():
             native_id = args.get('threadId') or str(uuid.uuid4())
             mcp_config = args['config']['mcp_servers']['agentdock']
             log(method=method, native_id=native_id)
-            emit({'id': request['id'], 'result': {'thread': {'id': native_id}}})
+            emit({'id': request['id'], 'result': {'thread': {'id': native_id}, 'cwd': str(Path.cwd())}})
         elif method == 'turn/start':
             prompt = args['input'][0]['text']
             log(method=method, native_id=native_id, prompt=prompt)

@@ -99,6 +99,10 @@ Create a conversation and send a message to your agent. **Task running** changes
 
 **Agent settings** offers models and reasoning efforts discovered from the installed client, or preserves client/session settings. Names and roles are yours to define. Model settings apply to future messages after current tasks finish. Existing conversations keep their context. Workspace and project are fixed after a conversation is created; create another agent to use a different directory.
 
+Each task shows the model identifier and reasoning effort reported by the CLI. An assistant’s self-description is not used as configuration evidence.
+
+Each conversation has private Codex / Claude Code history, runtime state and caches, separate from the original client’s session list. Automatic working directories are also per conversation; explicitly selected project directories remain shared. Choose **Delete session** and confirm to remove its records, private directory and SSH run files. Stop active tasks first. Shared projects, native logins and other conversations are kept.
+
 Choose **Access permissions** when adding an agent or opening **Agent settings**. Each local or SSH agent has its own setting:
 
 | Access permissions | Behavior |
@@ -126,7 +130,7 @@ After connecting, choose the model, role and permissions, then select **Create a
 
 ![Token totals and throughput, fictional demo data](docs/images/tokens.en.png)
 
-Token statistics include only native conversations linked to registered agents. Total, provider, per-agent, TPS and daily activity views use the same scope. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It respects `CODEX_HOME` and `CLAUDE_CONFIG_DIR`, defaulting to `~/.codex/{sessions,archived_sessions}` and `~/.claude/projects`. Values use K (thousand), M (million) and B (billion), with up to two decimals; hover for the exact count. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
+Token statistics include only native conversations linked to registered agents. Total, provider, per-agent, TPS and daily activity views use the same scope. The index stores counters, timestamps and deduplication identifiers, not external conversation text. It reads each AgentDock conversation’s private records and still recognizes bound legacy transcripts during upgrades. Values use K (thousand), M (million) and B (billion), with up to two decimals; hover for the exact count. Missing, damaged or unsupported history can make totals incomplete. These counters are not a provider bill. Cache counts are a subset of input, not extra tokens.
 
 **Daily activity** shows a calendar heatmap for the last year, six months or three months. Darker squares indicate higher daily token usage. Hover over a square to see its date and count.
 

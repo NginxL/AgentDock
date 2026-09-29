@@ -147,6 +147,7 @@ export default function Workspace({
   ]);
   const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
   const [sessionID, setSessionID] = useState("");
+  const [deletingSession, setDeletingSession] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -262,17 +263,6 @@ export default function Workspace({
       <div className="page-heading">
         <div>
           <h1>{t("协作工作台", "Workspace")}</h1>
-          <p
-            className="path-line"
-            title={project?.path ?? selectedAgent?.workspace}
-          >
-            {project?.path ??
-              selectedAgent?.workspace ??
-              t(
-                "添加 Agent 即可开始对话，无需先创建项目",
-                "Add an agent to start a conversation — no project required",
-              )}
-          </p>
         </div>
         <div className="button-row">
           {selectedAgent && (
@@ -765,6 +755,68 @@ export default function Workspace({
               </div>
               <span className="count-badge">{relevantSessions.length}</span>
             </div>
+            {selectedSession && (
+              <div className="session-delete">
+                <button
+                  className="text-button"
+                  disabled={busy || hasSessionTasks}
+                  aria-expanded={deletingSession === sessionID}
+                  onClick={() =>
+                    setDeletingSession(
+                      deletingSession === sessionID ? null : sessionID,
+                    )
+                  }
+                >
+                  {t("删除会话", "Delete session")}
+                </button>
+                {deletingSession === sessionID && (
+                  <div
+                    role="alertdialog"
+                    aria-label={t("删除会话", "Delete session")}
+                  >
+                    <button
+                      className="icon-button"
+                      aria-label={t("关闭", "Close")}
+                      onClick={() => setDeletingSession(null)}
+                    >
+                      ×
+                    </button>
+                    <p>
+                      {t(
+                        "删除此会话及其专属文件？此操作无法撤销。共用项目目录会保留。",
+                        "Delete this conversation and its private files? This cannot be undone. Shared project directories are kept.",
+                      )}
+                    </p>
+                    <div className="button-row">
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => setDeletingSession(null)}
+                      >
+                        {t("取消", "Cancel")}
+                      </button>
+                      <button
+                        className="danger"
+                        disabled={busy || hasSessionTasks}
+                        onClick={async () => {
+                          await mutate(
+                            `/api/sessions/${encodeURIComponent(sessionID)}/delete`,
+                            {},
+                            () => {
+                              setDeletingSession(null);
+                              setSessionID("");
+                              setEvents([]);
+                            },
+                          );
+                        }}
+                      >
+                        {t("确认删除", "Delete permanently")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="session-list">
               {relevantSessions.map((session) => (
                 <button

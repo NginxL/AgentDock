@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from dataclasses import dataclass, field
@@ -83,6 +84,26 @@ class Runtime:
             record = self.store.enqueue_run(session_id, prompt)
             self._notify()
             return record
+
+    def delete_session(self, session_id):
+        from .session_storage import remove_session_directory
+        with self._lock:
+            if any(run.record['session_id'] == session_id for run in self._runs.values()):
+                raise RuntimeFailure('Stop active tasks before deleting a session')
+            def cleanup(session, runs):
+                if session['environment_id'] != 'local':
+                    if not self.enabled: raise Forbidden('Enable execution to clean up a remote session')
+                    self.remote.rpc(session['environment_id'], {'op':'delete_session', 'controller':self.store.controller_id,
+                        'session_id':session_id,'run_ids':runs,'provider':self.store.get_agent(session['agent_id'])['provider'],
+                        'native_session_id':session.get('native_session_id')})
+                elif session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='codex':
+                    from .codex_home import retire_legacy
+                    retire_legacy(self._command('codex'), dict(os.environ), session['native_session_id'])
+                elif session.get('native_session_id'):
+                    from .session_storage import retire_legacy_claude
+                    retire_legacy_claude(dict(os.environ), session['native_session_id'])
+                remove_session_directory(self.store.workspaces.parent / 'sessions', session_id)
+            return self.store.delete_session(session_id, cleanup)
 
     def send_message(self, project_id, recipient_id, body, correlation_id=None,
                      idempotency_key=None, recipient_session_id=None):
@@ -229,6 +250,8 @@ class Runtime:
             if agent['environment_id'] != 'local':
                 result = self.remote.run(agent['environment_id'], record['id'], {
                     'provider': agent['provider'], 'cwd': workspace, 'prompt': prompt,
+                    'session_id': session['id'],
+                    'legacy_workspace': session.get('legacy_workspace'),
                     'native_session_id': session.get('native_session_id'),
                     'model': agent.get('model'), 'effort': agent.get('effort'),
                     'permission_mode': agent['permission_mode'],
@@ -244,7 +267,9 @@ class Runtime:
                 lambda kind, payload: self._event(run, kind, payload),
                 lambda native_id: self.store.bind_native_session(session["id"], native_id, run_id=record["id"]),
                 lambda request, options: self._request_approval(run, request, options),
-                timeout=self.config.get("run_timeout", 900), permission_mode=agent['permission_mode'], **({"model": agent["model"], "effort": agent["effort"]} if agent.get("model") or agent.get("effort") else {}))
+                timeout=self.config.get("run_timeout", 900), permission_mode=agent['permission_mode'],
+                session_home=str(self.store.session_directory(session['id'])),
+                **({"model": agent["model"], "effort": agent["effort"]} if agent.get("model") or agent.get("effort") else {}))
             if not isinstance(result, str):
                 raise RuntimeFailure("Native CLI did not return a valid result.")
             result = result.replace(run.capability, "[redacted]").replace("\x00", "")[:64000]

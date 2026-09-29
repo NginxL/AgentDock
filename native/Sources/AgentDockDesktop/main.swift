@@ -114,7 +114,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             installPageScripts()
             ready = true
             menuBar?.connect(token: token)
-            web.load(URLRequest(url: URL(string: origin)!))
+            web.load(URLRequest(url: URL(string: origin)!, cachePolicy: .reloadIgnoringLocalCacheData))
         } catch { showFailure() }
     }
 

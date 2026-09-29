@@ -65,6 +65,7 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
+| `POST /api/sessions/{id}/delete` | Empty object; requires human authentication. Rejects active or linked unfinished tasks. Removes private directories, runs and events; remote cleanup must succeed before local records are removed. Shared project directories and native logins are kept. |
 | `POST /api/runs/{id}/cancel` | Empty object. Cancels the logical task containing this run, including its existing queued/active descendants. Returns `{ "ok": true }`. |
 | `GET /api/sessions/{id}/events?after=0` | `{ "events": [...] }`, ordered by increasing `seq`, at most 500 per request. |
 | `POST /api/messages` | `project_id`, `recipient_id`, `body` (up to 12,000 characters); optional `recipient_session_id`, `correlation_id`, `idempotency_key`. Dispatches as `human` and returns the delivery record. |
@@ -99,6 +100,8 @@ A run's `origin` is `human`, `delegate`, or `reply`. Its lifecycle is `queued` â
 The `messages` collection is the delivery audit trail. A successful submission produces a queued run; it does **not** mean the recipient has finished. Its `waiting` status means the recipient has finished a turn but still needs child results or continuation turns before final delivery. Only a settled delivery has a final status/result. `reply_run_id`, when present, identifies the continuation scheduled for the sender; inspect that run to determine whether the sender has processed the result. `acknowledged_at` is the recipient's start time, not a manual inbox acknowledgment.
 
 Events contain `seq`, `id`, `project_id`, nullable `session_id`, `kind`, `payload`, and `created_at`. Lifecycle events include `run_queued`, `run_started`, `run_finished`, `message_queued`, `reply_queued`, and `task_settled`. Text and tool events include `agent_message_chunk`, `assistant_message`, `tool_call`, and `tool_result`. Treat all provider payloads as untrusted display data, never executable HTML or authorization.
+
+Native model confirmation emits a `model_info` event containing `run_id`, `native_id`, `model`, and, when available, `effort` and `model_provider`. Values come from the CLI protocol, never from parsing the assistantâ€™s reply.
 
 ## Dispatch and continuation
 

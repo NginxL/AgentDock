@@ -195,6 +195,20 @@ export function demoState(lang: Language): DockState {
     ],
     events: [
       {
+        id: "demo-model-info",
+        seq: 0,
+        project_id: "demo-project",
+        session_id: "demo-session-1",
+        kind: "model_info",
+        created_at: date,
+        payload: {
+          run_id: "demo-run-1",
+          native_id: "demo-native",
+          model: "example-model",
+          effort: "high",
+        },
+      },
+      {
         id: "demo-thought",
         seq: 0,
         project_id: "demo-project",

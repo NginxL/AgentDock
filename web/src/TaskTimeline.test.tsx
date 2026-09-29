@@ -273,3 +273,20 @@ it("can stay collapsed while remote progress continues and shows the final reply
   expect(screen.getByText("任务已完成")).toBeTruthy();
   expect(screen.getByText("Remote final result").closest("details")).toBeNull();
 });
+
+it("uses native model metadata instead of guessing from the assistant answer", () => {
+  render(
+    <TaskTimeline
+      {...props}
+      runs={[{ ...run, status: "completed", result: "I am GPT-6" }]}
+      events={[
+        event(1, "model_info", {
+          model: "custom/route-model",
+          effort: "xhigh",
+        }),
+      ]}
+    />,
+  );
+  expect(screen.getByText("custom/route-model · xhigh")).toBeTruthy();
+  expect(screen.getByText("I am GPT-6")).toBeTruthy();
+});

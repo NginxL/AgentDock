@@ -95,6 +95,7 @@ class API:
                 if p.get('environment_id','local')=='local': result=self.quota.refresh(p.get("provider"))
                 else: result=self.quota.refresh(p.get("provider"),environment_id=p['environment_id'])
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
+                if parts[3]=='delete': return 200,self.runtime.delete_session(parts[2])
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
                 elif parts[3]=="cancel": self.runtime.cancel(parts[2]); result={"ok":True}

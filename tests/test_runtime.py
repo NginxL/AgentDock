@@ -39,7 +39,7 @@ class RuntimeTests(unittest.TestCase):
             time.sleep(.005)
         self.fail('Local fixture did not reach its expected state')
 
-    def executor(self, provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask'):
+    def executor(self, provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask', session_home=None):
         token = mcp['env']['AGENTDOCK_CAPABILITY']
         run = self.store.capability_run(token)
         self.calls.append(dict(provider=provider, native_id=native_id, prompt=prompt, run=run, token=token, permission_mode=permission_mode))
@@ -78,7 +78,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_progress_is_persisted_while_running_and_result_only_completes_after_exit(self):
         entered = threading.Event()
-        def stream(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask'):
+        def stream(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout=900, permission_mode='ask', session_home=None):
             bind('progress-session')
             emit('reasoning_chunk', {'item_id':'thought','part':0,'text':'Checking the workspace'})
             emit('tool_call', {'item':{'type':'commandExecution','id':'cmd','command':'pwd'}})
@@ -254,7 +254,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(self.calls[-1]['native_id'], native_id)
 
     def test_capability_redacted_from_stream_and_final_result(self):
-        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode, session_home=None):
             token = mcp['env']['AGENTDOCK_CAPABILITY']
             self.token = token
             bind('fake-session')
@@ -266,7 +266,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('[redacted]', json.dumps(self.store.state()))
 
     def test_stop_parent_cancels_waiting_delegation(self):
-        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode):
+        def executor(provider, command, cwd, prompt, native_id, mcp, stop, emit, bind, approve, timeout, permission_mode, session_home=None):
             token = mcp['env']['AGENTDOCK_CAPABILITY']
             self.runtime.respond_tool(token, 'message_send', {'recipient_id': self.b['id'], 'body': 'Child'})
             self.gate.set()

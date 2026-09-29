@@ -7,6 +7,7 @@ import re
 import tempfile
 import secrets
 import sqlite3
+import shutil
 import threading
 import uuid
 import posixpath
@@ -78,6 +79,7 @@ class Store:
         self._migrate_dispatch()
         self._migrate_independent_agents()
         self._migrate_environments()
+        self._migrate_session_workspaces()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -137,7 +139,7 @@ class Store:
                     self.db.execute(f"DROP TABLE {table}")
                     self.db.execute(f"ALTER TABLE {table}_new RENAME TO {table}")
                     for index in indexes: self.db.execute(index)
-                for table, fields in {"agents": {"workspace": "TEXT", "model": "TEXT", "effort": "TEXT", "permission_mode": "TEXT NOT NULL DEFAULT 'ask' CHECK(permission_mode IN ('ask','full_access'))"}, "sessions": {"workspace": "TEXT"}}.items():
+                for table, fields in {"agents": {"workspace": "TEXT", "model": "TEXT", "effort": "TEXT", "permission_mode": "TEXT NOT NULL DEFAULT 'ask' CHECK(permission_mode IN ('ask','full_access'))"}, "sessions": {"workspace": "TEXT", "legacy_workspace": "TEXT"}}.items():
                     existing = {r[1] for r in self.db.execute("PRAGMA table_info(" + table + ")")}
                     for name, definition in fields.items():
                         if name not in existing: self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
@@ -366,11 +368,64 @@ class Store:
     def _add_session(self, agent_id, title):
         agent = self._one("agents",agent_id)
         item = dict(id=str(uuid.uuid4()),project_id=agent["project_id"],agent_id=agent_id,title=text(title,"title",160),status="idle",native_session_id=None,workspace=agent["workspace"],created_at=now(),updated_at=now(),environment_id=agent['environment_id'])
+        if self._automatic_workspace(agent['workspace'], agent['id'], agent['environment_id']):
+            item['workspace'] = self._session_workspace(item['id'], agent['environment_id'])
         self.db.execute("INSERT INTO sessions(id,project_id,agent_id,title,status,native_session_id,created_at,updated_at,workspace,environment_id) VALUES(:id,:project_id,:agent_id,:title,:status,:native_session_id,:created_at,:updated_at,:workspace,:environment_id)",item)
         return item
 
     def add_session(self, agent_id, title):
         with self.transaction(): return self._add_session(agent_id, title)
+
+    def session_directory(self, session_id):
+        from .session_storage import session_directory
+        return session_directory(self.workspaces.parent / 'sessions', session_id)
+
+    def _automatic_workspace(self, workspace, agent_id, environment_id):
+        return workspace == (str(self.workspaces / agent_id) if environment_id == 'local'
+                             else '~/.local/share/agentdock/workspaces/' + agent_id)
+
+    def _session_workspace(self, session_id, environment_id):
+        if environment_id != 'local':
+            return '~/.local/share/agentdock/ssh/controllers/' + self.controller_id + '/sessions/' + session_id + '/workspace'
+        from .codex_home import _private
+        return str(_private(self.session_directory(session_id) / 'workspace'))
+
+    def _migrate_session_workspaces(self):
+        # Only AgentDock's old automatic directories are migrated. Explicit project
+        # directories stay shared, and are never included in session deletion.
+        with self.transaction():
+            for row in self.db.execute('SELECT * FROM sessions').fetchall():
+                if not self._automatic_workspace(row['workspace'], row['agent_id'], row['environment_id']): continue
+                old = row['workspace']
+                destination = self._session_workspace(row['id'], row['environment_id'])
+                if row['environment_id'] == 'local' and Path(old).is_dir():
+                    shutil.copytree(old, destination, dirs_exist_ok=True, symlinks=True)
+                self.db.execute('UPDATE sessions SET workspace=?,legacy_workspace=? WHERE id=?', (destination,old,row['id']))
+
+    def delete_session(self, session_id, cleanup):
+        with self.transaction():
+            session = self._one('sessions', session_id)
+            if self.db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running')", (session_id,)).fetchone():
+                raise Conflict('Stop active tasks before deleting a session')
+            if self.db.execute("SELECT 1 FROM messages WHERE (sender_session_id=? OR recipient_session_id=?) AND status IN ('queued','running','waiting')", (session_id,session_id)).fetchone():
+                raise Conflict('Wait for linked tasks before deleting a session')
+            runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session_id,))]
+            cleanup(session, runs)  # Failure keeps the record available for retry.
+            native = session.get('native_session_id')
+            provider = self._one('agents',session['agent_id'])['provider']
+            if native:
+                identity = self.metric_identity(session['environment_id'], native)
+                for table in ('token_records','token_spans'):
+                    self.db.execute('DELETE FROM '+table+' WHERE provider=? AND native_id=?',(provider,identity))
+                self.db.execute('DELETE FROM token_activity_days WHERE native_id=?',(identity,))
+            for table in ('capabilities','proposals'):
+                self.db.execute('DELETE FROM '+table+' WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)',(session_id,))
+            self.db.execute('DELETE FROM approvals WHERE session_id=?',(session_id,))
+            self.db.execute('DELETE FROM events WHERE session_id=?',(session_id,))
+            self.db.execute('DELETE FROM messages WHERE sender_session_id=? OR recipient_session_id=?',(session_id,session_id))
+            self.db.execute('DELETE FROM runs WHERE session_id=?',(session_id,))
+            self.db.execute('DELETE FROM sessions WHERE id=?',(session_id,))
+        return {'ok': True}
 
     def bind_native_session(self, session_id, native_session_id, run_id=None):
         """Called only by the trusted adapter after a provider creates a session."""

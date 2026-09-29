@@ -38,6 +38,10 @@ flowchart LR
 
 Codex 通过 `codex app-server` 创建或恢复会话。Claude 使用生成的会话 UUID 创建会话，或通过原生 CLI 恢复已保存的 UUID。每轮都启动有时限的子进程，结束后关闭；上下文连续性来自原生 CLI 保存的会话，而不是常驻进程或工作台重放历史文本。
 
+每个会话使用 `sessions/<session-id>/codex` 或 `sessions/<session-id>/claude` 保存原生历史、索引与缓存。本机根目录位于 AgentDock 数据目录；远端位于对应 SSH 控制端的私有目录。Codex 的 `CODEX_HOME` 与 SQLite 路径同时隔离；用户配置使用副本，文件登录凭据由原生 CLI 通过链接复用。Claude 使用独立 `CLAUDE_CONFIG_DIR`，以 `CLAUDE_SECURESTORAGE_CONFIG_DIR` 保留原凭据存储定位，配置使用副本。子进程不继承 Codex 桌面版控制管道及会话标识。原生凭据刷新仍由客户端负责。
+
+自动工作目录位于会话的 `workspace` 子目录；显式项目目录保持共用。删除前检查本会话及关联协作任务均已停止，再清理专属目录和记录；远端清理失败则保留记录供重试。升级仅迁移 AgentDock 已绑定的原生历史；Codex 先成功恢复私有副本，再由原生 API 移除旧存储中的重复会话，不导入其他桌面或终端会话。
+
 Agent 名称和可选的角色说明由用户定义，与 CLI 服务独立。每轮构建提示词时读取最新保存的角色。编辑角色保留已有原生会话绑定和历史，不会改写已经发送给提供商的提示词。
 
 提示词包含当前任务，以及有长度限制的 Agent 角色和已批准项目记忆。私人会话历史由原生 CLI 管理。共享记忆和队友结果会标为参考资料，不具有指令授权效力；这种标记不能保证抵御提示词注入。
@@ -147,7 +151,7 @@ AgentDock 没有外部后端或遥测。Agent 执行和额度查询可能联系�
 
 ## 独立 Agent、模型与计量
 
-Agent 的项目可为空。未指定目录的独立 Agent 使用私有数据目录下的 `workspaces/<agent-id>`；关联项目沿用项目目录。会话建立时固定项目和目录，调度互斥覆盖项目及独立目录。独立 Agent 无法通过 MCP 访问项目记忆或派发项目任务。
+Agent 的项目可为空。未指定工作目录的会话使用私有数据目录下的 `sessions/<session-id>/workspace`；显式选择的项目目录保持共用。会话建立时固定项目和目录，调度互斥覆盖项目及独立目录。独立 Agent 无法通过 MCP 访问项目记忆或派发项目任务。
 
 `catalog.py` 通过 Codex `model/list` 和 Claude 控制握手发现模型及 effort，丢弃账户字段，五分钟内复用缓存。选择的设置写入 Agent，后续通过 Codex `turn/start` 的 `model/effort` 或 Claude `--model/--effort` 传递。省略设置时沿用原生客户端或会话行为，不修改全局配置。
 

@@ -338,7 +338,7 @@ class _Codex:
         elif method == "error" and not params.get("willRetry", False):
             raise ProviderError("Codex reported a run failure; private error details were omitted.")
 
-    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask'):
+    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_ready=None):
         self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
                                     "capabilities": {"experimentalApi": False}})
         self.pipe.send({"method": "initialized", "params": {}})
@@ -358,7 +358,7 @@ class _Codex:
             # Restore state without returning potentially unbounded turn history.
             params["excludeTurns"] = True
         response = self.request("thread/resume" if native_session_id else "thread/start", params)
-        if inherit_process_cwd and (not isinstance(response.get("cwd"), str)
+        if (not isinstance(response.get("cwd"), str)
                 or os.path.realpath(response["cwd"]) != os.path.realpath(cwd)):
             raise ProviderError("Codex selected a different working directory; no prompt was sent.")
         thread = response.get("thread")
@@ -368,6 +368,14 @@ class _Codex:
         if native_session_id and self.thread_id != native_session_id:
             raise ProviderError("Codex resumed a different native session.")
         self.cb.bind_session(self.thread_id)
+        if session_ready: session_ready()
+        actual_model = response.get('model')
+        if isinstance(actual_model, str) and actual_model and len(actual_model) <= 160:
+            metadata = {'native_id': self.thread_id, 'model': actual_model}
+            for key, value in (('model_provider', response.get('modelProvider')),
+                               ('effort', effort or response.get('reasoningEffort'))):
+                if isinstance(value, str) and len(value) <= 160: metadata[key] = value
+            self.cb.emit('model_info', metadata)
         self.usage_at = time.time()
         response = self.request("turn/start", {"threadId": self.thread_id,
             "input": [{"type": "text", "text": prompt}], "approvalPolicy": approval_policy,
@@ -473,6 +481,10 @@ class _Claude:
             kind = message.get("type")
             if kind == "control_request":
                 self.handle_permission(message)
+            elif kind == 'system' and message.get('subtype') == 'init':
+                actual_model = message.get('model')
+                if isinstance(actual_model, str) and actual_model and len(actual_model) <= 160:
+                    self.cb.emit('model_info', {'native_id': self.native_id, 'model': actual_model})
             elif kind == "stream_event" and not message.get("parent_tool_use_id"):
                 event = message.get("event", {})
                 if not isinstance(event, dict):
@@ -549,7 +561,7 @@ class _Claude:
 
 
 def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
-            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask'):
+            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_home=None):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -573,12 +585,33 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         raise ProviderError("The agent run timeout is invalid.")
     mcp, additions = _validate_mcp(mcp_config)
     env = dict(os.environ)
+    for key in ('CODEX_APP_TOOLS_PIPE_PATH', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE'):
+        env.pop(key, None)
     env.update(additions)
     argv = list(command)
     native_id = native_session_id
+    session_ready = None
     if provider == "codex":
+        if session_home is not None:
+            from .codex_home import prepare
+            original_env = dict(env)
+            try:
+                env, flags, legacy = prepare(os.path.join(session_home, 'codex'), env, native_id, cwd)
+            except (OSError, ValueError):
+                raise ProviderError('Could not prepare isolated Codex session storage; no prompt was sent.') from None
+            argv += flags
+            if legacy:
+                def session_ready():
+                    # The private transcript has resumed successfully; remove the
+                    # old duplicate without touching any other desktop conversation.
+                    from .codex_home import retire_legacy
+                    retire_legacy(command, original_env, native_id)
         argv += ["--listen", "stdio://"]
     else:
+        original_env = dict(env)
+        if session_home is not None:
+            from .session_storage import prepare_claude
+            env = prepare_claude(os.path.join(session_home, 'claude'), env, native_id)
         # Each worker owns one foreground turn; background work cannot outlive it.
         env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
         if native_id:
@@ -601,9 +634,13 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
-            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode, session_ready)
         adapter = _Claude(pipe, callbacks, native_id)
-        return adapter.run(prompt)
+        result = adapter.run(prompt)
+        if session_home is not None and native_session_id:
+            from .session_storage import retire_legacy_claude
+            retire_legacy_claude(original_env, native_session_id)
+        return result
     except (ProviderCancelled, ProviderError):
         if adapter:
             adapter.cancel()

@@ -9,7 +9,7 @@ AgentDock stores workbench state locally and calls installed agent CLIs over SSH
 1. Confirm that `ssh devbox` works without interaction and the host key is in `known_hosts`. Put custom ports, jump hosts and key paths in your system SSH configuration.
 2. Open **Workspace → Add agent**, choose a provider and enter a custom name. Under **Run on**, select a saved connection or **New SSH connection…**. For a new connection, enter an SSH Host alias or `user@host`; use **Advanced connection settings** if you need a different Python command.
 3. Choose **Connect and use** for a new connection or **Connect / check** for a saved one. The host needs Python 3.9+ and an installed, authenticated native CLI. The check installs the private runner and reads versions without submitting a model task.
-4. Complete the agent settings and choose **Create agent**. Models are discovered on that environment; an empty selection retains native settings. A blank workspace creates a private agent directory; an explicit directory must already exist. Connection details remain in **Agent settings**, while everyday lists show custom names. Identically named agents still keep their own connection and session bindings.
+4. Complete the agent settings and choose **Create agent**. Models are discovered on that environment; an empty selection retains native settings. A blank workspace creates a private conversation directory; an explicit directory must already exist. Connection details remain in **Agent settings**, while everyday lists show custom names. Identically named agents still keep their own connection and session bindings.
 5. Create a conversation and send a message. The status shows queued, running, completed or failed. Expand the status row to watch progress, or leave it collapsed. The final reply appears separately.
 
 An agent's environment and provider stay fixed to prevent resuming a conversation on the wrong host. Projects are optional. When the project belongs to another environment, choose a separate working directory or use the agent's private directory.
@@ -61,10 +61,10 @@ Events and final state use private storage with bounded event sizes and counts. 
 | --- | --- |
 | Environments, agents, sessions and returned results | Local SQLite. Existing records migrate to This Mac with a database backup. |
 | Runner | Remote `~/.local/share/agentdock/ssh/runtimes/<hash>`, installed by content version without sudo or a system service. |
-| Requests and events | Remote `~/.local/share/agentdock/ssh/controllers/<controller>/<run>` with private permissions. Historical run directories are not automatically removed. |
-| Default working directory | Remote `~/.local/share/agentdock/workspaces/<agent>`. Existing repositories and external worktrees are not cleaned up. |
+| Requests and events | Remote `~/.local/share/agentdock/ssh/controllers/<controller>/<run>`; removed with their owning conversation. |
+| Conversation state and default workspace | Remote `~/.local/share/agentdock/ssh/controllers/<controller>/sessions/<session>` contains private CLI state and `workspace`. Explicit project directories remain shared and are kept. |
 | CLI credentials | Existing login on the selected host. SSH agent sockets, X11 and ports are not forwarded. The execution identity is the SSH user and that user's native CLI account. |
-| Codex trust | App Server inherits its process working directory, avoiding the explicit directory change that can persist trust. AgentDock verifies the returned directory before sending a prompt and preserves existing trust choices. |
+| Codex trust | Each conversation reads a private copy of the original settings. Native trust changes affect that copy only; the actual working directory is checked before a prompt is sent. |
 | Tokens and TPS | Remote accounting uses live events from AgentDock-managed turns, without scanning unrelated remote conversations. Environment-scoped identities avoid mixing local and remote sessions. |
 | Usage and billing | Stored by environment and provider. Remote Codex queries its own App Server. Remote Claude currently remains unknown, without falling back to local data or reading credentials. |
 

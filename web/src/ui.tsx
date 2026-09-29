@@ -10,6 +10,14 @@ import type {
 
 export function errorMessage(message: string, t: Translate): string {
   const translations: Record<string, string> = {
+    "Stop active tasks before deleting a session":
+      "请先停止当前任务，再删除会话。",
+    "Wait for linked tasks before deleting a session":
+      "请等待关联的协作任务结束后再删除会话。",
+    "Enable execution to clean up a remote session":
+      "请启用执行后再删除远端会话。",
+    "Could not prepare isolated Codex session storage; no prompt was sent.":
+      "无法准备独立的 Codex 会话目录，任务尚未发送。",
     "Invalid agent permission mode": "请选择有效的 Agent 访问权限。",
     "Wait for active tasks before changing agent settings":
       "请等待排队或执行中的任务结束后再修改 Agent 设置。",

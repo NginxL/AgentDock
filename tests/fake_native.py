@@ -87,7 +87,8 @@ if provider == "codex":
     native_id = params.get("threadId", "native-codex-1")
     if scenario == "resume_mismatch":
         native_id = "different-native-thread"
-    send({"id": request["id"], "result": {"thread": {"id": native_id}, "cwd": "/different-workspace" if scenario == "wrong_cwd" else os.getcwd()}})
+    send({"id": request["id"], "result": {"thread": {"id": native_id}, "cwd": "/different-workspace" if scenario == "wrong_cwd" else os.getcwd(),
+        **({'model':'gateway/configured-model', 'modelProvider':'custom-relay', 'reasoningEffort':'xhigh'} if scenario == 'metadata' else {})}})
     request = read()
     assert request["method"] == "turn/start"
     assert request["params"]["threadId"] == native_id

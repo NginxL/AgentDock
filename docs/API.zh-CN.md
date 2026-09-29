@@ -65,6 +65,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
+| `POST /api/sessions/{id}/delete` | 空对象；用户认证接口。阻止删除运行中或仍有关联任务的会话，清理专属目录、运行记录与事件；远端清理成功后才移除本机记录。共用项目目录与原生登录保留。 |
 | `POST /api/runs/{id}/cancel` | 空对象。取消指定运行所属的逻辑任务，包括它现有的排队或正在执行的后代任务。返回 `{ "ok": true }`。 |
 | `GET /api/sessions/{id}/events?after=0` | 返回 `{ "events": [...] }`，按递增的 `seq` 排序，每次最多返回 500 条。 |
 | `POST /api/messages` | `project_id`、`recipient_id`、`body`（最多 12,000 字符）；可选 `recipient_session_id`、`correlation_id`、`idempotency_key`。以 `human` 身份派发任务，返回投递记录。 |
@@ -99,6 +100,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 `messages` 集合保存投递审计记录。提交成功会产生排队任务，**不代表接收方已经完成**。`waiting` 状态表示接收方已结束某轮执行，但仍须等待子任务结果或后续处理轮次，才能最终交付。只有任务结算后的投递记录才表示最终状态和结果。若存在 `reply_run_id`，它指向发送方的结果处理轮次；需检查该运行，判断发送方是否已处理结果。`acknowledged_at` 表示接收方开始执行的时间，不再表示人工确认收件。
 
 事件包含 `seq`、`id`、`project_id`、可为 null 的 `session_id`、`kind`、`payload` 和 `created_at`。生命周期事件包括 `run_queued`、`run_started`、`run_finished`、`message_queued`、`reply_queued` 和 `task_settled`；文本与工具事件包括 `agent_message_chunk`、`assistant_message`、`tool_call` 和 `tool_result`。所有提供商载荷均应作为不可信展示数据处理，不能作为可执行 HTML 或授权依据。
+
+原生客户端确认模型后发送 `model_info` 事件，含 `run_id`、`native_id`、`model`，以及可用时的 `effort` 与 `model_provider`。这些值来自 CLI 协议，不解析回复文本来推测模型。
 
 ## 派发与会话续接
 

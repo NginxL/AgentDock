@@ -61,10 +61,10 @@ sequenceDiagram
 | --- | --- |
 | 环境、Agent、会话和回传结果 | 本机 SQLite；既有记录迁移到“本机”，迁移前备份已有数据库。 |
 | 执行组件 | 远端 `~/.local/share/agentdock/ssh/runtimes/<hash>`，按内容版本安装，不需要 sudo 或后台服务。 |
-| 运行请求与事件 | 远端 `~/.local/share/agentdock/ssh/controllers/<controller>/<run>`，私有目录权限。当前不自动删除历史运行目录。 |
-| 默认工作目录 | 远端 `~/.local/share/agentdock/workspaces/<agent>`；不会清理已有仓库或外部工作树。 |
+| 运行请求与事件 | 远端 `~/.local/share/agentdock/ssh/controllers/<controller>/<run>`；删除会话时清理所属运行目录。 |
+| 会话记录与默认工作目录 | 远端 `~/.local/share/agentdock/ssh/controllers/<controller>/sessions/<session>`；包含 CLI 独立状态与 `workspace`。显式项目目录共用并保留。 |
 | CLI 凭据 | 沿用所选环境的已有登录；SSH 不转发本机 agent socket、X11 或端口。运行身份是 SSH 用户及其原生 CLI 账号。 |
-| Codex 信任配置 | App Server 继承执行进程的工作目录，避免显式切换目录触发自动写入信任记录；发送提示词前核对返回的目录，既有信任选择保持不变。 |
+| Codex 信任配置 | 每个会话读取原配置的私有副本；原生信任变更只写入该副本，发送任务前验证实际工作目录。 |
 | Token 与 TPS | 远端统计来自 AgentDock 管理的实时用量事件，不扫描远端其他会话。去重标识包含环境，避免与本机会话混合。 |
 | 额度与订阅 | 按环境与提供方保存。远端 Codex 查询自身 App Server；远端 Claude 当前显示未知，不回退到本机快照或读取凭据。 |
 

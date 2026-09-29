@@ -173,6 +173,12 @@ class LocalUsage:
         codex = Path(self.environment.get('CODEX_HOME') or self.home/'.codex').expanduser()
         claude = Path(self.environment.get('CLAUDE_CONFIG_DIR') or self.home/'.claude').expanduser()
         roots = [('codex', codex/'sessions'), ('codex', codex/'archived_sessions'), ('claude', claude/'projects')]
+        with self.store.lock:
+            local_sessions = self.store.db.execute("SELECT id FROM sessions WHERE environment_id='local'").fetchall()
+        for session in local_sessions:
+            managed = self.store.session_directory(session['id'])
+            roots += [('codex', managed/'codex'/'sessions'), ('codex', managed/'codex'/'archived_sessions'),
+                      ('claude', managed/'claude'/'projects')]
         for provider, root in roots:
             identities = {native for (p, native) in bindings if p == provider}
             if not identities: continue

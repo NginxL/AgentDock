@@ -38,6 +38,10 @@ A session belongs to one agent and optionally a project. Its working directory i
 
 Codex starts or resumes a thread through `codex app-server`. Claude starts with a generated session UUID or resumes the saved UUID through the native CLI. Each turn launches a bounded subprocess and closes it afterwards; conversation continuity comes from the provider's native persisted session, not a long-running process or replayed UI history.
 
+Each conversation stores native history, indexes and caches in `sessions/<session-id>/codex` or `sessions/<session-id>/claude`, under the local AgentDock data directory or the remote SSH controller’s private directory. Codex isolates both `CODEX_HOME` and SQLite storage, snapshots settings and links existing file credentials for the native CLI to use. Claude uses a private `CLAUDE_CONFIG_DIR` and retains the original credential-store location through `CLAUDE_SECURESTORAGE_CONFIG_DIR`, with copied settings. Child processes do not inherit the Codex desktop control pipe or session identifiers. Native clients remain responsible for credential refresh.
+
+Automatic workspaces live in the conversation’s `workspace` subdirectory; explicit project directories stay shared. Deletion requires this session and linked tasks to be idle, then removes private files and records. A failed remote cleanup leaves the record available for retry. Upgrades migrate only AgentDock-owned native histories. Codex successfully resumes the private copy before removing its legacy duplicate through the native API; unrelated desktop and terminal sessions are not imported.
+
 Agent names and optional roles are defined by the user, independently of the CLI provider. Each turn reads the latest saved role when building its prompt. Role edits preserve existing native bindings and history; they do not rewrite a prompt already sent to a provider.
 
 The prompt contains the current task and a bounded reference block with the agent role and approved project memory. Private conversation history remains with the native CLI. Shared memories and teammate results are marked as reference data, not authority; this labeling does not guarantee resistance to prompt injection.
@@ -147,7 +151,7 @@ An `NSStatusItem` and native `NSMenu` keep a menu-bar entry available while the 
 
 ## Independent agents, models and metering
 
-An agent may have no project. Independent agents without a selected workspace receive a private `workspaces/<agent-id>` directory; project agents use the project directory. Session ownership and workspace freeze at creation. Workspace exclusion applies equally to independent agents. Their MCP tools cannot read project memories or dispatch project tasks.
+An agent may have no project. Conversations without an explicit workspace receive a private `sessions/<session-id>/workspace` directory; explicitly selected project directories remain shared. Session ownership and workspace freeze at creation. Workspace exclusion applies equally to independent agents. Their MCP tools cannot read project memories or dispatch project tasks.
 
 `catalog.py` discovers models and efforts through Codex `model/list` and the Claude control handshake, drops account fields and caches metadata for five minutes. Saved agent settings reach future Codex `turn/start` requests as `model/effort`, or Claude as `--model/--effort`. Omitted settings preserve native client/session behavior without modifying global configuration.
 
