@@ -326,8 +326,8 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
 });
 
 it("toggles both project creation entry points and keeps the close button", async () => {
-  await setup();
-  fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+  await setup({ projects: [] });
+  fireEvent.click(screen.getByRole("button", { name: "项目" }));
   const sidebar = screen.getByRole("button", { name: "新建项目" });
   const empty = screen.getByRole("button", { name: "创建第一个项目" });
   fireEvent.click(empty);
@@ -345,10 +345,11 @@ it("toggles both project creation entry points and keeps the close button", asyn
 
 it("toggles memory creation and editing while keeping record selection separate", async () => {
   await setup();
-  fireEvent.change(screen.getByLabelText("当前项目"), {
-    target: { value: "p" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+  fireEvent.click(screen.getByRole("button", { name: "项目" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "打开项目 Example project" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "记忆" }));
   const add = screen.getByRole("button", { name: "新增记忆" });
   fireEvent.click(add);
   fireEvent.click(add);

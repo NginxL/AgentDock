@@ -53,7 +53,8 @@ export default function Messages({
   return (
     <>
       <PageTitle
-        eyebrow={t("项目协作", "PROJECT COLLABORATION")}
+        headingLevel={2}
+        eyebrow=""
         title={t("任务派工", "Dispatch")}
         description={t(
           "将任务提交给目标 Agent 的原生会话，跟踪执行与结果回传。忙碌的会话会按顺序处理后续任务。",

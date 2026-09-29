@@ -408,17 +408,20 @@ export function PageTitle({
   title,
   description,
   action,
+  headingLevel = 1,
 }: {
+  headingLevel?: 1 | 2;
   eyebrow: string;
   title: string;
   description?: string;
   action?: ReactNode;
 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h1";
   return (
     <div className="page-heading">
       <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+        <Heading>{title}</Heading>
         {description && <p>{description}</p>}
       </div>
       {action}

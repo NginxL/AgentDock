@@ -250,6 +250,7 @@ export default function Workspace({
     return () => controller.abort();
   }, [sessionID, token, lang, demo, demo ? state.events : null]);
 
+  const Heading = project && !selectedAgent ? "h2" : "h1";
   return (
     <section className={selectedAgent ? "agent-page" : "workspace-overview"}>
       <div className="page-heading">
@@ -264,9 +265,10 @@ export default function Workspace({
               <span aria-hidden="true">←</span>
             </button>
           )}
-          <h1 ref={pageTitle} tabIndex={-1}>
-            {selectedAgent?.name ?? t("协作工作台", "Workspace")}
-          </h1>
+          <Heading ref={pageTitle} tabIndex={-1}>
+            {selectedAgent?.name ??
+              (project ? t("Agent", "Agents") : t("协作工作台", "Workspace"))}
+          </Heading>
         </div>
         <div className="button-row">
           {selectedAgent && (
@@ -389,7 +391,7 @@ export default function Workspace({
         </div>
       </div>
       {!selectedAgent && (
-        <div className="stat-grid">
+        <div className={`stat-grid ${project ? "" : "workspace-stats"}`}>
           <Stat
             value={agents.length}
             label={t("Agent", "Agents")}
@@ -400,16 +402,18 @@ export default function Workspace({
             label={t("运行中", "Running")}
             icon="bolt"
           />
-          <Stat
-            value={
-              state.memories.filter(
-                (m) =>
-                  !!project && m.project_id === project.id && !isArchived(m),
-              ).length
-            }
-            label={t("已审阅记忆", "Reviewed memories")}
-            icon="memory"
-          />
+          {project && (
+            <Stat
+              value={
+                state.memories.filter(
+                  (m) =>
+                    !!project && m.project_id === project.id && !isArchived(m),
+                ).length
+              }
+              label={t("已审阅记忆", "Reviewed memories")}
+              icon="memory"
+            />
+          )}
           <Stat
             value={approvals.length}
             label={t("等待授权", "Awaiting approval")}

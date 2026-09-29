@@ -18,6 +18,10 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 *Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional. Agent A/B are example names with no preset roles; users define their names and responsibilities.*
 
+Open **Projects** in the sidebar to create or select a project, then switch between **Agents / Tasks / Memory**. Project memory is shared within that project. Independent agents remain available directly from Workspace.
+
+![Project list, fictional demo data](docs/images/projects.en.png)
+
 <details>
 <summary>Role configuration, task handoffs, and usage monitoring</summary>
 
@@ -25,9 +29,13 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 ![Agent settings: name, role, model and effort](docs/images/roles.en.jpg)
 
-**Dispatch:** inspect the target conversation, execution result and return status.
+**Projects → Tasks:** inspect the target conversation, execution result and return status.
 
 ![Task dispatch and returned results](docs/images/dispatch.en.png)
+
+**Projects → Memory:** review and search knowledge shared within the selected project.
+
+![Project memory and proposals awaiting review](docs/images/project-memory.en.png)
 
 **Usage:** view quota windows for configured agents and reset times separately from subscription renewal records. These are fictional demo readings.
 
@@ -45,7 +53,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 | Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
 | Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Shows live task status, expandable thinking summaries and tool execution, the final reply, and permission requests. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
-| Shared memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
+| Project memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
 | Usage & subscriptions | Remaining quotas and reset times follow configured agents, with automatic updates and stale/error states. Renewal dates and subscription costs are recorded separately. |
 | Local workbench | Compact project navigation, conversation and execution panels, Chinese/English switching, and a read-only demo that makes no API requests. |
 | macOS menu bar | A persistent entry for opening the workbench, viewing remaining quotas and reset times by agent name, and quitting. Language follows the workbench. |

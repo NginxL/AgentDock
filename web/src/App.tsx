@@ -14,11 +14,12 @@ import type {
   Quota,
   Translate,
 } from "./types";
-import { Brand, Empty, Icon, errorMessage } from "./ui";
+import { Brand, Icon, errorMessage } from "./ui";
 import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
 import Messages from "./views/Messages";
 import Memories from "./views/Memories";
+import { ProjectHeader, ProjectList } from "./views/Projects";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
 import { useMetrics } from "./metrics";
@@ -64,10 +65,19 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const { tab, projectID, agentID: agentPageID, navigate } = useNavigation();
-  const setTab = (tab: Tab) => navigate({ tab, agentID: "" });
+  const {
+    tab,
+    projectID,
+    projectView,
+    agentID: agentPageID,
+    navigate,
+  } = useNavigation();
+  const setTab = (tab: Tab) => {
+    setProjectForm(false);
+    navigate({ tab, projectID: "", projectView: "agents", agentID: "" });
+  };
   const setProjectID = (projectID: string) =>
-    navigate({ projectID, agentID: "" });
+    navigate({ tab: "projects", projectID, agentID: "" });
   const [usageVisit, setUsageVisit] = useState(0);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const [quotaRefreshFailed, setQuotaRefreshFailed] = useState(false);
@@ -527,7 +537,7 @@ export default function App() {
 
   const project = state.projects.find((p) => p.id === projectID);
   const pageAgent =
-    tab === "workspace"
+    tab === "workspace" || tab === "projects"
       ? state.agents.find((a) => a.id === agentPageID)
       : undefined;
   const agents = state.agents.filter(
@@ -556,13 +566,12 @@ export default function App() {
       en: "Workspace",
       badge: approvals.length,
     },
-    { key: "messages", icon: "message", zh: "任务派工", en: "Dispatch" },
     {
-      key: "memory",
-      icon: "memory",
-      zh: "共享记忆",
-      en: "Shared memory",
-      badge: proposals.length,
+      key: "projects",
+      icon: "folder",
+      zh: "项目",
+      en: "Projects",
+      badge: state.proposals.filter((p) => p.status === "pending").length,
     },
     { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
@@ -575,30 +584,6 @@ export default function App() {
       </a>
       <aside className="sidebar">
         <Brand small />
-        <div className="project-switch">
-          <label htmlFor="project-select">{t("当前项目", "PROJECT")}</label>
-          <select
-            id="project-select"
-            value={projectID}
-            onChange={(e) => setProjectID(e.target.value)}
-          >
-            <option value="">{t("全部 Agent", "All agents")}</option>
-            {state.projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="sidebar-add"
-            aria-expanded={projectForm}
-            aria-controls="project-form"
-            onClick={() => setProjectForm(!projectForm)}
-          >
-            <Icon name="plus" size={16} />
-            {t("新建项目", "New project")}
-          </button>
-        </div>
         <nav aria-label={t("主导航", "Main navigation")}>
           {nav.map((item) => (
             <button
@@ -635,9 +620,31 @@ export default function App() {
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumb">
-            {project?.name ?? "AgentDock"}
+            <span className="breadcrumb-brand">AgentDock</span>
             <span>/</span>
-            {pageAgent ? (
+            {tab === "projects" && project ? (
+              <>
+                <button
+                  className="breadcrumb-page"
+                  onClick={() => setTab("projects")}
+                >
+                  {t("项目", "Projects")}
+                </button>
+                <span>/</span>
+                {pageAgent ? (
+                  <button
+                    className="breadcrumb-page"
+                    onClick={() =>
+                      navigate({ agentID: "", projectView: "agents" })
+                    }
+                  >
+                    {project.name}
+                  </button>
+                ) : (
+                  <strong>{project.name}</strong>
+                )}
+              </>
+            ) : pageAgent ? (
               <button
                 className="breadcrumb-page"
                 aria-label={t("返回工作台", "Back to workspace")}
@@ -721,118 +728,122 @@ export default function App() {
               </button>
             </div>
           )}
-          {projectForm && (
+          {tab === "projects" && !pageAgent && (
+            <ProjectHeader
+              project={project}
+              projects={state.projects}
+              view={projectView}
+              pending={proposals.length}
+              creating={projectForm}
+              onCreate={() => setProjectForm(!projectForm)}
+              onSelect={setProjectID}
+              onView={(view) => navigate({ projectView: view, agentID: "" })}
+              t={t}
+            />
+          )}
+          {projectForm && tab === "projects" && !project && (
             <ProjectForm
               environments={state.environments ?? []}
               t={t}
               busy={!!busy || demo}
               mutate={mutate}
               close={() => setProjectForm(false)}
-              onCreated={(id) => setProjectID(id)}
+              onCreated={(id) =>
+                navigate({
+                  tab: "projects",
+                  projectID: id,
+                  projectView: "agents",
+                  agentID: "",
+                })
+              }
             />
           )}
-          {!project && (tab === "memory" || tab === "messages") ? (
-            <section className="panel">
-              <Empty
-                icon="work"
-                title={t("选择项目以协作", "Choose a project to collaborate")}
-              >
-                {t(
-                  "项目用于共享记忆和多 Agent 派工。独立对话无需项目，可直接在工作台创建 Agent。",
-                  "Projects group shared memory and agent dispatch. Create an agent directly in Workspace to chat without a project.",
-                )}
-              </Empty>
-              <button
-                className="primary empty-action"
-                aria-expanded={projectForm}
-                aria-controls="project-form"
-                onClick={() => setProjectForm(!projectForm)}
-              >
-                <Icon name="plus" size={18} />
-                {t("创建第一个项目", "Create your first project")}
-              </button>
-            </section>
-          ) : (
-            <>
-              {tab === "workspace" && (
-                <Workspace
-                  key={projectID}
-                  t={t}
-                  lang={lang}
-                  metrics={metrics}
-                  metricsFailed={metricsFailed}
-                  project={project}
-                  agents={agents}
-                  sessions={sessions}
-                  approvals={approvals}
-                  state={state}
-                  token={token}
-                  demo={demo}
-                  runtimeEnabled={state.runtime.enabled}
-                  busy={!!busy || demo}
-                  mutate={mutate}
-                  agentPageID={agentPageID}
-                  onNavigateAgent={(id, replace) =>
-                    navigate({ tab: "workspace", agentID: id }, replace)
-                  }
-                  initialEnvironment={agentEnvironment ?? undefined}
-                  onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
-                />
-              )}
-              {tab === "messages" && project && (
-                <Messages
-                  key={projectID}
-                  t={t}
-                  lang={lang}
-                  state={state}
-                  projectID={projectID}
-                  agents={agents}
-                  busy={!!busy || demo}
-                  mutate={mutate}
-                />
-              )}
-              {tab === "memory" && project && (
-                <Memories
-                  key={projectID}
-                  t={t}
-                  lang={lang}
-                  state={state}
-                  projectID={projectID}
-                  agents={agents}
-                  proposals={proposals}
-                  busy={!!busy || demo}
-                  mutate={mutate}
-                />
-              )}
-              {tab === "tokens" && (
-                <Tokens
-                  metrics={metrics}
-                  failed={metricsFailed}
-                  agents={state.agents}
-                  t={t}
-                  lang={lang}
-                />
-              )}
-              {tab === "usage" && (
-                <Usage
-                  t={t}
-                  lang={lang}
-                  quotas={listOf(state.quotas)}
-                  subscriptions={listOf(state.subscriptions)}
-                  agents={state.agents}
-                  onAddAgent={() => {
-                    setProjectID("");
-                    setProjectForm(false);
-                    setAgentEnvironment("local");
-                    setTab("workspace");
-                  }}
-                  refreshing={quotaRefreshing}
-                  refreshFailed={quotaRefreshFailed}
-                  busy={!!busy || demo}
-                  mutate={mutate}
-                />
-              )}
-            </>
+          {tab === "projects" && !project && (
+            <ProjectList
+              state={state}
+              t={t}
+              onSelect={setProjectID}
+              creating={projectForm}
+              onCreate={() => setProjectForm(!projectForm)}
+            />
+          )}
+          {(tab === "workspace" ||
+            (tab === "projects" && project && projectView === "agents")) && (
+            <Workspace
+              key={projectID}
+              t={t}
+              lang={lang}
+              metrics={metrics}
+              metricsFailed={metricsFailed}
+              project={project}
+              agents={agents}
+              sessions={sessions}
+              approvals={approvals}
+              state={state}
+              token={token}
+              demo={demo}
+              runtimeEnabled={state.runtime.enabled}
+              busy={!!busy || demo}
+              mutate={mutate}
+              agentPageID={agentPageID}
+              onNavigateAgent={(id, replace) =>
+                navigate({ agentID: id }, replace)
+              }
+              initialEnvironment={agentEnvironment ?? undefined}
+              onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
+            />
+          )}
+          {tab === "projects" && project && projectView === "tasks" && (
+            <Messages
+              key={projectID}
+              t={t}
+              lang={lang}
+              state={state}
+              projectID={projectID}
+              agents={agents}
+              busy={!!busy || demo}
+              mutate={mutate}
+            />
+          )}
+          {tab === "projects" && project && projectView === "memory" && (
+            <Memories
+              key={projectID}
+              t={t}
+              lang={lang}
+              state={state}
+              projectID={projectID}
+              agents={agents}
+              proposals={proposals}
+              busy={!!busy || demo}
+              mutate={mutate}
+            />
+          )}
+          {tab === "tokens" && (
+            <Tokens
+              metrics={metrics}
+              failed={metricsFailed}
+              agents={state.agents}
+              t={t}
+              lang={lang}
+            />
+          )}
+          {tab === "usage" && (
+            <Usage
+              t={t}
+              lang={lang}
+              quotas={listOf(state.quotas)}
+              subscriptions={listOf(state.subscriptions)}
+              agents={state.agents}
+              onAddAgent={() => {
+                setProjectForm(false);
+                setAgentEnvironment("local");
+                setTab("workspace");
+              }}
+              refreshing={quotaRefreshing}
+              refreshFailed={quotaRefreshFailed}
+              busy={!!busy || demo}
+              mutate={mutate}
+            />
           )}
         </main>
       </div>

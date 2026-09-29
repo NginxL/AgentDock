@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
-type Route = { tab: Tab; projectID: string; agentID: string };
-const home: Route = { tab: "workspace", projectID: "", agentID: "" };
+export type Tab = "workspace" | "projects" | "usage" | "tokens";
+export type ProjectView = "agents" | "tasks" | "memory";
+type Route = {
+  tab: Tab;
+  projectID: string;
+  projectView: ProjectView;
+  agentID: string;
+};
+const home: Route = {
+  tab: "workspace",
+  projectID: "",
+  projectView: "agents",
+  agentID: "",
+};
 
 function readRoute(): Route | null {
   const hash = window.location.hash;
@@ -10,24 +21,41 @@ function readRoute(): Route | null {
   // Native anchor links (for example Skip to content) do not change pages.
   if (!hash.startsWith("#/")) return null;
   const [path, query] = hash.slice(2).split("?", 2);
-  const projectID = new URLSearchParams(query).get("project") ?? "";
+  const params = new URLSearchParams(query);
+  const projectID = params.get("project") ?? "";
   if (path.startsWith("agents/")) {
     try {
       return {
-        tab: "workspace",
+        tab: projectID ? "projects" : "workspace",
         projectID,
+        projectView: "agents",
         agentID: decodeURIComponent(path.slice(7)),
       };
     } catch {
       return home;
     }
   }
-  const tab = ["workspace", "messages", "memory", "usage", "tokens"].includes(
-    path,
-  )
-    ? (path as Tab)
-    : "workspace";
-  return { tab, projectID, agentID: "" };
+  // Existing bookmarks retain their project and destination inside Projects.
+  if (path === "messages" || path === "memory")
+    return {
+      tab: "projects",
+      projectID,
+      projectView: path === "messages" ? "tasks" : "memory",
+      agentID: "",
+    };
+  if (path === "projects" || (path === "workspace" && projectID)) {
+    const view = params.get("view");
+    return {
+      tab: "projects",
+      projectID,
+      projectView: view === "tasks" || view === "memory" ? view : "agents",
+      agentID: "",
+    };
+  }
+  return {
+    ...home,
+    tab: path === "usage" || path === "tokens" ? path : "workspace",
+  };
 }
 
 export function useNavigation() {
@@ -36,12 +64,16 @@ export function useNavigation() {
   const navigate = useCallback((change: Partial<Route>, replace = false) => {
     const next = { ...current.current, ...change };
     const page =
-      next.tab === "workspace" && next.agentID
+      (next.tab === "workspace" || next.tab === "projects") && next.agentID
         ? `agents/${encodeURIComponent(next.agentID)}`
         : next.tab;
-    const query = next.projectID
-      ? `?${new URLSearchParams({ project: next.projectID })}`
-      : "";
+    const params = new URLSearchParams();
+    if (next.tab === "projects" && next.projectID) {
+      params.set("project", next.projectID);
+      if (!next.agentID && next.projectView !== "agents")
+        params.set("view", next.projectView);
+    }
+    const query = params.size ? `?${params}` : "";
     const hash = `#/${page}${query}`;
     if (window.location.hash !== hash) {
       window.history[replace ? "replaceState" : "pushState"](

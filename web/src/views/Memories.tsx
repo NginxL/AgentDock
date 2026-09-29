@@ -51,8 +51,9 @@ export default function Memories({
   return (
     <>
       <PageTitle
-        eyebrow={t("项目知识", "PROJECT KNOWLEDGE")}
-        title={t("共享记忆", "Shared memory")}
+        headingLevel={2}
+        eyebrow=""
+        title={t("项目记忆", "Project memory")}
         description={t(
           "仅共享已确认的项目约定与结论。各 Agent 的原生会话历史独立保留；记忆写入需经审阅，并按版本更新。",
           "Share reviewed project conventions and decisions. Native session histories remain private; memory changes are reviewed and versioned.",
@@ -256,7 +257,7 @@ export default function Memories({
           <label className="search-box">
             <Icon name="search" size={18} />
             <span className="sr-only">
-              {t("搜索共享记忆", "Search shared memory")}
+              {t("搜索项目记忆", "Search project memory")}
             </span>
             <input
               type="search"

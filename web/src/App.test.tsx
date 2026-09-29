@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import App from "./App";
 import { QuotaWindow } from "./views/Usage";
@@ -78,6 +79,19 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
   vi.unstubAllGlobals();
 });
+
+function openProjects() {
+  fireEvent.click(
+    within(screen.getByRole("navigation", { name: "主导航" })).getByRole(
+      "button",
+      { name: "项目" },
+    ),
+  );
+}
+function openProject(name = "Demo project") {
+  openProjects();
+  fireEvent.click(screen.getByRole("button", { name: `打开项目 ${name}` }));
+}
 
 describe("desktop connection and built-in usage", () => {
   it("restores the desktop language and keeps the native menu in sync", async () => {
@@ -175,10 +189,6 @@ async function connect() {
   });
   fireEvent.click(screen.getByRole("button", { name: "进入工作台" }));
   await screen.findByRole("heading", { name: "协作工作台" });
-  if (screen.queryByRole("option", { name: "Demo project" }))
-    fireEvent.change(screen.getByLabelText("当前项目"), {
-      target: { value: "project-a" },
-    });
 }
 
 function deferred<T>() {
@@ -195,6 +205,7 @@ describe("user-defined agent roles", () => {
     async (provider) => {
       render(<App />);
       await connect();
+      openProject();
       fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
       const name = screen.getByLabelText("名称") as HTMLInputElement;
       const role = screen.getByLabelText(
@@ -394,6 +405,7 @@ describe("selection after delayed mutation refresh", () => {
     });
     render(<App />);
     await connect();
+    openProjects();
     fireEvent.click(screen.getByRole("button", { name: "新建项目" }));
     fireEvent.change(screen.getByLabelText("项目名称"), {
       target: { value: project.name },
@@ -407,9 +419,8 @@ describe("selection after delayed mutation refresh", () => {
         fetchMock.mock.calls.filter(([path]) => path === "/api/state"),
       ).toHaveLength(2),
     );
-    expect((screen.getByLabelText("当前项目") as HTMLSelectElement).value).toBe(
-      "project-a",
-    );
+    expect(window.location.hash).toBe("#/projects");
+    expect(screen.getByLabelText("项目名称")).toBeTruthy();
     await act(async () => {
       refreshed.resolve(
         response({ ...state, projects: [...state.projects, project] }),
@@ -417,7 +428,7 @@ describe("selection after delayed mutation refresh", () => {
     });
     await waitFor(() =>
       expect(
-        (screen.getByLabelText("当前项目") as HTMLSelectElement).value,
+        (screen.getByLabelText("切换项目") as HTMLSelectElement).value,
       ).toBe(project.id),
     );
     expect(screen.queryByRole("button", { name: /Review agent/ })).toBeNull();
@@ -444,6 +455,7 @@ describe("selection after delayed mutation refresh", () => {
     });
     render(<App />);
     await connect();
+    openProject();
     fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: agent.name },
@@ -607,14 +619,10 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
-    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
-      fireEvent.change(screen.getByLabelText("当前项目"), {
-        target: {
-          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
-            .options[1]?.value,
-        },
-      });
-    fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "记忆" }));
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     fireEvent.change(screen.getByLabelText("内容"), {
       target: { value: "Keep this draft" },
@@ -638,7 +646,10 @@ describe("reviewed memory and messages", () => {
   it("disables dispatch when execution is off", async () => {
     render(<App />);
     await connect();
-    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "任务" }));
     fireEvent.change(screen.getByLabelText("任务说明"), {
       target: { value: "Review the change" },
     });
@@ -661,7 +672,10 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
-    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "任务" }));
     fireEvent.change(screen.getByLabelText("目标会话"), {
       target: { value: "session-a" },
     });
@@ -702,14 +716,10 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
-    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
-      fireEvent.change(screen.getByLabelText("当前项目"), {
-        target: {
-          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
-            .options[1]?.value,
-        },
-      });
-    fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "记忆" }));
     expect(screen.getByText(hostile)).toBeTruthy();
     expect(document.querySelector("img")).toBeNull();
   });
@@ -737,14 +747,10 @@ describe("reviewed memory and messages", () => {
     );
     render(<App />);
     await connect();
-    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
-      fireEvent.change(screen.getByLabelText("当前项目"), {
-        target: {
-          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
-            .options[1]?.value,
-        },
-      });
-    fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "记忆" }));
     expect(
       (screen.getByRole("button", { name: "批准写入" }) as HTMLButtonElement)
         .disabled,
@@ -1203,7 +1209,10 @@ describe("native session workflow", () => {
     render(<App />);
     await connect();
     fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
-    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "任务" }));
     expect(screen.getByText("等待协作结果")).toBeTruthy();
     expect(screen.queryByText("已回传")).toBeNull();
     expect(screen.getByText("当前进展")).toBeTruthy();
@@ -1234,26 +1243,19 @@ describe("offline demonstration", () => {
       (screen.getByRole("button", { name: "运行任务" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    fireEvent.change(screen.getByLabelText("当前项目"), {
-      target: {
-        value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
-          .options[1].value,
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "任务派工" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "任务" }));
     expect(screen.getByText(/目标会话: 审阅搜索变更/)).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "派发任务" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    if ((screen.getByLabelText("当前项目") as HTMLSelectElement).value === "")
-      fireEvent.change(screen.getByLabelText("当前项目"), {
-        target: {
-          value: (screen.getByLabelText("当前项目") as HTMLSelectElement)
-            .options[1]?.value,
-        },
-      });
-    fireEvent.click(screen.getByRole("button", { name: "共享记忆" }));
+    openProject(
+      window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "记忆" }));
     expect(
       (screen.getByRole("button", { name: "批准写入" }) as HTMLButtonElement)
         .disabled,
