@@ -199,6 +199,15 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function chooseProvider(provider: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: "服务" }));
+  fireEvent.click(
+    screen.getByRole("option", {
+      name: provider === "claude" ? "Claude Code" : "Codex",
+    }),
+  );
+}
+
 describe("user-defined agent roles", () => {
   it.each(["codex", "claude"])(
     "creates %s agents without assigning a role",
@@ -215,16 +224,10 @@ describe("user-defined agent roles", () => {
       expect(role.value).toBe("");
       fireEvent.change(name, { target: { value: "My helper" } });
       fireEvent.change(role, { target: { value: "Research requirements" } });
-      fireEvent.change(screen.getByLabelText("服务"), {
-        target: { value: "claude" },
-      });
-      fireEvent.change(screen.getByLabelText("服务"), {
-        target: { value: "codex" },
-      });
+      chooseProvider("claude");
+      chooseProvider("codex");
       expect(role.value).toBe("Research requirements");
-      fireEvent.change(screen.getByLabelText("服务"), {
-        target: { value: provider },
-      });
+      chooseProvider(provider);
       fireEvent.change(role, { target: { value: "" } });
       fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
       await waitFor(() =>
@@ -273,7 +276,7 @@ describe("user-defined agent roles", () => {
     await connect();
     fireEvent.click(screen.getByRole("button", { name: /^Review agent/ }));
     fireEvent.click(screen.getByRole("button", { name: "设置 Review agent" }));
-    expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
+    expect((screen.getByLabelText("服务") as HTMLButtonElement).disabled).toBe(
       true,
     );
     expect(
@@ -339,7 +342,7 @@ describe("user-defined agent roles", () => {
     expect(
       (screen.getByLabelText("角色说明（可选）") as HTMLTextAreaElement).value,
     ).toBe("");
-    expect((screen.getByLabelText("服务") as HTMLSelectElement).disabled).toBe(
+    expect((screen.getByLabelText("服务") as HTMLButtonElement).disabled).toBe(
       false,
     );
     expect(
@@ -460,9 +463,7 @@ describe("selection after delayed mutation refresh", () => {
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: agent.name },
     });
-    fireEvent.change(screen.getByLabelText("服务"), {
-      target: { value: "claude" },
-    });
+    chooseProvider("claude");
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
     await waitFor(() =>
       expect(

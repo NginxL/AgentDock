@@ -70,9 +70,12 @@ it.each<[Provider, string]>([
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "My helper" },
     });
-    fireEvent.change(screen.getByLabelText("服务"), {
-      target: { value: provider },
-    });
+    fireEvent.click(screen.getByRole("combobox", { name: "服务" }));
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: provider === "claude" ? "Claude Code" : "Codex",
+      }),
+    );
     fireEvent.change(screen.getByLabelText("设备"), {
       target: { value: environment },
     });

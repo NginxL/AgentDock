@@ -101,7 +101,9 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 ![设备、远端地址和目录设置，虚构演示数据](docs/images/agent-setup.zh-CN.png)
 
-Agent 列表、会话标题和额度摘要使用自定义名称，不自动附加设备或服务标签。两个 Agent 可以使用相同的服务与名称；各自的会话仍按独立标识管理。同一连接可被多个 Agent 复用，共用账户额度的 Agent 会合并展示额度窗口。
+服务选择、Agent 卡片和额度摘要使用对应的服务图标，图标随应用打包。名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自的会话仍按独立标识管理。同一连接可被多个 Agent 复用，共用账户额度的 Agent 会合并展示额度窗口。
+
+![带品牌图标的服务选择菜单](docs/images/provider-picker.zh-CN.png)
 
 点击工作台中的 **Agent 卡片**，进入该 Agent 的独立会话页。左侧切换或创建会话，右侧查看消息与执行过程，输入框保持在页面底部。顶部可返回 Agent 列表、打开设置或删除 Agent；支持浏览器后退与前进。在列表与会话页之间切换时，会保留各 Agent 的会话选择和未发送草稿，草稿仅保存在当前页面内存中。
 

@@ -68,11 +68,12 @@ def main():
             for name in ("react", "react-dom", "scheduler"):
                 license_file = ROOT / "web/node_modules" / name / "LICENSE"
                 if license_file.exists(): shutil.copy2(license_file, licenses / (name + ".txt"))
+            shutil.copy2(ROOT / "web/src/assets/providers/LICENSE", licenses / "lobe-icons.txt")
             (resources / "runtime.json").write_text(json.dumps({"python": sys.executable, "path": os.environ.get("PATH", "/usr/bin:/bin")}))
             info = {
                 "CFBundleExecutable": "AgentDock", "CFBundleIdentifier": "io.github.nginxl.AgentDock",
                 "CFBundleName": "AgentDock", "CFBundleDisplayName": "AgentDock", "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "24", "LSMinimumSystemVersion": "14.0",
+                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "25", "LSMinimumSystemVersion": "14.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
                 "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
                 "NSHumanReadableCopyright": "Copyright © 2026 NginxL. MIT License.",

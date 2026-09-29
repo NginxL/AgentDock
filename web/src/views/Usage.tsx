@@ -10,6 +10,7 @@ import type {
   Translate,
 } from "../types";
 import { DateText, Empty, Icon, PageTitle } from "../ui";
+import ProviderIcon from "../ProviderIcon";
 
 export default function Usage({
   t,
@@ -126,11 +127,8 @@ export default function Usage({
               key={`${environment}:${provider}`}
             >
               <header>
-                <div
-                  className="provider-symbol agent-symbol"
-                  aria-hidden="true"
-                >
-                  {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
+                <div className="provider-symbol" aria-hidden="true">
+                  <ProviderIcon provider={provider} />
                 </div>
                 <div>
                   <h2>{agentNames}</h2>

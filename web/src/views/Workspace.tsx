@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
 import InferenceControls from "../InferenceControls";
 import AgentDeletion from "../AgentDeletion";
+import ProviderIcon from "../ProviderIcon";
+import ProviderSelect from "../ProviderSelect";
 import WorkspaceDirectory from "../WorkspaceDirectory";
 import { useModelCatalog } from "../modelCatalog";
 import AgentConnection, {
@@ -554,21 +556,16 @@ export default function Workspace({
               />
             </AgentConnection>
             <div className="form-grid">
-              <label>
-                {t("服务", "Provider")}
-                <select
-                  value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value as Provider);
-                    setModel("");
-                    setEffort("");
-                  }}
-                  disabled={!!editingAgentID}
-                >
-                  <option value="codex">Codex</option>
-                  <option value="claude">Claude Code</option>
-                </select>
-              </label>
+              <ProviderSelect
+                value={provider}
+                onChange={(value) => {
+                  setProvider(value);
+                  setModel("");
+                  setEffort("");
+                }}
+                disabled={!!editingAgentID}
+                t={t}
+              />
               <label>
                 {t("模型", "Model")}
                 <select
@@ -741,11 +738,8 @@ export default function Workspace({
                   key={agent.id}
                   onClick={() => setAgentID(agent.id)}
                 >
-                  <div
-                    className="provider-symbol agent-symbol"
-                    aria-hidden="true"
-                  >
-                    {Array.from(agent.name)[0]?.toUpperCase() ?? "A"}
+                  <div className="provider-symbol" aria-hidden="true">
+                    <ProviderIcon provider={agent.provider} />
                   </div>
                   <div className="agent-info">
                     <strong>{agent.name}</strong>

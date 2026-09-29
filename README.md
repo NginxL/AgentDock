@@ -101,7 +101,9 @@ Choose **Workspace → Add agent**, select a provider and enter a name. Under **
 
 ![Device, SSH address and workspace setup, fictional demo data](docs/images/agent-setup.en.png)
 
-Agent lists, conversation headings and quota summaries use your custom names without automatic device or provider labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
+The provider menu, agent cards and quota summaries use provider icons bundled with the app. Names remain user-defined, without automatic device labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
+
+![Provider selection with brand icons](docs/images/provider-picker.en.png)
 
 Click an **agent card** to open its dedicated conversation page. Switch or create conversations on the left, follow messages and execution details on the right, and compose messages at the bottom. Use the header to return to the agent list, open settings or delete the agent. Browser back and forward are supported. Moving between the list and conversation pages preserves each agent’s selected conversation and unsent drafts; drafts stay only in the current page’s memory.
 
