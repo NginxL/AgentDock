@@ -1176,10 +1176,10 @@ input[readonly] {
   color: var(--muted);
 }
 .provider-select-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   z-index: 30;
   padding: 8px;
   border: 1px solid var(--line);
@@ -1189,6 +1189,7 @@ input[readonly] {
 }
 .provider-select-heading {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   padding: 2px 8px 8px;
@@ -1196,7 +1197,7 @@ input[readonly] {
   font-size: 12px;
 }
 .provider-select-heading > span { margin-right: auto; }
-.provider-options { max-height: min(640px, 65vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.provider-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .provider-option-label { min-width: 0; display: grid; gap: 4px; }
 .provider-option-label > small { color: var(--muted); font-size: 11px; line-height: 1.5; font-weight: 400; }
 .provider-unavailable { margin-left: 8px; font-size: 11px; font-weight: 400; }
