@@ -1,3 +1,4 @@
+import { providerFixture } from "./providerFixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -67,7 +68,13 @@ function response(value: unknown, status = 200) {
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fetchMock = vi.fn(async (path: string) =>
-    response(path.includes("/events?") ? { events: [] } : state),
+    response(
+      path.startsWith("/api/providers?")
+        ? providerFixture(path)
+        : path.includes("/events?")
+          ? { events: [] }
+          : state,
+    ),
   );
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -199,10 +206,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function chooseProvider(provider: string) {
+async function chooseProvider(provider: string) {
   fireEvent.click(screen.getByRole("combobox", { name: "服务" }));
   fireEvent.click(
-    screen.getByRole("option", {
+    await screen.findByRole("option", {
       name: provider === "claude" ? "Claude Code" : "Codex",
     }),
   );
@@ -224,10 +231,10 @@ describe("user-defined agent roles", () => {
       expect(role.value).toBe("");
       fireEvent.change(name, { target: { value: "My helper" } });
       fireEvent.change(role, { target: { value: "Research requirements" } });
-      chooseProvider("claude");
-      chooseProvider("codex");
+      await chooseProvider("claude");
+      await chooseProvider("codex");
       expect(role.value).toBe("Research requirements");
-      chooseProvider(provider);
+      await chooseProvider(provider);
       fireEvent.change(role, { target: { value: "" } });
       fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
       await waitFor(() =>
@@ -318,9 +325,17 @@ describe("user-defined agent roles", () => {
 
   it("keeps an unsuccessful edit as a draft and lets the user cancel without writing", async () => {
     fetchMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/providers?"))
+        return response(providerFixture(path));
       if (path === "/api/agents/agent-a")
         return response({ error: "Temporary save failure" }, 500);
-      return response(path.includes("/events?") ? { events: [] } : state);
+      return response(
+        path.startsWith("/api/providers?")
+          ? providerFixture(path)
+          : path.includes("/events?")
+            ? { events: [] }
+            : state,
+      );
     });
     render(<App />);
     await connect();
@@ -398,6 +413,8 @@ describe("selection after delayed mutation refresh", () => {
     const refreshed = deferred<Response>();
     let created = false;
     fetchMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/providers?"))
+        return response(providerFixture(path));
       if (path === "/api/projects") {
         created = true;
         return response(project);
@@ -448,6 +465,8 @@ describe("selection after delayed mutation refresh", () => {
     const refreshed = deferred<Response>();
     let created = false;
     fetchMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/providers?"))
+        return response(providerFixture(path));
       if (path === "/api/agents") {
         created = true;
         return response(agent);
@@ -463,7 +482,7 @@ describe("selection after delayed mutation refresh", () => {
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: agent.name },
     });
-    chooseProvider("claude");
+    await chooseProvider("claude");
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
     await waitFor(() =>
       expect(
@@ -493,6 +512,8 @@ describe("selection after delayed mutation refresh", () => {
     let stateReads = 0;
     let created = false;
     fetchMock.mockImplementation(async (path: string) => {
+      if (path.startsWith("/api/providers?"))
+        return response(providerFixture(path));
       if (path === "/api/sessions") {
         created = true;
         return response(session);
@@ -616,7 +637,13 @@ describe("reviewed memory and messages", () => {
     fetchMock.mockImplementation(async (path: string) =>
       path === "/api/memories"
         ? response({ error: "Version conflict" }, 409)
-        : response(path.includes("/events?") ? { events: [] } : state),
+        : response(
+            path.startsWith("/api/providers?")
+              ? providerFixture(path)
+              : path.includes("/events?")
+                ? { events: [] }
+                : state,
+          ),
     );
     render(<App />);
     await connect();
@@ -1319,19 +1346,21 @@ describe("independent agents and usage", () => {
     };
     fetchMock.mockImplementation(async (path: string) =>
       response(
-        path.startsWith("/api/models/")
-          ? {
-              models: [
-                {
-                  id: "fixture-model",
-                  name: "Fixture",
-                  efforts: ["low", "high"],
-                },
-              ],
-            }
-          : path === "/api/agents"
-            ? { id: "new-agent" }
-            : empty,
+        path.startsWith("/api/providers?")
+          ? providerFixture(path)
+          : path.startsWith("/api/models/")
+            ? {
+                models: [
+                  {
+                    id: "fixture-model",
+                    name: "Fixture",
+                    efforts: ["low", "high"],
+                  },
+                ],
+              }
+            : path === "/api/agents"
+              ? { id: "new-agent" }
+              : empty,
       ),
     );
     render(<App />);

@@ -17,7 +17,11 @@
 
 ## 模型与用量接口
 
-`GET /api/models/{codex|claude}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟；只保留白名单字段，不返回账户信息。
+`provider` 支持 `codex`、`claude`、`trae`、`pi`、`cursor`、`antigravity`、`grok`、`opencode`、`gemini`、`qwen`。详见[CLI 接入](PROVIDERS.zh-CN.md)。
+
+`GET /api/providers?environment_id=local` 需要管理员令牌，返回 `environment_id` 和服务标识到 `{name, available, reason, supports_ask}` 的映射。本机只检测可执行文件，SSH 只读取已连接设备的检测结果；不启动 CLI 或 SSH，不要求启用执行。`reason` 为 `not_installed`、`adapter_required`、`connect_required` 或 null。
+
+`GET /api/models/{provider}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟；只保留白名单字段，不返回账户信息。
 
 `GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
 
@@ -28,6 +32,8 @@
 独立会话的 `project_id` 为 null，拥有固定 `workspace`。独立 Agent 的队友列表和记忆搜索为空，项目派工与记忆提议被拒绝。
 
 任务事件包含 `reasoning_chunk`、`reasoning_message`（替换同一 `item_id`、`part` 的最终摘要）、`tool_call`、`tool_output` 和 `tool_result`，均携带 `run_id`，工具输出增量使用 `item_id`。Codex 提供思考摘要，Claude 提供公开输出的 thinking 块。`run_finished.status` 表示最终状态，`runs.result` 保留最终回复。会话先按游标加载历史，再订阅实时事件；仅在旧服务不支持流式接口时回退到每秒读取。
+
+ACP 将公开思考、消息与工具事件转为同一事件流；最终工具调用之后的助手文本作为最终回复。`context_usage` 的 `used`、`size` 仅表示上下文占用，不进入 Token/TPS 统计。
 
 `agent_message_chunk` 携带文本增量；`agent_message` 替换同一 `provider`、`item_id`、`part` 的完整文本。Codex 可选的 `phase` 区分 `commentary` 和 `final_answer`。这些消息项归入实时过程，`assistant_message` 和 `runs.result` 提供最终回复。Codex 未提供阶段时取最后一条助手消息，明确标为进展的消息不作为回复。Claude 优先使用结果字段，缺失时采用最后一条助手消息的文本块。界面在最终回复到达时收起过程，并移除过程区中重复的回复文本。
 
@@ -64,7 +70,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |
 | `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
-| `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 Codex／Claude 缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
+| `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 服务缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `GET /api/directories` | 查询参数 `environment_id`（默认 `local`）及 `path`（默认 `~`）。仅管理员可用，只读返回最多 200 个目录，包含 `path`、`parent`、`directories`、`truncated`，不读取文件内容。SSH 浏览要求启用执行并连接远端组件；路径在所选设备上解析。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
 | `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`、`permission_mode`（默认 `ask`，或 `full_access`）。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
@@ -84,7 +90,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/proposals/{id}/approve` | `expected_version`。必须同时匹配提议中的预期版本和当前记忆版本。 |
 | `POST /api/proposals/{id}/reject` | 空对象。拒绝待处理的提议。 |
 | `POST /api/approvals/{id}` | `option_id`，必须为 AgentDock 返回的、仍待处理的审批选项之一。 |
-| `POST /api/quotas/refresh` | `provider`（`codex` / `claude`）。点击“额度与订阅”时调用，必须启用执行；与服务定时刷新共用节流。 |
+| `POST /api/quotas/refresh` | `provider`。Codex／Claude 使用已有读取器，其他已配置服务返回未知额度，不发起探测。点击“额度与订阅”时调用，必须启用执行；与服务定时刷新共用节流。 |
 | `POST /api/subscriptions` | `provider`；可选 `plan`、`renewal_date`（`YYYY-MM-DD` 或 null）、`monthly_cost`（非负有限数值或 null）、`currency`（三个字母，默认为 `USD`）。 |
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。

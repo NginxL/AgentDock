@@ -2,6 +2,8 @@
 
 [English](REVIEW.md) · **简体中文** · [项目说明](../README.zh-CN.md) · [架构设计](ARCHITECTURE.zh-CN.md)
 
+ACP 服务通过统一模拟进程验证模型与推理选项、连续会话、消息阶段、权限选择、超时取消、错误消息、私有目录和清理；独立 SSH worker 验证远端发现、模型读取与续聊。真实 Trae 两轮对话与模型发现已通过，原生配置校验值未变；其余新增服务的真实账号和工具执行待验证，详见[CLI 支持](PROVIDERS.zh-CN.md)。
+
 ## 实现状态
 
 AgentDock 0.3 由 React 界面、Python 标准库服务和 SQLite 存储组成。任务由原生 Codex 与 Claude Code 进程执行；调度器保留原生会话标识，负责派发工作和回传结果。五个受限 MCP 工具提供协作和已审核的项目记忆。macOS 安装版内置独立额度程序，通过 `--probe` 提供去敏快照。

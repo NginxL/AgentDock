@@ -17,7 +17,11 @@ Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is
 
 ## Model and usage endpoints
 
-`GET /api/models/{codex|claude}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted metadata is returned; account information is discarded.
+`provider` accepts `codex`, `claude`, `trae`, `pi`, `cursor`, `antigravity`, `grok`, `opencode`, `gemini` and `qwen`. See [CLI support](PROVIDERS.md).
+
+`GET /api/providers?environment_id=local` requires the admin token and returns `environment_id` and a provider-keyed map of `{name, available, reason, supports_ask}`. Local discovery checks executables; SSH discovery reads that connection’s saved probe. It starts neither a CLI nor SSH and does not require execution enabled. `reason` is `not_installed`, `adapter_required`, `connect_required` or null.
+
+`GET /api/models/{provider}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted metadata is returned; account information is discarded.
 
 `GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
 
@@ -28,6 +32,8 @@ All metric groups include only native sessions bound to registered agents. With 
 Independent sessions have a null `project_id` and fixed `workspace`. Independent agents receive empty teammate/memory searches; project dispatch and memory proposals are denied.
 
 Task events include `reasoning_chunk`, `reasoning_message` (a final replacement for the same `item_id` and `part`), `tool_call`, `tool_output` and `tool_result`. Each carries `run_id`; tool chunks use `item_id`. Codex supplies reasoning summaries; Claude supplies published thinking blocks. `run_finished.status` is authoritative for terminal state, and `runs.result` preserves the final reply. Conversations drain cursor-based history and then subscribe to live events. One-second polling is retained only for older servers without stream support.
+
+ACP translates published thought, message and tool updates into the same event stream; the final assistant text after tool execution supplies the reply. `context_usage` fields `used` and `size` describe context occupancy and are excluded from token/TPS totals.
 
 `agent_message_chunk` carries incremental text; `agent_message` replaces the text for the same `provider`, `item_id` and `part`. Codex's optional `phase` distinguishes `commentary` from `final_answer`. These item events belong to the live process; `assistant_message` and `runs.result` supply the final reply. Without a Codex phase, the last assistant item supplies the reply; explicit commentary is excluded. Claude's result takes precedence, with its last assistant message's text blocks as the fallback. The interface collapses the process on final-reply arrival and omits duplicate reply text from the process.
 
@@ -64,7 +70,7 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | Method / route | JSON fields / result |
 | --- | --- |
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
-| `GET /api/quotas` | Cached Codex/Claude snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
+| `GET /api/quotas` | Cached provider snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
 | `GET /api/directories` | Query `environment_id` (default `local`) and `path` (default `~`). Administrator-only, read-only listing of up to 200 directories; returns `path`, `parent`, `directories` and `truncated`, never file contents. SSH browsing requires execution enabled and a connected runner. Resolves paths on the selected host. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
@@ -84,7 +90,7 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal's expected version and the current memory version. |
 | `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
 | `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
-| `POST /api/quotas/refresh` | `provider` (`codex` / `claude`). Invoked when selecting Usage & billing; requires execution enabled. Shares the provider throttle with the service-owned timer. |
+| `POST /api/quotas/refresh` | `provider`. Codex/Claude have native readers; other registered providers return unknown quota without a probe. Invoked when selecting Usage & billing; requires execution enabled. Shares the provider throttle with the service-owned timer. |
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.

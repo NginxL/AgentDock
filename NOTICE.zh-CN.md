@@ -4,9 +4,9 @@
 
 AgentDock 的代码独立编写，采用 MIT 许可证，版权归 2026 NginxL 所有。
 
-Codex 和 Claude 的名称属于各自提供商，AgentDock 与这些提供商没有隶属关系。原生 CLI 需要单独安装，适用各自的许可证和服务条款；其凭据和订阅不属于本仓库内容。
+Agent CLI 名称及品牌属于各自提供商，AgentDock 与这些提供商没有隶属关系。原生 CLI 及适配器需要单独安装，适用各自的许可证和服务条款；其凭据和订阅不属于本仓库内容。
 
-提供方图标来自 [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/329f378cbd1a88f45b60cd096b9111ce16f3ea39/packages/static-svg/icons) 的 `openai.svg` 和 `claude-color.svg`，版权归 2023 LobeHub 所有，采用 [MIT 许可证](web/src/assets/providers/LICENSE)，随应用打包。品牌标识仅用于识别所连接的服务，归各自权利人所有。
+提供方图标来自 [Lobe Icons](https://github.com/lobehub/lobe-icons/tree/329f378cbd1a88f45b60cd096b9111ce16f3ea39/packages/static-svg/icons)，版权归 2023 LobeHub 所有，采用 [MIT 许可证](web/src/assets/providers/LICENSE)，随应用打包。源文件为 `openai.svg`、`claude-color.svg`、`trae-color.svg`、`pi.svg`、`cursor.svg`、`antigravity-color.svg`、`grok.svg`、`opencode.svg`、`gemini-color.svg` 和 `qwen-color.svg`。品牌标识仅用于识别所连接的服务，归各自权利人所有。
 
 内置额度模型、解析器和读取器包含 NginxL/AgentMeter 的 MIT 许可代码（版权 2026 NginxL），许可证保留于 LICENSE。运行时不依赖 AgentMeter.app。
 

@@ -1,3 +1,4 @@
+import { providerNames } from "../ProviderIcon";
 import { useEffect, useRef, useState } from "react";
 import type { Agent, DockState, Language, Mutate, Translate } from "../types";
 import { DateText, Empty, Icon, PageTitle, statusLabel } from "../ui";
@@ -242,7 +243,7 @@ export default function Messages({
                 )}
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.name} · {a.provider === "codex" ? "Codex" : "Claude"}
+                    {a.name} · {providerNames[a.provider]}
                   </option>
                 ))}
               </select>

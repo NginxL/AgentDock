@@ -28,7 +28,8 @@ public struct MenuQuota: Decodable {
 
     public var displayName: String {
         let names = (agent_names ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        let name = names.isEmpty ? (provider == "codex" ? "Codex" : "Claude") : names.joined(separator: " · ")
+        let providerNames = ["codex": "Codex", "claude": "Claude Code", "trae": "Trae CLI", "pi": "Pi", "cursor": "Cursor CLI", "antigravity": "Antigravity", "grok": "Grok Build", "opencode": "OpenCode", "gemini": "Gemini CLI", "qwen": "Qwen Code"]
+        let name = names.isEmpty ? (providerNames[provider] ?? provider) : names.joined(separator: " · ")
         let singleLine = name.components(separatedBy: .newlines).joined(separator: " ")
         return singleLine.count > 80 ? String(singleLine.prefix(79)) + "…" : singleLine
     }
@@ -39,7 +40,9 @@ public struct MenuQuota: Decodable {
         let stale = status == "stale" || fetched.map { now.timeIntervalSince($0) > 900 || $0.timeIntervalSince(now) > 60 } == true
         var result: [String] = []
         if stale { result.append(t("待自动更新 · 显示上次数据", "Update pending · showing previous data")) }
-        if error_code == "authorization_required" {
+        if error_code == "unavailable" {
+            result.append(t("额度未知", "Quota unknown"))
+        } else if error_code == "authorization_required" {
             result.append(t("等待 Claude 本地快照", "Waiting for the Claude local snapshot"))
         } else if let error_code, error_code != "outdated_cache" {
             result.append(t("读取失败 · 请在工作台查看详情", "Read failed · see workbench for details"))

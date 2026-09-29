@@ -920,6 +920,13 @@ input[readonly] {
   color: var(--muted);
   font-size: 12px;
 }
+.provider-select-heading > span { margin-right: auto; }
+.provider-options { max-height: min(640px, 65vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.provider-option-label { min-width: 0; display: grid; gap: 4px; }
+.provider-option-label > small { color: var(--muted); font-size: 11px; line-height: 1.5; font-weight: 400; }
+.provider-unavailable { margin-left: 8px; font-size: 11px; font-weight: 400; }
+.provider-option[aria-disabled="true"] { color: #8c9099; cursor: default; }
+.provider-option[aria-disabled="true"] .provider-icon { opacity: .45; filter: grayscale(1); }
 .provider-option {
   display: flex;
   align-items: center;

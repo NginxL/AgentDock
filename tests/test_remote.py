@@ -107,6 +107,27 @@ class RemoteTests(unittest.TestCase):
                 self.assertTrue(all(message['params']['cwd'] == str(contract.parent) for message in starts))
         self.assertNotIn('AGENTDOCK_CAPABILITY', json.dumps(self.requests))
 
+    def test_acp_discovery_dialogue_and_resume_use_only_remote_private_state(self):
+        fixture = str(Path(__file__).with_name('fake_acp.py').resolve())
+        binary = self.home/'.local/bin/gemini'
+        binary.write_text('#!' + sys.executable + '\nimport os\n'
+                          f'os.execv({sys.executable!r}, [{sys.executable!r}, {fixture!r}, "normal"])\n')
+        binary.chmod(0o700)
+        info = self.manager.connect(self.environment['id'])
+        self.assertTrue(info['payload']['providers']['gemini']['available'])
+        models = self.manager.rpc(self.environment['id'], {'op':'models', 'provider':'gemini'})
+        self.assertEqual(models['models'][0]['id'], 'fixture-model')
+        _, session = self.make_agent('gemini')
+        result, events, bound = self.run_turn(session)
+        self.assertEqual(result, 'Final answer')
+        session['native_session_id'] = bound[0]
+        self.assertEqual(self.run_turn(session)[2], bound)
+        self.assertFalse(self.store.session_directory(session['id']).exists())
+        remote = self.home/'.local/share/agentdock/ssh/controllers'/self.store.controller_id/'sessions'/session['id']
+        self.assertTrue((remote/'gemini/private-session.json').is_file())
+        self.assertFalse((self.home/'.gemini').exists())
+        self.assertIn('reasoning_chunk', [kind for kind, _ in events])
+
     def test_runtime_forwards_explicit_permissions_and_resets_them_on_resume(self):
         self.runtime = Runtime(self.store, {'execution_enabled':True, 'commands':{},
             'python':sys.executable, 'package_root':str(self.home), 'base_url':'http://127.0.0.1:1', 'run_timeout':8})

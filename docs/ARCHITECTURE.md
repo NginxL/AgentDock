@@ -14,8 +14,10 @@ flowchart LR
   API --> Queue[Bounded dispatcher]
   Queue -->|App Server JSON-RPC| Codex[Codex CLI]
   Queue -->|Bidirectional JSON stream| Claude[Claude Code CLI]
+  Queue -->|ACP v1 JSON-RPC| ACP[Other agent CLIs]
   Codex --> MCP[Scoped MCP tools]
   Claude --> MCP
+  ACP -->|When supported| MCP
   MCP --> API
   API --> Meter[Built-in usage helper]
 ```
@@ -31,6 +33,9 @@ flowchart LR
 | Quota bridge | `agentdock/quota.py` | Scheduled and page-entry Codex/Claude probes through the built-in macOS helper, sanitized snapshots and freshness rules. |
 
 The browser's `?demo=1` mode reads fictional fixtures and makes no API requests. It cannot execute agents, dispatch tasks or refresh quotas.
+
+CLI entry points live in `agentdock/registry.py`. `agentdock/acp.py` handles ACP capabilities, native continuation, model settings, permissions and streaming events. `agentdock/acp_home.py` provides private HOME/XDG state and selected configuration snapshots. SSH workers reuse these modules; provider discovery submits no model requests. See [CLI support](PROVIDERS.md) for capability and live-validation boundaries.
+
 
 ## Sessions and turns
 

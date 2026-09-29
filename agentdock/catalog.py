@@ -3,14 +3,16 @@ import os
 import threading
 import time
 from pathlib import Path
+import tempfile
 from .providers import _Pipe, _Codex, _Callbacks, ProviderError
 from .store import Forbidden
+from .registry import PROVIDERS, ACP_PROVIDERS, commands
 
 
 class Catalog:
     def __init__(self, config):
         self.config, self.cache = config, {}
-        self.locks = {provider: threading.Lock() for provider in ('codex', 'claude')}
+        self.locks = {provider: threading.Lock() for provider in PROVIDERS}
         self.stop = threading.Event()
 
     def close(self):
@@ -24,13 +26,17 @@ class Catalog:
 
     def read(self, provider):
         if not self.config.get('execution_enabled'): raise Forbidden('Execution is disabled for review')
-        if provider not in ('codex', 'claude'): raise ValueError('Unsupported provider')
+        if provider not in PROVIDERS: raise ValueError('Unsupported provider')
         with self.locks[provider]:
             if self.stop.is_set(): raise Forbidden('Model discovery is closed')
             stamp, value = self.cache.get(provider, (0, None))
             if value and time.monotonic() - stamp < 300: return value
-            command = self.config.get('commands', {}).get(provider)
+            command = commands(self.config.get('commands', {})).get(provider)
             if not isinstance(command, list) or not command: raise ValueError('Native CLI is not configured')
+            if provider in ACP_PROVIDERS:
+                value = self._acp(provider, command)
+                self.cache[provider] = (time.monotonic(), value)
+                return value
             argv = command + (['--listen', 'stdio://'] if provider == 'codex' else
                 ['--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'])
             pipe = _Pipe(argv, str(Path.home()), dict(os.environ), self.stop, 25)
@@ -60,5 +66,21 @@ class Catalog:
                 value = {'provider': provider, 'models': models}
                 self.cache[provider] = (time.monotonic(), value)
                 return value
+            finally:
+                pipe.close()
+
+    def _acp(self, provider, command):
+        from .acp import ACP
+        from .acp_home import prepare
+        from .registry import acp_command
+        with tempfile.TemporaryDirectory(prefix='agentdock-catalog-') as directory:
+            env = prepare(provider, Path(directory)/'home', os.environ)
+            cwd = Path(directory)/'workspace'
+            cwd.mkdir()
+            pipe = _Pipe(acp_command(provider, command, str(cwd), env, self.stop), str(cwd), env, self.stop, 25)
+            try:
+                adapter = ACP(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}), provider)
+                adapter.setup(str(cwd), None, [])
+                return {'provider': provider, 'models': adapter.models()}
             finally:
                 pipe.close()

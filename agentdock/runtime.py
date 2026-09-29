@@ -11,6 +11,7 @@ from typing import Optional
 from .store import Conflict, Forbidden, Invalid
 from .providers import execute, ProviderError, ProviderCancelled
 from .mcp import TOOLS
+from .registry import PROVIDERS, commands
 
 
 class RuntimeFailure(Conflict):
@@ -68,11 +69,11 @@ class Runtime:
             raise RuntimeFailure("Runtime is closed.")
 
     def _command(self, provider):
-        command = self.config.get("commands", {}).get(provider)
-        if provider not in ("codex", "claude") or not isinstance(command, list) or not command or any(
+        command = commands(self.config.get("commands", {})).get(provider)
+        if provider not in PROVIDERS or not isinstance(command, list) or not command or any(
             not isinstance(part, str) or not part or "\x00" in part for part in command
         ):
-            raise RuntimeFailure("Configure a native Codex or Claude CLI command for this provider.")
+            raise RuntimeFailure("Install or configure the selected agent CLI on this device.")
         return list(command)
 
     def _notify(self):
@@ -101,7 +102,7 @@ class Runtime:
         elif session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='codex':
             from .codex_home import retire_legacy
             retire_legacy(self._command('codex'), dict(os.environ), session['native_session_id'])
-        elif session.get('native_session_id'):
+        elif session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='claude':
             from .session_storage import retire_legacy_claude
             retire_legacy_claude(dict(os.environ), session['native_session_id'])
         remove_session_directory(self.store.workspaces.parent / 'sessions', session_id)

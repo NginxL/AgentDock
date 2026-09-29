@@ -1,5 +1,25 @@
 export type Language = "zh" | "en";
-export type Provider = "codex" | "claude";
+export type Provider =
+  | "codex"
+  | "claude"
+  | "trae"
+  | "pi"
+  | "cursor"
+  | "antigravity"
+  | "grok"
+  | "opencode"
+  | "gemini"
+  | "qwen";
+export type ProviderAvailability = Partial<
+  Record<
+    Provider,
+    {
+      available: boolean;
+      reason?: string | null;
+      supports_ask?: boolean;
+    }
+  >
+>;
 export type PermissionMode = "ask" | "full_access";
 export interface Environment {
   id: string;

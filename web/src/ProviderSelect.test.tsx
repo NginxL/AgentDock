@@ -20,6 +20,10 @@ function setup(disabled = false) {
             change(value);
           }}
           disabled={disabled}
+          availability={{
+            codex: { available: true },
+            claude: { available: true },
+          }}
           t={(zh) => zh}
         />
         <input aria-label="名称" />
@@ -89,4 +93,42 @@ it("keeps the provider fixed when editing an existing agent", () => {
   fireEvent.click(trigger);
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(change).not.toHaveBeenCalled();
+});
+
+it("lists ten services, prevents missing CLI selection and skips them by keyboard", () => {
+  const change = vi.fn();
+  const refresh = vi.fn();
+  render(
+    <ProviderSelect
+      value="codex"
+      onChange={change}
+      disabled={false}
+      availability={{
+        codex: { available: true },
+        gemini: { available: true },
+        qwen: { available: true },
+      }}
+      onRefresh={refresh}
+      t={(zh) => zh}
+    />,
+  );
+  const trigger = screen.getByRole("combobox");
+  fireEvent.click(trigger);
+  expect(screen.getAllByRole("option")).toHaveLength(10);
+  const pi = screen.getByRole("option", { name: /Pi/ });
+  expect(pi.getAttribute("aria-disabled")).toBe("true");
+  expect(pi.textContent).toContain("pi-acp");
+  fireEvent.click(pi);
+  expect(change).not.toHaveBeenCalled();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  expect(trigger.getAttribute("aria-activedescendant")).toBe(
+    screen.getByRole("option", { name: "Gemini CLI" }).id,
+  );
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  expect(change).toHaveBeenCalledWith("gemini");
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("button", { name: "重新检测服务" }));
+  expect(refresh).toHaveBeenCalledOnce();
+  expect(screen.getByRole("listbox")).toBeTruthy();
+  expect(screen.queryByText(/Coco|PiCode/)).toBeNull();
 });

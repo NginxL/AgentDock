@@ -19,6 +19,7 @@ import uuid
 
 from .metrics import normalize
 from .processes import stop_group as _stop_group
+from .registry import PROVIDERS, ACP_PROVIDERS
 
 
 class ProviderError(Exception):
@@ -196,13 +197,17 @@ class _Callbacks:
             self.emit("agent_message" if complete else "agent_message_chunk", payload)
 
     def approve(self, request, allow="accept", deny="decline"):
+        return self.approve_options(request, [
+            {"optionId": allow, "name": "Allow once", "kind": "allow_once"},
+            {"optionId": deny, "name": "Deny", "kind": "reject_once"}])
+
+    def approve_options(self, request, options):
         self.approvals += 1
         if self.approvals > _MAX_APPROVALS:
             raise ProviderError("Native CLI exceeded the permission request limit.")
         request = self.clean(request)
         done, answer = threading.Event(), []
-        options = [{"optionId": allow, "name": "Allow once", "kind": "allow_once"},
-                   {"optionId": deny, "name": "Deny", "kind": "reject_once"}]
+        options = self.clean(options)
 
         def decide():
             try:
@@ -217,7 +222,7 @@ class _Callbacks:
         while not done.wait(0.05):
             self.pipe.check()
         self.pipe.check()
-        if not answer or answer[0] not in (allow, deny):
+        if not answer or answer[0] not in [option['optionId'] for option in options]:
             raise ProviderError("Permission request was not resolved; the agent run was stopped.")
         return answer[0]
 
@@ -603,7 +608,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     authorization and callbacks; ``approve`` returns an offered optionId.
     Cancellation and deadlines stop the whole child process group.
     """
-    if provider not in ("codex", "claude"):
+    if provider not in PROVIDERS:
         raise ProviderError("Unsupported native agent provider.")
     if permission_mode not in ("ask", "full_access"):
         raise ProviderError("Invalid agent permission mode")
@@ -612,7 +617,9 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         raise ProviderError("Configure a native CLI command for this provider.")
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt.encode()) > 400000:
         raise ProviderError("Agent prompt exceeds the supported size.")
-    if native_session_id is not None and not _identifier(native_session_id):
+    from .acp import ACP, identifier as acp_identifier
+    valid_identifier = acp_identifier if provider in ACP_PROVIDERS else _identifier
+    if native_session_id is not None and not valid_identifier(native_session_id):
         raise ProviderError("The saved native session identifier is invalid.")
     if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 86400:
         raise ProviderError("The agent run timeout is invalid.")
@@ -640,7 +647,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
                     from .codex_home import retire_legacy
                     retire_legacy(command, original_env, native_id)
         argv += ["--listen", "stdio://"]
-    else:
+    elif provider == 'claude':
         original_env = dict(env)
         if session_home is not None:
             from .session_storage import prepare_claude
@@ -661,6 +668,20 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         if model: argv += ["--model", model]
         if effort: argv += ["--effort", effort]
         argv += ["--resume=" + native_id] if native_session_id else ["--session-id", native_id]
+    else:
+        if session_home is None:
+            raise ProviderError('ACP agents require an isolated AgentDock session directory.')
+        if provider == 'pi' and permission_mode != 'full_access':
+            raise ProviderError('Pi does not gate its tools through ACP. Select full access explicitly to use Pi.')
+        from .acp_home import prepare
+        try:
+            env = prepare(provider, os.path.join(session_home, provider), env)
+        except (OSError, ValueError):
+            raise ProviderError('Could not prepare isolated CLI storage; no prompt was sent.') from None
+        from .registry import acp_command
+        argv = acp_command(provider, argv, cwd, env, stop)
+        if provider == 'opencode':
+            env['OPENCODE_PERMISSION'] = '{"*":"ask"}'
     pipe = adapter = None
     try:
         pipe = _Pipe(argv, cwd, env, stop, timeout)
@@ -668,6 +689,9 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
             return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode, session_ready)
+        if provider in ACP_PROVIDERS:
+            adapter = ACP(pipe, callbacks, provider, permission_mode)
+            return adapter.run(os.path.realpath(cwd), prompt, native_session_id, mcp, additions, model, effort)
         adapter = _Claude(pipe, callbacks, native_id)
         result = adapter.run(prompt)
         if session_home is not None and native_session_id:

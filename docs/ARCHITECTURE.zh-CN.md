@@ -14,8 +14,10 @@ flowchart LR
   API --> Queue[有界调度器]
   Queue -->|App Server JSON-RPC| Codex[Codex CLI]
   Queue -->|双向 JSON 流| Claude[Claude Code CLI]
+  Queue -->|ACP v1 JSON-RPC| ACP[其他 Agent CLI]
   Codex --> MCP[限定范围的 MCP 工具]
   Claude --> MCP
+  ACP -->|适配器支持时| MCP
   MCP --> API
   API --> Meter[内置额度读取]
 ```
@@ -31,6 +33,9 @@ flowchart LR
 | 额度桥接 | `agentdock/quota.py` | 通过内置 macOS 额度组件定时查询 Codex/Claude，并在进入额度页时更新，过滤快照字段并判断时效。 |
 
 浏览器 `?demo=1` 模式读取虚构样例，不发起 API 请求，也不能执行 Agent、派工或刷新额度。
+
+服务入口统一登记在 `agentdock/registry.py`；`agentdock/acp.py` 负责 ACP 能力握手、原生续聊、模型配置、权限请求和流式事件。`agentdock/acp_home.py` 为新增服务设置私有 HOME/XDG 并复制选定配置。SSH worker 复用这些模块；服务检测不发起模型请求。能力及实机验证边界见[CLI 支持](PROVIDERS.zh-CN.md)。
+
 
 ## 会话与轮次
 

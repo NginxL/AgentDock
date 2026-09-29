@@ -1,3 +1,4 @@
+import { providerFixture } from "./providerFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -125,6 +126,7 @@ async function setup(extra: Partial<DockState> = {}) {
       data = current.environments?.find((e) => e.id === "new-host");
     }
     if (path.startsWith("/api/models/")) data = { models: [] };
+    if (path.startsWith("/api/providers?")) data = providerFixture(path);
     return { ok: true, json: async () => data };
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -150,6 +152,15 @@ it.each(["local", "remote"])(
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "My helper" },
     });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "创建 Agent",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
     await waitFor(() => expect(screen.queryByLabelText("设备")).toBeNull());
     const writes = fetchMock.mock.calls.filter(
@@ -224,6 +235,12 @@ it("connects a new host inside the agent form, preserves the agent draft, and di
   );
   expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "new-host",
+  );
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "创建 Agent" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
   );
   fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
   await waitFor(() => expect(screen.queryByLabelText("设备")).toBeNull());

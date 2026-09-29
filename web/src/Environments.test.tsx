@@ -1,3 +1,4 @@
+import { providerFixture } from "./providerFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -68,9 +69,12 @@ it.each(["zh", "en"] as const)(
       created_at: "",
       updated_at: "",
     };
-    const calls = vi.fn(async () => ({
+    const calls = vi.fn(async (path: string) => ({
       ok: true,
-      json: async () => ({ models: [], events: [] }),
+      json: async () =>
+        path.startsWith("/api/providers?")
+          ? providerFixture(path)
+          : { models: [], events: [] },
     }));
     vi.stubGlobal("fetch", calls);
     const mutate = vi.fn(async () => true);
@@ -226,9 +230,12 @@ it("keeps the same provider's local and remote quota cards separate", () => {
   expect(screen.queryByText("本机")).toBeNull();
 });
 it("discovers models on the selected environment and binds a new independent agent to it", async () => {
-  const calls = vi.fn(async () => ({
+  const calls = vi.fn(async (path: string) => ({
     ok: true,
-    json: async () => ({ models: [] }),
+    json: async () =>
+      path.startsWith("/api/providers?")
+        ? providerFixture(path)
+        : { models: [] },
   }));
   vi.stubGlobal("fetch", calls);
   const mutate = vi.fn(async () => true);

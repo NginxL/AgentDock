@@ -73,7 +73,7 @@ def main():
             info = {
                 "CFBundleExecutable": "AgentDock", "CFBundleIdentifier": "io.github.nginxl.AgentDock",
                 "CFBundleName": "AgentDock", "CFBundleDisplayName": "AgentDock", "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "25", "LSMinimumSystemVersion": "14.0",
+                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "26", "LSMinimumSystemVersion": "14.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
                 "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
                 "NSHumanReadableCopyright": "Copyright © 2026 NginxL. MIT License.",

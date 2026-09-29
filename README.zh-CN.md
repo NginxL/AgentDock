@@ -8,9 +8,9 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 界面默认中文，支持完整切换为英文。后端采用 Python 标准库与 SQLite，前端使用 React。
 
-> **开发者预览版。** 默认关闭执行。自动检查已覆盖模拟原生 CLI 协议和任务交接；本机已验证双提供方连续对话及用量事件，其他账号、权限操作和长时间协作仍需验收。
+> **开发者预览版。** 默认关闭执行。自动检查覆盖原生及 ACP 协议和任务交接；Codex、Claude Code、Trae 已通过真实两轮对话。其余 ACP 服务、更多账号和长时间协作仍需验收，详见[服务兼容性](docs/PROVIDERS.zh-CN.md)。
 
-[SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
+[支持的 Agent](docs/PROVIDERS.zh-CN.md) · [SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
 ## 工作台
 
@@ -50,8 +50,8 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 | 本机与 SSH 连接 | 在添加 Agent 时选择本机 CLI、已有 SSH 连接或配置新连接；日常界面使用自定义名称，会话与额度按实际连接区分。 |
 | 独立 Agent | 无需项目即可创建、指定工作目录、聊天与续接上下文；模型和思考强度从所选环境发现。 |
 | TPS 与 Token | 总计及每个 Agent 的三分钟输出吞吐曲线；单独页面查看已配置 Agent 关联会话的累计 Token、输入、输出和缓存明细，按原生标识去重。 |
-| 自定义角色 | 自行定义 Agent 名称和职责，支持创建后编辑或清空角色；Codex／Claude 均可承担任意用户定义的分工。 |
-| 原生会话 | 调用已安装的 Codex 或 Claude Code CLI，保存原生会话 ID，后续轮次继续原会话；展示流式输出与权限请求。 |
+| 自定义角色 | 独立于服务定义 Agent 名称和职责，支持创建后编辑或清空角色。 |
+| 原生会话 | 通过原生或 ACP 协议连接十种 CLI 服务，保存原生会话 ID 用于续聊；按 CLI 能力展示实时进展、工具执行、最终回复和权限请求。 |
 | 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
 | 项目记忆 | 项目知识与私有对话分开管理；支持来源、版本、关键词检索、智能体提议审核和归档历史。 |
 | 额度与订阅 | 额度随已配置 Agent 联动，自动更新剩余额度、重置时间及过期或错误状态；续费日期与订阅费用单独记录。 |
@@ -78,7 +78,7 @@ Claude 额度只读取 Claude Desktop 保存的本地快照，不访问钥匙串
 
 ## 快速开始
 
-需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。执行任务还需要单独安装兼容的 Codex 或 Claude Code CLI，并完成其正常本地登录配置。Mac 安装版内置额度读取组件，不需要 AgentMeter。Linux 的额度读取需要另外配置兼容的本地查询命令。
+需要 macOS 或 Linux、Python 3.9+、Node.js 20.19+ 和 npm。执行任务还需要单独安装兼容的 [Agent CLI 或 ACP 适配器](docs/PROVIDERS.zh-CN.md)，并在对应设备完成认证。Mac 安装版内置额度读取组件，不需要 AgentMeter。Linux 的额度读取需要另外配置兼容的本地查询命令。
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
@@ -101,7 +101,9 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 ![设备、远端地址和目录设置，虚构演示数据](docs/images/agent-setup.zh-CN.png)
 
-服务选择、Agent 卡片和额度摘要使用对应的服务图标，图标随应用打包。名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自的会话仍按独立标识管理。同一连接可被多个 Agent 复用，共用账户额度的 Agent 会合并展示额度窗口。
+服务菜单包含 **Codex、Claude Code、Trae CLI、Pi、Cursor CLI、Antigravity、Grok Build、OpenCode、Gemini CLI、Qwen Code**，使用随应用打包的图标，并按所选设备检测可用性。缺少 CLI 或适配器的条目不可选；Pi 需要 `pi-acp` 和明确选择完全访问，Antigravity 需要 ACP 服务程序。[接入与兼容性](docs/PROVIDERS.zh-CN.md)说明认证、续聊、MCP 及用量边界。
+
+名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自会话仍按独立标识管理。同一连接可被多个 Agent 复用，共用账户额度的 Agent 会合并展示额度窗口。目前官方额度读取及实测 Token/TPS 覆盖 Codex、Claude；ACP 上下文占用不计入 Token 消耗。
 
 ![带品牌图标的服务选择菜单](docs/images/provider-picker.zh-CN.png)
 
@@ -176,7 +178,7 @@ TPS 使用真实输出 Token 增量及其采样区间，包含等待和工具耗
 
 如果服务的 `PATH` 中没有相应 CLI，请使用可执行文件的绝对路径。机器专属配置保存在 Git 忽略的 `config.local.json` 中。界面和智能体均不能指定执行命令。
 
-AgentDock 使用 Codex App Server 与 Claude CLI 的双向 JSON 流，执行认证沿用原生 CLI，无需 Claude Agent SDK 或新增 API Key；额度组件不读取 Claude 凭据，Codex 查询由本机 Codex 处理认证。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/REVIEW.zh-CN.md)。
+AgentDock 使用 Codex App Server、Claude CLI 的双向 JSON 流，并通过 ACP v1 连接其他已登记服务。执行认证沿用各 CLI 的配置；额度组件不读取 Claude 凭据，Codex 查询由本机 Codex 处理认证。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/PROVIDERS.zh-CN.md)。
 
 ## 协作流程
 

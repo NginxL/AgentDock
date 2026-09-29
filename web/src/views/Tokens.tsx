@@ -1,4 +1,5 @@
-import type { Agent, Translate, Language } from "../types";
+import type { Agent, Provider, Translate, Language } from "../types";
+import { providerNames } from "../ProviderIcon";
 import type { Metrics, Meter } from "../metrics";
 import { TPS, tokens, exactTokens } from "../metrics";
 import { Empty, PageTitle } from "../ui";
@@ -33,7 +34,7 @@ export default function Tokens({
   const total = metrics?.total;
   const rows: [string, Meter][] = Object.entries(metrics?.providers ?? {})
     .filter(([p]) => agents.some((a) => a.provider === p))
-    .map(([p, m]) => [p === "codex" ? "Codex" : "Claude Code", m]);
+    .map(([p, m]) => [providerNames[p as Provider] ?? p, m]);
   return (
     <>
       <PageTitle

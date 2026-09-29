@@ -1,5 +1,6 @@
 """Durable project-scoped state. Provider output is data, never authorization."""
 from __future__ import annotations
+from .registry import PROVIDERS, ACP_PROVIDERS
 import hashlib
 import fcntl
 import json
@@ -173,7 +174,8 @@ class Store:
         if isinstance(changes, dict) and set(changes) == {'inherit'} and changes['inherit'] is True:
             model, effort, override = None, None, 0
         elif isinstance(changes, dict) and set(changes) == {'model', 'effort'}:
-            model, effort = self._settings(changes['model'], changes['effort'])
+            provider = self.get_agent(self.get_session(session_id)['agent_id'])['provider']
+            model, effort = self._settings(changes['model'], changes['effort'], provider)
             override = 1
         else:
             raise Invalid('Invalid session model settings')
@@ -184,11 +186,17 @@ class Store:
             return self._one('sessions', session_id)
 
     @staticmethod
-    def _settings(model, effort):
+    def _settings(model, effort, provider=None):
         model = text(model, "model", 160, True) if model is not None else None
         effort = text(effort, "effort", 32, True) if effort is not None else None
-        if model and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/()\[\]-]{0,159}", model): raise Invalid("Invalid model identifier")
-        if effort and effort not in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"): raise Invalid("Invalid reasoning effort")
+        if provider in ACP_PROVIDERS:
+            # ACP options are opaque IDs sent as JSON and checked against the
+            # CLI's offered choices before prompting, never shell arguments.
+            if any(ord(c) < 32 or ord(c) == 127 for c in (model or '') + (effort or '')):
+                raise Invalid('Invalid model or reasoning option')
+        else:
+            if model and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/()\[\]-]{0,159}", model): raise Invalid("Invalid model identifier")
+            if effort and effort not in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"): raise Invalid("Invalid reasoning effort")
         return model or None, effort or None
 
     def _migrate_environments(self):
@@ -379,8 +387,8 @@ class Store:
         return item
 
     def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask'):
-        if provider not in ("codex", "claude"): raise Invalid("Unsupported provider")
-        model, effort = self._settings(model, effort)
+        if provider not in PROVIDERS: raise Invalid("Unsupported provider")
+        model, effort = self._settings(model, effort, provider)
         permission_mode = self._permission_mode(permission_mode)
         environment_id=environment_id or 'local'
         self.get_environment(environment_id)
@@ -398,7 +406,7 @@ class Store:
             environment_id = text(changes.get('environment_id', agent['environment_id']), 'environment_id', 160)
             self._one('environments', environment_id)
             relocated = environment_id != agent['environment_id']
-            model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]))
+            model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]), agent['provider'])
             permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
             workspace = changes.get("workspace", None if relocated else agent["workspace"])
@@ -925,7 +933,7 @@ class Store:
         return native_id if environment_id=='local' else environment_id+':'+native_id
 
     def set_quota(self, provider, quota, environment_id='local'):
-        if provider not in ("codex","claude"): raise Invalid("Unsupported provider")
+        if provider not in PROVIDERS: raise Invalid("Unsupported provider")
         self.get_environment(environment_id)
         if environment_id!='local': quota={**quota,'environment_id':environment_id}
         with self.transaction(): self.db.execute("INSERT OR REPLACE INTO quotas VALUES(?,?)",(self.scope_key(provider,environment_id),json.dumps(quota)))
@@ -937,7 +945,7 @@ class Store:
 
     def save_subscription(self, provider, plan="", renewal_date=None, monthly_cost=None, currency="USD", environment_id='local'):
         import math
-        if provider not in ("codex","claude"): raise Invalid("Unsupported provider")
+        if provider not in PROVIDERS: raise Invalid("Unsupported provider")
         self.get_environment(environment_id)
         plan=text(plan,"plan",100,True); currency=text(currency,"currency",3)
         if len(currency)!=3 or not currency.isascii() or not currency.isalpha(): raise Invalid("Use a three-letter currency code")

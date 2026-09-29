@@ -1,7 +1,7 @@
 import json
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from agentdock.store import Store
 from agentdock.server import API
 from agentdock.mcp import Bridge
@@ -13,6 +13,32 @@ class APITests(unittest.TestCase):
         self.h={'Host':'127.0.0.1:47831','Authorization':'Bearer test-admin','Content-Type':'application/json','Origin':'http://127.0.0.1:47831'}
     def tearDown(self): self.store.close(); self.tmp.cleanup()
     def call(self,method,path,payload=None,headers=None): return self.api.dispatch(method,path,self.h if headers is None else headers,json.dumps(payload or {}).encode())
+    def test_provider_discovery_is_authenticated_read_only_and_device_specific(self):
+        self.runtime.config = {'commands': {}}
+        self.assertEqual(self.call('GET', '/api/providers', headers={**self.h, 'Authorization':'Bearer wrong'})[0], 401)
+        with patch('agentdock.registry.find_binary', return_value=None), patch('subprocess.Popen') as process:
+            status, result = self.call('GET', '/api/providers')
+            self.assertEqual(status, 200)
+            self.assertEqual(len(result['providers']), 10)
+            self.assertFalse(any(p['available'] for p in result['providers'].values()))
+            process.assert_not_called()
+        remote = self.store.add_environment('Fixture', 'fixture-host')
+        self.runtime.remote.digest = 'fixture-digest'
+        route = '/api/providers?environment_id=' + remote['id']
+        self.assertEqual(self.call('GET', route)[1]['providers']['gemini']['reason'], 'connect_required')
+        self.store.update_environment_status(remote['id'], 'connected', {
+            'digest':'fixture-digest', 'providers':{'gemini':{'available':True}}})
+        with patch('agentdock.server.availability') as local:
+            values = self.call('GET', route)[1]['providers']
+            self.assertTrue(values['gemini']['available'])
+            self.assertIsNone(values['gemini']['reason'])
+            self.assertFalse(values['codex']['available'])
+            local.assert_not_called()
+        self.runtime.remote.rpc.assert_not_called()
+        self.assertEqual(self.call('GET', '/api/providers?environment_id=missing')[0], 404)
+        status, agent = self.call('POST', '/api/agents', {'name':'My assistant', 'provider':'gemini', 'environment_id':remote['id']})
+        self.assertEqual((status, agent['provider'], agent['environment_id']), (200, 'gemini', remote['id']))
+        self.runtime.start.assert_not_called()
     def test_directory_browsing_is_authenticated_and_routes_to_the_selected_host(self):
         from urllib.parse import quote
         from pathlib import Path

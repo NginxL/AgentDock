@@ -8,9 +8,9 @@ AgentDock is an AI agent manager for conversations, task handoffs, shared projec
 
 The interface defaults to Chinese and supports English throughout. A Python standard-library service and SQLite store power the React workspace.
 
-> **Developer preview.** Execution is off by default. Automated checks cover simulated native CLI protocols and task handoffs; local two-turn conversations and usage events have been verified for both providers; additional accounts, permission actions and long-running collaboration require acceptance testing.
+> **Developer preview.** Execution is off by default. Automated checks cover native and ACP protocols and task handoffs. Live two-turn conversations passed for Codex, Claude Code and Trae; other ACP services, additional accounts and long-running collaboration require acceptance testing. See [provider compatibility](docs/PROVIDERS.md).
 
-[SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
+[Supported agents](docs/PROVIDERS.md) · [SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Workspace
 
@@ -50,8 +50,8 @@ Open **Projects** in the sidebar to create or select a project, then switch betw
 | Local and SSH connections | Choose a local CLI, reuse an SSH connection or configure a new one while adding an agent. Everyday views use custom names; sessions and quotas remain scoped to their actual connection. |
 | Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the selected environment. |
 | TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
-| Custom roles | Define agent names and responsibilities, then edit or clear roles at any time. Either Codex or Claude can take any user-defined assignment. |
-| Native conversations | Starts Codex or Claude Code through an installed CLI, retains the native session ID, and resumes it on later turns. Shows live task status, expandable thinking summaries and tool execution, the final reply, and permission requests. |
+| Custom roles | Define agent names and responsibilities independently of the provider, then edit or clear roles at any time. |
+| Native conversations | Connects ten CLI services through native or ACP transports, retaining the native session ID for continuation. Shows live progress, tool execution, final replies and permission requests according to CLI capabilities. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Project memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
 | Usage & subscriptions | Remaining quotas and reset times follow configured agents, with automatic updates and stale/error states. Renewal dates and subscription costs are recorded separately. |
@@ -78,7 +78,7 @@ To update, quit the app, run `git pull --ff-only`, and rerun the installer. Conf
 
 ## Getting started
 
-Requires macOS or Linux, Python 3.9+, Node.js 20.19+, and npm. Execution also requires a compatible, separately installed Codex or Claude Code CLI with its normal local authentication configured. The Mac application includes the usage reader; AgentMeter is not required. Linux quota reads require a separately configured compatible helper.
+Requires macOS or Linux, Python 3.9+, Node.js 20.19+, and npm. Execution also requires a compatible, separately installed [agent CLI or ACP adapter](docs/PROVIDERS.md) with authentication configured on its device. The Mac application includes the usage reader; AgentMeter is not required. Linux quota reads require a separately configured compatible helper.
 
 ```bash
 git clone https://github.com/NginxL/AgentDock.git
@@ -101,7 +101,9 @@ Choose **Workspace → Add agent**, select a provider and enter a name. Under **
 
 ![Device, SSH address and workspace setup, fictional demo data](docs/images/agent-setup.en.png)
 
-The provider menu, agent cards and quota summaries use provider icons bundled with the app. Names remain user-defined, without automatic device labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
+The provider menu includes **Codex, Claude Code, Trae CLI, Pi, Cursor CLI, Antigravity, Grok Build, OpenCode, Gemini CLI and Qwen Code**, with bundled icons and availability on the selected device. Missing CLIs or adapters appear disabled. Pi requires `pi-acp` and explicit full access; Antigravity requires its ACP server. [Compatibility and setup](docs/PROVIDERS.md) describes authentication, continuation, MCP and usage limits.
+
+Names remain user-defined, without automatic device labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card. Official quota reads and measured token/TPS statistics currently cover Codex and Claude; ACP context occupancy is not counted as token consumption.
 
 ![Provider selection with brand icons](docs/images/provider-picker.en.png)
 
@@ -176,7 +178,7 @@ TPS uses reported output-token increments over their measured intervals, includi
 
 Use absolute executable paths if the CLIs are not on the server's `PATH`. Keep machine-specific configuration in the ignored `config.local.json`. Provider commands cannot be supplied by the UI or an agent.
 
-AgentDock uses Codex App Server and the Claude CLI's bidirectional JSON stream. Task execution uses native CLI authentication without the Claude Agent SDK or a new API key. The usage helper does not read Claude credentials; Codex handles authentication for its own quota query. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/REVIEW.md).
+AgentDock uses Codex App Server, the Claude CLI's bidirectional JSON stream, and ACP v1 for the other registered services. Task execution uses each CLI's configured authentication. The usage helper does not read Claude credentials; Codex handles authentication for its own quota query. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/PROVIDERS.md).
 
 ## How collaboration works
 

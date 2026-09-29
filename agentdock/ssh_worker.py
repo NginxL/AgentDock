@@ -58,27 +58,13 @@ def run_path(controller, run_id):
 
 
 def commands():
-    # Non-interactive SSH PATH often omits user-installed CLIs. Never change shell rc files.
-    result = {}
-    for provider in ('codex', 'claude'):
-        binary = shutil.which(provider)
-        if not binary:
-            binary = next((str(path) for path in (Path.home()/'.local/bin'/provider, Path.home()/'.npm-global/bin'/provider, Path('/opt/homebrew/bin')/provider)
-                           if path.is_file() and os.access(path, os.X_OK)), None)
-        if binary: result[provider] = [binary] + (['app-server'] if provider == 'codex' else [])
-    return result
+    from .registry import commands as discover
+    return discover(read(ROOT/'commands.json', {}))
 
 
 def probe():
-    providers = {}
-    for provider, command in commands().items():
-        try:
-            value = subprocess.run([command[0], '--version'], stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=8, check=True, text=True)
-            version = value.stdout.strip()[:120]
-            providers[provider] = {'available': True, 'version': version}
-        except (OSError, subprocess.SubprocessError):
-            providers[provider] = {'available': False}
+    from .registry import availability
+    providers = availability(commands())
     return {'python': '.'.join(map(str, sys.version_info[:3])), 'providers': providers,
             'protocol': 1, 'runtime': 'ssh', 'lease_seconds': LEASE_SECONDS}
 

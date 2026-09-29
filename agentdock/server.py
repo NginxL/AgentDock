@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 from . import __version__
 from .store import Store, Invalid, Missing, Conflict, Forbidden
+from .registry import PROVIDERS, commands as resolve_commands, availability
 
 MAX_BODY = 262144
 
@@ -48,6 +49,18 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method=="GET" and parsed.path=="/api/providers":
+                environment=self.store.get_environment(parse_qs(parsed.query).get('environment_id',['local'])[0])
+                if environment['kind']=='local':
+                    return 200,{'environment_id':'local','providers':availability(self.runtime.config.get('commands', {}))}
+                ready=environment['status']=='connected' and environment['payload'].get('digest')==self.runtime.remote.digest
+                saved=environment['payload'].get('providers', {}) if ready else {}
+                providers={}
+                for key,entry in PROVIDERS.items():
+                    available=saved.get(key,{}).get('available') is True
+                    reason=None if available else saved.get(key,{}).get('reason') or ('not_installed' if ready else 'connect_required')
+                    providers[key]={'name':entry[0], 'available':available, 'supports_ask':key!='pi', 'reason':reason}
+                return 200,{'environment_id':environment['id'],'providers':providers}
             if method=="GET" and parsed.path=="/api/directories":
                 query=parse_qs(parsed.query)
                 environment=self.store.get_environment(query.get('environment_id',['local'])[0])
@@ -249,8 +262,11 @@ def main(argv=None):
     if args.config:
         config=json.loads(args.config.read_text())
         if not isinstance(config,dict): parser.error("config must be an object")
-    commands=config.get("commands",{"codex":["codex","app-server"],"claude":["claude"]})
-    if not isinstance(commands,dict) or any(k not in ("codex","claude") or not isinstance(v,list) or not v or any(not isinstance(x,str) or not x for x in v) for k,v in commands.items()): parser.error("commands must contain codex/claude argument lists")
+    commands=config.get("commands", {})
+    try:
+        if not isinstance(commands,dict): raise ValueError('commands must be an object')
+        resolve_commands(commands)
+    except ValueError as error: parser.error(str(error))
     command=config.get("quota_command",config.get("agentmeter_command"))
     if command is not None and (not isinstance(command,list) or not command or any(not isinstance(x,str) or not x or "\x00" in x for x in command)): parser.error("quota_command must be an argument list")
     data=Path(args.data_dir).expanduser(); data.mkdir(parents=True,exist_ok=True,mode=0o700); data.chmod(0o700)

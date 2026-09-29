@@ -2,6 +2,8 @@
 
 **English** · [简体中文](REVIEW.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
+ACP checks exercise model/effort options, continued sessions, message phases, permission choices, timeouts/cancellation, invalid messages, private directories and cleanup with deterministic peers. An isolated SSH worker verifies remote discovery, model reading and continuation. Live Trae model discovery and two-turn dialogue passed with unchanged original configuration hashes. Other new services still need live account and tool validation; see [CLI support](PROVIDERS.md).
+
 ## Implementation status
 
 AgentDock 0.3 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. The macOS application bundles a dedicated usage helper that supplies sanitized quota snapshots through `--probe`.

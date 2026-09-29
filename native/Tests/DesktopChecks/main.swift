@@ -54,6 +54,9 @@ do {
     expect(renamed.displayName == "My assistant", "A renamed agent is displayed without provider or device suffixes")
     let oldServer = try quota([:])
     expect(oldServer.displayName == "Codex", "Older server responses remain readable")
+    let gemini = try quota(["provider":"gemini", "status":"unknown", "error_code":"unavailable", "fetched_at":NSNull()])
+    expect(gemini.displayName == "Gemini CLI", "Other providers do not fall back to Claude")
+    expect(gemini.lines(language:.en, now:now, timeZone:utc).contains("Quota unknown"), "Unsupported quota readers remain unknown")
     let longName = try quota(["agent_names": [String(repeating: "a", count: 120)]])
     expect(longName.displayName.count == 80, "Menu names are bounded")
 } catch { failures.append("Unexpected error: \(error)") }

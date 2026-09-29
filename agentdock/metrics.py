@@ -1,6 +1,7 @@
 """Local token accounting. No prompts, credentials or provider requests are stored here."""
 from datetime import datetime, timedelta, timezone
 import json
+from .registry import PROVIDERS
 import math
 import os
 from pathlib import Path
@@ -44,7 +45,7 @@ def initialize(db):
 
 
 def record(store, provider, native_id, record_id, usage, at, source, span=None):
-    if provider not in ('codex', 'claude') or not isinstance(native_id, str) or not native_id or len(native_id) > 512: return
+    if provider not in PROVIDERS or not isinstance(native_id, str) or not native_id or len(native_id) > 512: return
     if not isinstance(record_id, str) or not record_id or len(record_id) > 512: return
     if not isinstance(at, (float, int)) or not math.isfinite(at) or not 0 < at <= time.time() + 60: return
     if not usage or any(count(usage.get(k)) is None for k in FIELDS): return
@@ -78,7 +79,7 @@ def daily_activity(store, at):
     with store.lock:
         identity = "CASE WHEN sessions.environment_id='local' THEN native_session_id ELSE sessions.environment_id||':'||native_session_id END"
         checkpoints = store.db.execute("SELECT * FROM token_activity_days WHERE native_id IN (SELECT " + identity + " FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='codex') ORDER BY native_id,day").fetchall()
-        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider='claude' AND native_id IN (SELECT " + identity + " FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider='claude') AND updated_at<=? GROUP BY day", (at,)).fetchall()
+        messages = store.db.execute("SELECT date(updated_at,'unixepoch','localtime') day,SUM(total_tokens) tokens,MAX(updated_at) updated_at FROM token_records WHERE provider!='codex' AND native_id IN (SELECT " + identity + " FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE agents.provider=token_records.provider) AND updated_at<=? GROUP BY day", (at,)).fetchall()
     days = {}; previous = {}; updated = None
     # Include older checkpoints as baselines before filtering the display window.
     # Daily cumulative high-water marks deduplicate replayed and archived logs.

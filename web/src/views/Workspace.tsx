@@ -5,6 +5,7 @@ import InferenceControls from "../InferenceControls";
 import AgentDeletion from "../AgentDeletion";
 import ProviderIcon from "../ProviderIcon";
 import ProviderSelect from "../ProviderSelect";
+import { useProviderAvailability } from "../providerAvailability";
 import WorkspaceDirectory from "../WorkspaceDirectory";
 import { useModelCatalog } from "../modelCatalog";
 import AgentConnection, {
@@ -105,6 +106,14 @@ export default function Workspace({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
+  const discovery = useProviderAvailability(
+    token,
+    environment,
+    agentForm && environment !== NEW_SSH_CONNECTION,
+    demo,
+    connectionVersion,
+  );
+  const selectedAvailable = discovery.providers?.[provider]?.available === true;
   const catalog = useModelCatalog(
     token,
     provider,
@@ -112,6 +121,7 @@ export default function Workspace({
     agentForm &&
       !demo &&
       runtimeEnabled &&
+      selectedAvailable &&
       connectionReady &&
       environment !== NEW_SSH_CONNECTION,
     connectionVersion,
@@ -564,6 +574,10 @@ export default function Workspace({
                   setEffort("");
                 }}
                 disabled={!!editingAgentID}
+                availability={discovery.providers}
+                loading={discovery.loading}
+                failed={discovery.failed}
+                onRefresh={discovery.refresh}
                 t={t}
               />
               <label>
@@ -672,6 +686,14 @@ export default function Workspace({
                 </option>
               </select>
             </label>
+            {provider === "pi" && (
+              <p className="settings-note">
+                {t(
+                  "Pi 的工具执行需要完全访问权限，请自行选择。",
+                  "Pi tool execution requires full access. Select it explicitly to continue.",
+                )}
+              </p>
+            )}
             <p className="form-hint" id="agent-permission-description">
               {permissionMode === "full_access"
                 ? t(
@@ -698,8 +720,8 @@ export default function Workspace({
             </label>
             <p className="form-hint">
               {t(
-                "名称和角色由你定义，与 Codex / Claude 服务无关。角色在后续执行时生效，不会清除已有原生会话历史。",
-                "You define the name and role independently of Codex / Claude. Changes apply to future turns and do not clear existing native conversation history.",
+                "名称和角色由你定义。角色在后续执行时生效，不会清除已有会话历史。",
+                "You define the name and role. Changes apply to future turns and do not clear existing conversation history.",
               )}
             </p>
             {editingAgentID && (
@@ -713,7 +735,11 @@ export default function Workspace({
             <button
               className="primary"
               disabled={
-                busy || !agentName.trim() || environment === NEW_SSH_CONNECTION
+                busy ||
+                !agentName.trim() ||
+                environment === NEW_SSH_CONNECTION ||
+                (!editingAgentID && !selectedAvailable) ||
+                (provider === "pi" && permissionMode !== "full_access")
               }
             >
               {editingAgentID

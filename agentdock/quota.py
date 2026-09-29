@@ -1,5 +1,6 @@
 """Opt-in, bounded usage helper. Provider credentials never enter the HTTP service."""
 from __future__ import annotations
+from .registry import PROVIDERS
 
 import json
 import math
@@ -94,8 +95,8 @@ class QuotaService:
                 deadline = now + self.AUTO_REFRESH_INTERVAL  # No catch-up burst after suspension.
 
     def refresh(self, provider: str, authorize=False, environment_id='local') -> dict:
-        if provider not in ("codex", "claude"):
-            raise ValueError("Only codex and claude quota providers are supported.")
+        if provider not in PROVIDERS:
+            raise ValueError("Unsupported quota provider.")
         if provider not in self.store.configured_providers(environment_id):
             raise ValueError("Add an agent for this provider before reading usage.")
         if authorize:
@@ -104,6 +105,13 @@ class QuotaService:
             self._ensure_open()
             self._inflight += 1
         try:
+            if provider not in ('codex', 'claude'):
+                value = {'provider': provider, 'status': 'unknown', 'windows': [], 'fetched_at': None,
+                         'error_code': 'unavailable', 'source': 'AgentDock'}
+                with self._lifecycle:
+                    self._ensure_open()
+                    self.store.set_quota(provider, value, environment_id)
+                return value
             if environment_id != 'local': return self._remote_refresh(provider, environment_id)
             return self._refresh(provider)
         finally:
@@ -189,7 +197,7 @@ class QuotaService:
 
     def cached(self, provider: str, environment_id='local'):
         """Age a saved snapshot for display without starting a process or reading credentials."""
-        if provider not in ("codex", "claude"):
+        if provider not in PROVIDERS:
             raise ValueError("Unsupported quota provider.")
         with self._lifecycle:
             self._ensure_open()
