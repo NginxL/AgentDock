@@ -22,7 +22,7 @@ import Memories from "./views/Memories";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
 import { useMetrics } from "./metrics";
-import { clearModelCatalog } from "./modelCatalog";
+import { clearModelCatalog, prewarmModels } from "./modelCatalog";
 
 import { useNavigation, type Tab } from "./navigation";
 
@@ -75,6 +75,34 @@ export default function App() {
   const [projectForm, setProjectForm] = useState(false);
   const [agentEnvironment, setAgentEnvironment] = useState<string | null>(null);
   const desktopToken = useRef(window.__AGENTDOCK_DESKTOP_TOKEN__ ?? "");
+  const modelConnections = JSON.stringify(
+    (state?.agents ?? [])
+      .filter((agent) => {
+        const environment = agent.environment_id ?? "local";
+        return (
+          environment === "local" ||
+          state?.environments?.some(
+            (e) => e.id === environment && e.status === "connected",
+          )
+        );
+      })
+      .map((agent) => ({
+        provider: agent.provider,
+        environment: agent.environment_id ?? "local",
+      })),
+  );
+  const discoveryEnabled = !!token && !demo && !!state?.runtime?.enabled;
+  useEffect(() => {
+    if (!discoveryEnabled) return;
+    const warm = () => {
+      void prewarmModels(token, JSON.parse(modelConnections));
+    };
+    warm();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") warm();
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [token, discoveryEnabled, modelConnections]);
 
   useEffect(() => {
     const credential = desktopToken.current;
@@ -593,20 +621,15 @@ export default function App() {
           <div className="local-status">
             <span className="status-dot" />
             <div>
-              {demo
-                ? t("离线演示", "Offline demo")
-                : t("本地服务已连接", "Local service connected")}
-              <small>
-                v{state.runtime.version} ·{" "}
-                {demo
-                  ? t("虚构数据 · 只读", "Fictional data · Read-only")
-                  : t("数据存于本机", "Stored on this device")}
-              </small>
+              {demo ? t("离线演示", "Offline demo") : t("已就绪", "Ready")}
+              <small>v{state.runtime.version}</small>
             </div>
           </div>
-          <button className="disconnect" onClick={disconnect}>
-            {demo ? t("退出演示", "Exit demo") : t("断开连接", "Disconnect")}
-          </button>
+          {(demo || !desktopToken.current) && (
+            <button className="disconnect" onClick={disconnect}>
+              {demo ? t("退出演示", "Exit demo") : t("退出工作台", "Sign out")}
+            </button>
+          )}
         </div>
       </aside>
       <div className="main-shell">
@@ -656,7 +679,7 @@ export default function App() {
           id="main-content"
           className={`main-content ${pageAgent ? "agent-content" : ""}`}
         >
-          {(!pageAgent || demo || !state.runtime.enabled) && (
+          {(demo || !state.runtime.enabled) && (
             <div
               className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
             >
@@ -667,15 +690,10 @@ export default function App() {
                       "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
                       "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
                     )
-                  : state.runtime.enabled
-                    ? t(
-                        "执行已启用 · 任务会提交到原生会话，协作派工会自动执行并回传结果。",
-                        "Execution enabled · Tasks use native sessions. Delegated work runs automatically and returns its result.",
-                      )
-                    : t(
-                        "执行已关闭 · 可以查看记录、管理项目和共享记忆。运行、派工和额度读取暂不可用。",
-                        "Execution disabled · Review records, manage projects and shared memory. Runs, dispatch and quota fetching are unavailable.",
-                      )}
+                  : t(
+                      "当前仅可查看，尚未启用任务执行。",
+                      "View only. Task execution is not enabled.",
+                    )}
               </span>
             </div>
           )}

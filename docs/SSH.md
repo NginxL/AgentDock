@@ -12,7 +12,7 @@ AgentDock stores workbench state locally and calls installed agent CLIs over SSH
 4. Complete the agent settings and choose **Create agent**. Models are discovered on that environment; an empty selection retains native settings. A blank workspace creates a private conversation directory; an explicit directory must already exist. Connection details remain in **Agent settings**, while everyday lists show custom names. Identically named agents still keep their own connection and session bindings.
 5. Create a conversation and send a message. The status shows queued, running, completed or failed. Expand the status row to watch progress, or leave it collapsed. The final reply appears separately.
 
-An agent's environment and provider stay fixed to prevent resuming a conversation on the wrong host. Projects are optional. When the project belongs to another environment, choose a separate working directory or use the agent's private directory.
+An agent's provider stays fixed. Changing its environment affects new conversations; existing conversations keep their original device, directory and saved defaults. Projects are optional. When the project belongs to another environment, choose a separate working directory or use the agent's private directory.
 
 ## Communication
 
@@ -40,7 +40,9 @@ sequenceDiagram
 
 Acceptance means the request was saved. Completion requires a successful CLI terminal result and all preceding events to be received. Codex uses App Server; Claude Code uses bidirectional stream-json. The UI displays only progress text exposed by the CLI and does not synthesize thinking content.
 
-The local controller initiates SSH requests. The workbench remains bound to local loopback; the remote MCP bridge also listens only on its host's loopback interface. Shared-memory queries, delegation and permission requests return as ordered control events; their responses go back to the matching request. The remote runner gets a per-run capability, never the local administrator token or local CLI credentials.
+The local controller maintains one private SSH stdio channel per environment. The bridge multiplexes request IDs and live run subscriptions; detached CLI workers and their session storage remain separate. It tails only new complete event records, sends ordered frames and renews active run leases. Cancellation and approval responses bypass slow model-discovery operations. Queues, requests and subscriptions are bounded; an overloaded or interrupted stream reconnects from its durable cursor. Idle channels close after five minutes.
+
+The interface receives persisted events through authenticated SSE. The workbench remains bound to local loopback; the remote MCP bridge also listens only on its host's loopback interface. Shared-memory queries, delegation and permission requests return as ordered control events; their responses go back to the matching request. The remote runner gets a per-run capability, never the local administrator token or local CLI credentials.
 
 ## Disconnection and shutdown
 

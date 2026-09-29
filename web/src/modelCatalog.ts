@@ -56,6 +56,32 @@ function load(token: string, provider: Provider, environment: string) {
   return entry.pending;
 }
 
+/** Warm only configured connections; keep results in memory and coalesce with menus. */
+export async function prewarmModels(
+  token: string,
+  connections: { provider: Provider; environment: string }[],
+) {
+  const unique = [
+    ...new Map(
+      connections.map((c) => [JSON.stringify([c.provider, c.environment]), c]),
+    ).values(),
+  ];
+  if (unique.length) entryFor(token, unique[0].provider, unique[0].environment);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(2, unique.length) }, async () => {
+      while (next < unique.length && credential === token) {
+        const connection = unique[next++];
+        try {
+          await load(token, connection.provider, connection.environment);
+        } catch {
+          /* Retry on next visit or refresh. */
+        }
+      }
+    }),
+  );
+}
+
 export function useModelCatalog(
   token: string,
   provider: Provider,

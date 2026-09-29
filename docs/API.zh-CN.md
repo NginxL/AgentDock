@@ -2,7 +2,7 @@
 
 [English](API.md) · **简体中文** · [项目说明](../README.zh-CN.md) · [架构设计](ARCHITECTURE.zh-CN.md)
 
-版本：**0.3 预览版**。工作台记录的 ID 为 UUID 字符串；`native_session_id` 是由提供商管理的原生会话标识。时间戳采用 UTC 时区的 ISO 8601 格式。成功响应为 JSON，错误响应为 `{ "error": "message" }`。
+版本：**0.3 预览版**。工作台记录的 ID 为 UUID 字符串；`native_session_id` 是由提供商管理的原生会话标识。时间戳采用 UTC 时区的 ISO 8601 格式。除 SSE 接口外，成功响应为 JSON；错误响应为 `{ "error": "message" }`。
 
 | HTTP 状态码 | 含义 |
 | --- | --- |
@@ -27,9 +27,11 @@
 
 独立会话的 `project_id` 为 null，拥有固定 `workspace`。独立 Agent 的队友列表和记忆搜索为空，项目派工与记忆提议被拒绝。
 
-任务事件包含 `reasoning_chunk`、`reasoning_message`（替换同一 `item_id`、`part` 的最终摘要）、`tool_call`、`tool_output` 和 `tool_result`，均携带 `run_id`，工具输出增量使用 `item_id`。Codex 提供思考摘要，Claude 提供公开输出的 thinking 块。`run_finished.status` 表示最终状态，`runs.result` 保留最终回复。可见会话每秒读取事件并连续读取完整游标页。
+任务事件包含 `reasoning_chunk`、`reasoning_message`（替换同一 `item_id`、`part` 的最终摘要）、`tool_call`、`tool_output` 和 `tool_result`，均携带 `run_id`，工具输出增量使用 `item_id`。Codex 提供思考摘要，Claude 提供公开输出的 thinking 块。`run_finished.status` 表示最终状态，`runs.result` 保留最终回复。会话先按游标加载历史，再订阅实时事件；仅在旧服务不支持流式接口时回退到每秒读取。
 
 `agent_message_chunk` 携带文本增量；`agent_message` 替换同一 `provider`、`item_id`、`part` 的完整文本。Codex 可选的 `phase` 区分 `commentary` 和 `final_answer`。这些消息项归入实时过程，`assistant_message` 和 `runs.result` 提供最终回复。Codex 未提供阶段时取最后一条助手消息，明确标为进展的消息不作为回复。Claude 优先使用结果字段，缺失时采用最后一条助手消息的文本块。界面在最终回复到达时收起过程，并移除过程区中重复的回复文本。
+
+事件流使用带 Bearer 请求头的流式 `fetch`，令牌不进入 URL。事件提交 SQLite 后通知订阅者；查询游标与进入等待使用同一把锁，避免衔接时丢失事件。每条 SSE 数据帧约束为约 1 MiB，最多 32 条连接，空闲时每 10 秒发送保活。慢连接写入超时后关闭，界面从已接收游标补读。普通增量最多合并 30 毫秒再渲染，最终回复与结束状态立即刷新。
 
 ## 身份认证与请求边界
 
@@ -45,7 +47,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 `environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话在创建时记录 Agent 的环境。修改 Agent 的 `environment_id` 只影响新会话，已有会话保留原环境。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。本机与 SSH 模型列表均在控制端按环境／服务分别缓存五分钟；相同组合的并发 SSH 查询合并为一次，重新连接会使对应环境的缓存失效。读取失败不缓存。
 
-界面在进入会话时预读模型元信息，与 Agent 设置共享一分钟的内存缓存。重复打开菜单复用已有列表；缓存过期后在保留列表的同时刷新。工作台凭据、服务和运行环境分别隔离，断开工作台或重新连接环境后清理界面缓存。模型发现不提交 Agent 提示词。
+界面为已配置且已连接的 Agent 提前读取模型元信息，最多同时预读两个组合，与会话和 Agent 设置共享一分钟的内存缓存；页面可见时每分钟检查缓存。重复打开菜单复用已有列表；缓存过期后在保留列表的同时刷新。工作台凭据、服务和运行环境分别隔离，断开工作台或重新连接环境后清理界面缓存。模型发现不提交 Agent 提示词。
 
 额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照包含兼容字段 `environment_name`，以及该连接下的自定义名称数组 `agent_names`。菜单使用这些名称展示，不附加设备标签；名称不作为路由标识。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
 
@@ -75,6 +77,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/sessions/{id}/delete` | 空对象；用户认证接口。阻止删除运行中或仍有关联任务的会话，清理专属目录、运行记录与事件；远端清理成功后才移除本机记录。共用项目目录与原生登录保留。 |
 | `POST /api/runs/{id}/cancel` | 空对象。取消指定运行所属的逻辑任务，包括它现有的排队或正在执行的后代任务。返回 `{ "ok": true }`。 |
 | `GET /api/sessions/{id}/events?after=0` | 返回 `{ "events": [...] }`，按递增的 `seq` 排序，每次最多返回 500 条。 |
+| `GET /api/sessions/{id}/events/stream?after=0` | 使用相同的管理员认证返回 SSE。`data` 为 `{ "events": [...] }`，`id` 为本批最后一个 `seq`；断线后携带最后接收的游标重连。 |
 | `POST /api/messages` | `project_id`、`recipient_id`、`body`（最多 12,000 字符）；可选 `recipient_session_id`、`correlation_id`、`idempotency_key`。以 `human` 身份派发任务，返回投递记录。 |
 | `POST /api/memories` | `project_id`、`key`、`content`、`expected_version`（新建键时为 0）。 |
 | `POST /api/memories/{id}/archive` | `expected_version`。执行软归档，同时新增版本与历史记录。 |

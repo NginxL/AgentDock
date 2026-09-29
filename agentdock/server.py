@@ -24,6 +24,13 @@ class API:
         self.catalog=Catalog(getattr(runtime, "config", {}))
         self.usage=None
         self.admin_token=admin_token; self.port=port; self.execution_enabled=execution_enabled
+        self.closed = threading.Event()
+        self.stream_slots = threading.BoundedSemaphore(32)
+
+    def close(self):
+        self.closed.set()
+        with self.store.changed: self.store.changed.notify_all()
+        self.catalog.close()
 
     def dispatch(self, method, path, headers, body=b""):
         headers={k.lower():v for k,v in headers.items()}
@@ -167,6 +174,10 @@ def handler_for(api, web_root):
             self.send_header("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
             self.end_headers(); self.wfile.write(body)
         def do_GET(self):
+            parsed = urlsplit(self.path)
+            parts = parsed.path.strip('/').split('/')
+            if len(parts) == 5 and parts[:2] == ['api', 'sessions'] and parts[3:] == ['events', 'stream']:
+                return self._events(parts[2], parsed.query)
             if self.path.startswith(("/api/","/mcp/")): return self._api()
             try: api._boundary(dict((k.lower(),v) for k,v in self.headers.items()))
             except Forbidden: return self._reply(403,b"Forbidden","text/plain")
@@ -178,6 +189,42 @@ def handler_for(api, web_root):
             if suffix not in types: return self._reply(404,b"Not found","text/plain")
             self._reply(200,candidate.read_bytes(),types[suffix])
         def do_POST(self): self._api()
+        def _events(self, session_id, query):
+            # Reuse precisely the history endpoint's host/origin/token boundary.
+            status, result = api.dispatch('GET', '/api/sessions/' + session_id + '/events?' + query, dict(self.headers))
+            if status != 200: return self._reply(status, json.dumps(result).encode())
+            if not api.stream_slots.acquire(blocking=False):
+                return self._reply(503, b'{"error":"Too many event streams"}')
+            try:
+                after = max(0, int(parse_qs(query).get('after', ['0'])[0]))
+                self.connection.settimeout(10)
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.end_headers()
+                self.wfile.write(b': connected\n\n'); self.wfile.flush()
+                events = result['events']
+                while not api.closed.is_set() and not api.store.closed:
+                    if events:
+                        # Keep each frame bounded even when history has many tool outputs.
+                        batch, size = [], 0
+                        for event in events:
+                            size += len(json.dumps(event, ensure_ascii=False).encode())
+                            if batch and size > 1048576: break
+                            batch.append(event)
+                        events = batch
+                        after = events[-1]['seq']
+                        frame = 'id: ' + str(after) + '\ndata: ' + json.dumps({'events': events}, ensure_ascii=False) + '\n\n'
+                        self.wfile.write(frame.encode())
+                    else: self.wfile.write(b': keepalive\n\n')
+                    self.wfile.flush()
+                    events = api.store.wait_session_events(session_id, after, api.closed)
+            except (OSError, Missing): pass
+            finally:
+                api.stream_slots.release()
+                self.close_connection = True
         def _api(self):
             try:
                 length=int(self.headers.get("Content-Length","0"))
@@ -240,6 +287,6 @@ def main(argv=None):
         if args.enable_execution: api.usage.start()
         quota.start_auto_refresh()
         server.serve_forever(poll_interval=0.3)
-    finally: api.usage.close() if api.usage else None; api.catalog.close(); runtime.close(); quota.close(); server.server_close(); store.close()
+    finally: api.close(); api.usage.close() if api.usage else None; runtime.close(); quota.close(); server.server_close(); store.close()
 
 if __name__=="__main__": main()

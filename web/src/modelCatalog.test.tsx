@@ -1,6 +1,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { clearModelCatalog, useModelCatalog } from "./modelCatalog";
+import {
+  clearModelCatalog,
+  useModelCatalog,
+  prewarmModels,
+} from "./modelCatalog";
 
 const models = [{ id: "model-a", name: "Model A", efforts: ["high"] }];
 const response = (value = models) => ({
@@ -110,4 +114,21 @@ it("invalidates on reconnect and never prefetches in review or demo mode", async
   clearModelCatalog();
   view.rerender({ enabled: true, visit: 1 });
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+});
+
+it("prewarms configured pairs once and shares the result with the first menu", async () => {
+  const fetch = vi.fn(async () => response());
+  vi.stubGlobal("fetch", fetch);
+  await prewarmModels("token", [
+    { provider: "codex", environment: "devbox" },
+    { provider: "codex", environment: "devbox" },
+    { provider: "claude", environment: "local" },
+  ]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const menu = renderHook(() =>
+    useModelCatalog("token", "codex", "devbox", true),
+  );
+  expect(menu.result.current.models).toEqual(models);
+  expect(menu.result.current.loading).toBe(false);
+  expect(fetch).toHaveBeenCalledTimes(2);
 });

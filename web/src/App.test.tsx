@@ -574,7 +574,7 @@ describe("connection boundaries", () => {
       Authorization: "Bearer example-admin-token-not-a-real-secret",
     });
     expect(document.body.textContent).not.toContain("example-admin-token");
-    fireEvent.click(screen.getByRole("button", { name: "断开连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "退出工作台" }));
     expect(screen.getByLabelText("访问令牌").getAttribute("value")).toBe("");
     expect(screen.queryByText("Demo project")).toBeNull();
   });
@@ -923,7 +923,7 @@ describe("usage semantics and transport", () => {
       (screen.getAllByRole("button", { name: "编辑" })[0] as HTMLButtonElement)
         .disabled,
     ).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "断开连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "退出工作台" }));
     expect(signals.every((signal) => signal.aborted)).toBe(true);
     await act(async () => {
       pending.forEach((resolve, i) =>

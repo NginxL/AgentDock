@@ -7,21 +7,15 @@ import io
 import json
 import os
 import re
-import selectors
 import shlex
-import subprocess
 import threading
 import time
 import zipfile
 from pathlib import Path
 
 from .providers import ProviderCancelled, ProviderError
-from .processes import stop_group
+from .ssh_transport import Channel, TransportError
 from .store import Conflict, Forbidden
-
-
-class TransportError(ProviderError):
-    pass
 
 
 # This fixed bootstrap receives data on stdin. Prompts, directories, and tokens
@@ -30,7 +24,7 @@ BOOTSTRAP = r'''
 import base64,hashlib,io,json,os,pathlib,re,shutil,sys,tempfile,zipfile
 os.umask(0o077)
 try:
- raw=sys.stdin.buffer.read(2097153)
+ raw=sys.stdin.buffer.readline(2097153)
  if len(raw)>2097152: raise ValueError('size')
  request=json.loads(raw)
  digest=request['digest']
@@ -58,6 +52,10 @@ try:
     if temp.exists(): shutil.rmtree(temp)
  if target.is_symlink() or not (target/'agentdock/ssh_worker.py').is_file(): raise ValueError('connect first')
  sys.path.insert(0,str(target))
+ if request.get('stream'):
+  from agentdock.ssh_bridge import serve
+  serve()
+  sys.exit(0)
  from agentdock.ssh_worker import rpc
  result={'ok':True,'value':rpc(request['request'])}
 except Exception:
@@ -79,16 +77,20 @@ def bundle():
 
 
 class RemoteManager:
-    def __init__(self, store, enabled=False, transport=None):
+    def __init__(self, store, enabled=False, transport=None, channel_factory=None):
         self.store, self.enabled = store, enabled
         self.digest, self.bundle = bundle()
         self.transport = transport or self._ssh
+        self.streaming = transport is None
+        self.channel_factory = channel_factory or Channel
+        self._channel_guard = threading.Lock()
+        self._channels = {}
         self.closed = threading.Event()
         self._connections = threading.Lock()
         self._model_guard = threading.Lock()
         self._model_locks, self._model_cache, self._model_generations = {}, {}, {}
 
-    def _ssh(self, environment, payload, stop=None):
+    def _channel(self, environment, payload):
         host, python = environment['ssh_host'], environment['python']
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.@:-]*', host): raise ProviderError('Invalid SSH destination.')
         command = shlex.quote(python) + ' -c ' + shlex.quote(BOOTSTRAP)
@@ -96,46 +98,24 @@ class RemoteManager:
                 '-o', 'ClearAllForwardings=yes', '-o', 'ForwardAgent=no', '-o', 'ForwardX11=no',
                 '-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=2',
                 '--', host, command]
-        process = None
-        selector = selectors.DefaultSelector()
-        output, errors, writes = bytearray(), 0, bytearray(json.dumps(payload).encode())
-        deadline = time.monotonic() + (5 if payload["request"].get("op") == "cancel" else 35)
-        try:
-            process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE, bufsize=0, start_new_session=True)
-            for stream, name, event in ((process.stdin, 'stdin', selectors.EVENT_WRITE),
-                                        (process.stdout, 'stdout', selectors.EVENT_READ),
-                                        (process.stderr, 'stderr', selectors.EVENT_READ)):
-                os.set_blocking(stream.fileno(), False)
-                selector.register(stream, event, name)
-            while selector.get_map():
-                if self.closed.is_set() or (stop and stop.is_set()): raise ProviderCancelled()
-                if time.monotonic() >= deadline: raise TransportError('SSH connection timed out.')
-                for key, _ in selector.select(.1):
-                    try:
-                        if key.data == 'stdin':
-                            count = os.write(key.fd, writes); del writes[:count]
-                            if not writes: selector.unregister(key.fileobj); key.fileobj.close()
-                            continue
-                        chunk = os.read(key.fd, 65536)
-                    except BlockingIOError: continue
-                    if not chunk: selector.unregister(key.fileobj); continue
-                    if key.data == 'stdout': output.extend(chunk)
-                    else: errors += len(chunk)
-                    if len(output) + errors > 2097152: raise TransportError('SSH response exceeded the limit.')
-            process.wait(timeout=max(.1, deadline - time.monotonic()))
-            if process.returncode: raise TransportError('SSH connection failed. Check the host, network and SSH authentication.')
-            lines = [line for line in output.splitlines() if line.startswith(b'AGENTDOCK_RESPONSE ')]
-            if len(lines) != 1: raise TransportError('The remote runner did not return a valid response.')
-            return json.loads(lines[0][len(b'AGENTDOCK_RESPONSE '):])
-        except (OSError, ValueError, subprocess.SubprocessError):
-            raise TransportError('SSH connection failed. Check the host, network and SSH authentication.') from None
-        finally:
-            selector.close()
-            if process:
-                stop_group(process)
-                for stream in (process.stdin, process.stdout, process.stderr):
-                    if stream: stream.close()
+        key = (environment['id'], host, python)
+        with self._channel_guard:
+            if self.closed.is_set(): raise ProviderCancelled()
+            channel = self._channels.get(key)
+            if channel is None or channel.closed.is_set():
+                if channel: channel.close()
+                try: channel = self.channel_factory(argv, payload)
+                except OSError: raise TransportError('Could not start SSH.') from None
+                self._channels[key] = channel
+            return channel
+
+    def _ssh(self, environment, payload, stop=None):
+        return self._channel(environment, payload).request(payload['request'], stop)
+
+    def _watch(self, environment_id, request, stop):
+        environment = self.store.get_environment(environment_id)
+        channel = self._channel(environment, {'digest': self.digest})
+        return channel.subscribe({**request, 'op': 'watch'}, stop)
 
     def rpc(self, environment_id, request, *, install=False, stop=None):
         if not self.enabled or self.closed.is_set(): raise Forbidden('Remote execution is disabled.')
@@ -177,8 +157,7 @@ class RemoteManager:
         key = (environment_id, provider)
         with self._model_guard:
             lock = self._model_locks.setdefault(key, threading.Lock())
-        # The remote bootstrap exits after each RPC, so its Catalog cache cannot
-        # survive. Cache only model metadata in this long-lived controller.
+        # Cache only public model metadata, scoped to device and provider.
         with lock:
             if not self.enabled or self.closed.is_set(): raise Forbidden('Remote execution is disabled.')
             self.check({'environment_id': environment_id, 'provider': provider})
@@ -211,18 +190,29 @@ class RemoteManager:
         def call(request):
             return self.rpc(environment_id, {**identity, **request}, stop=stop)
 
-        started = False
+        started, subscription = False, None
         try:
             while not stop.is_set() and not self.closed.is_set():
                 try:
                     if not started:
                         call({'op': 'start', 'spec': spec})
                         started = True
-                    value = call({'op': 'poll', 'after': cursor})
+                    if self.streaming:
+                        if subscription is None:
+                            subscription = self._watch(environment_id, {**identity, 'after': cursor}, stop)
+                        value = subscription.next(stop)
+                    else:
+                        value = call({'op': 'poll', 'after': cursor})
+                    with guard: answers = list(completed.items())
+                    for identifier, response in answers:
+                        call({'op': 'respond', 'request_id': identifier, 'response': response})
+                        with guard: completed.pop(identifier, None)
+                    if value is None: continue
+                    if cursor == 0 or disconnected is not None:
+                        self.store.update_environment_status(environment_id, 'connected')
                     if disconnected is not None:
                         emit('transport_status', {'status': 'connected'})
                         disconnected = None
-                    self.store.update_environment_status(environment_id, 'connected')
                     for event in value['events']:
                         if event['seq'] <= cursor: continue
                         if event['seq'] != cursor + 1: raise ProviderError('The remote event sequence has a gap.')
@@ -234,17 +224,15 @@ class RemoteManager:
                         else:
                             emit(event['kind'], event['payload'])
                         cursor = event['seq']
-                    with guard: answers = list(completed.items())
-                    for identifier, response in answers:
-                        call({'op': 'respond', 'request_id': identifier, 'response': response})
-                        with guard: completed.pop(identifier, None)
                     state = value['state']
                     if state['status'] not in ('running', 'starting') and cursor >= state.get('last_seq', 0):
                         if state['status'] == 'completed': return state['result']
                         if state['status'] == 'cancelled': raise ProviderCancelled()
                         raise ProviderError(state.get('error') or 'The remote agent failed.')
-                    if len(value['events']) < 100: stop.wait(.4)
+                    if not self.streaming and len(value['events']) < 100: stop.wait(.4)
                 except TransportError:
+                    if subscription:
+                        subscription.close(); subscription = None
                     if disconnected is None:
                         disconnected = time.monotonic()
                         emit('transport_status', {'status': 'reconnecting'})
@@ -255,6 +243,7 @@ class RemoteManager:
                     stop.wait(1)
             raise ProviderCancelled()
         finally:
+            if subscription: subscription.close()
             # No local credentials or HTTP listener are exposed to the SSH host.
             # If SSH cannot deliver cancellation, the remote lease stops its children.
             try: self.rpc(environment_id, {**identity, 'op': 'cancel'})
@@ -262,4 +251,7 @@ class RemoteManager:
 
     def close(self):
         self.closed.set()
+        with self._channel_guard:
+            channels = list(self._channels.values()); self._channels.clear()
+        for channel in channels: channel.close()
         with self._model_guard: self._model_cache.clear()

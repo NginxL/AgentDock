@@ -1,3 +1,4 @@
+import { followSession } from "../sessionEvents";
 import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
 import InferenceControls from "../InferenceControls";
@@ -156,7 +157,6 @@ export default function Workspace({
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [eventError, setEventError] = useState("");
   const [eventLoading, setEventLoading] = useState(false);
-  const lastSeq = useRef(0);
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
   const editingAgent = agents.find((a) => a.id === editingAgentID);
@@ -211,7 +211,6 @@ export default function Workspace({
   useEffect(() => {
     setEvents([]);
     setEventError("");
-    lastSeq.current = 0;
     if (demo) {
       setEvents(state.events.filter((event) => event.session_id === sessionID));
       setEventLoading(false);
@@ -222,58 +221,33 @@ export default function Workspace({
       return;
     }
     const controller = new AbortController();
-    let pending = false;
     setEventLoading(true);
-    async function poll() {
-      if (pending) return;
-      pending = true;
-      try {
-        for (let page = 0; page < 10; page++) {
-          const result = await request<{ events: AgentEvent[] }>(
-            token,
-            `/api/sessions/${encodeURIComponent(sessionID)}/events?after=${lastSeq.current}`,
-            undefined,
-            controller.signal,
-          );
-          if (controller.signal.aborted) return;
-          if (!Array.isArray(result.events))
-            throw new Error("Invalid event list");
-          if (result.events.length) {
-            lastSeq.current = Math.max(
-              lastSeq.current,
-              ...result.events.map((event) => event.seq),
-            );
-            setEvents((previous) => {
-              const seen = new Set(previous.map((event) => event.id));
-              return [
-                ...previous,
-                ...result.events.filter((event) => !seen.has(event.id)),
-              ];
-            });
-          }
-          if (result.events.length < 500) break;
-        }
-        setEventError("");
-      } catch {
-        if (!controller.signal.aborted)
-          setEventError(
-            lang === "zh"
-              ? "事件读取失败，正在重试。"
-              : "Could not load events. Retrying.",
-          );
-      } finally {
-        pending = false;
-        if (!controller.signal.aborted) setEventLoading(false);
-      }
-    }
-    void poll();
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") void poll();
-    }, 1000);
-    return () => {
-      controller.abort();
-      window.clearInterval(interval);
-    };
+    void followSession(
+      token,
+      sessionID,
+      controller.signal,
+      (incoming) => {
+        setEvents((previous) => {
+          const seen = new Set(previous.map((event) => event.id));
+          return [
+            ...previous,
+            ...incoming.filter((event) => !seen.has(event.id)),
+          ];
+        });
+      },
+      (failed) => {
+        if (controller.signal.aborted) return;
+        setEventLoading(false);
+        setEventError(
+          failed
+            ? lang === "zh"
+              ? "事件连接中断，正在重连。"
+              : "Event connection interrupted. Reconnecting."
+            : "",
+        );
+      },
+    );
+    return () => controller.abort();
   }, [sessionID, token, lang, demo, demo ? state.events : null]);
 
   return (

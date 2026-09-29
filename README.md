@@ -99,6 +99,8 @@ Click an **agent card** to open its dedicated conversation page. Switch or creat
 
 Create a conversation and send a message to your agent. **Enter** sends; **Shift + Enter** inserts a new line. Confirming text with an input method does not send the draft. Your messages appear in right-aligned bubbles, with the agent's final reply on the left. Thinking summaries, progress and tool output expand automatically while awaiting the reply. When the final reply arrives, the process collapses and the reply remains separate. Click the task status to reopen or close the process; live updates preserve your manual choice. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
+Conversations stream execution progress and replies, reconnecting and catching up after brief interruptions. Model lists are preloaded for configured agents.
+
 ![Dedicated agent conversation page with session navigation and execution details, fictional demo data](docs/images/conversation.en.png)
 
 Click **Model** or **Reasoning effort** below the conversation input to choose from the conversation's original runtime location. Changes apply to future messages in this conversation. Submitted and queued messages retain their original choices. Changing models resets effort to Auto; **Use agent defaults** restores inheritance.

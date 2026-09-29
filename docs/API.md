@@ -2,7 +2,7 @@
 
 **English** · [简体中文](API.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
-Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON. Error responses are `{ "error": "message" }`.
+Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON except for the SSE endpoint. Error responses are `{ "error": "message" }`.
 
 | HTTP status | Meaning |
 | --- | --- |
@@ -27,9 +27,11 @@ All metric groups include only native sessions bound to registered agents. With 
 
 Independent sessions have a null `project_id` and fixed `workspace`. Independent agents receive empty teammate/memory searches; project dispatch and memory proposals are denied.
 
-Task events include `reasoning_chunk`, `reasoning_message` (a final replacement for the same `item_id` and `part`), `tool_call`, `tool_output` and `tool_result`. Each carries `run_id`; tool chunks use `item_id`. Codex supplies reasoning summaries; Claude supplies published thinking blocks. `run_finished.status` is authoritative for terminal state, and `runs.result` preserves the final reply. Visible conversations poll events every second and drain full cursor pages.
+Task events include `reasoning_chunk`, `reasoning_message` (a final replacement for the same `item_id` and `part`), `tool_call`, `tool_output` and `tool_result`. Each carries `run_id`; tool chunks use `item_id`. Codex supplies reasoning summaries; Claude supplies published thinking blocks. `run_finished.status` is authoritative for terminal state, and `runs.result` preserves the final reply. Conversations drain cursor-based history and then subscribe to live events. One-second polling is retained only for older servers without stream support.
 
 `agent_message_chunk` carries incremental text; `agent_message` replaces the text for the same `provider`, `item_id` and `part`. Codex's optional `phase` distinguishes `commentary` from `final_answer`. These item events belong to the live process; `assistant_message` and `runs.result` supply the final reply. Without a Codex phase, the last assistant item supplies the reply; explicit commentary is excluded. Claude's result takes precedence, with its last assistant message's text blocks as the fallback. The interface collapses the process on final-reply arrival and omits duplicate reply text from the process.
+
+Streams use authenticated streaming `fetch`; bearer tokens never enter URLs. SQLite commits notify subscribers, and cursor reads and waits share a lock to prevent missed events. SSE data frames are bounded to approximately 1 MiB, with at most 32 connections and idle keepalives every ten seconds. Slow writes time out; clients replay from their received cursor. Incremental rendering batches at most 30 milliseconds; final replies and terminal states flush immediately.
 
 ## Authentication and request boundary
 
@@ -45,7 +47,7 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 
 `environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions capture their agent's environment at creation. Updating an agent's `environment_id` changes the destination of new conversations only; existing sessions keep their environment. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Local and SSH model catalogs are cached in the controller for five minutes per environment/provider. Concurrent SSH lookups for the same pair share one request; reconnecting invalidates that environment's cache. Failed lookups are not cached.
 
-The interface preloads metadata when entering a conversation and shares a one-minute memory cache with agent settings. Reopening a menu reuses the list; expired entries remain visible during refresh. Workbench credentials, providers and environments have separate cache scopes. Disconnecting or reconnecting clears the interface cache. Discovery never submits an agent prompt.
+The interface preloads metadata for configured, connected agents with at most two concurrent warmups. Conversations and agent settings share a one-minute memory cache, checked every minute while the page is visible. Reopening a menu reuses the list; expired entries remain visible during refresh. Workbench credentials, providers and environments have separate cache scopes. Disconnecting or reconnecting clears the interface cache. Discovery never submits an agent prompt.
 
 Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID. Menu snapshots retain `environment_name` for compatibility and include `agent_names`, the custom names associated with that connection. The menu displays these names without device labels; names are not routing identifiers. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
 
@@ -75,6 +77,7 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | `POST /api/sessions/{id}/delete` | Empty object; requires human authentication. Rejects active or linked unfinished tasks. Removes private directories, runs and events; remote cleanup must succeed before local records are removed. Shared project directories and native logins are kept. |
 | `POST /api/runs/{id}/cancel` | Empty object. Cancels the logical task containing this run, including its existing queued/active descendants. Returns `{ "ok": true }`. |
 | `GET /api/sessions/{id}/events?after=0` | `{ "events": [...] }`, ordered by increasing `seq`, at most 500 per request. |
+| `GET /api/sessions/{id}/events/stream?after=0` | Same administrator authentication, SSE response. Each `data` is `{ "events": [...] }`; `id` is the last `seq` in the batch. Reconnect with the last received cursor. |
 | `POST /api/messages` | `project_id`, `recipient_id`, `body` (up to 12,000 characters); optional `recipient_session_id`, `correlation_id`, `idempotency_key`. Dispatches as `human` and returns the delivery record. |
 | `POST /api/memories` | `project_id`, `key`, `content`, `expected_version` (0 for a new key). |
 | `POST /api/memories/{id}/archive` | `expected_version`. Soft archive with a new version and history entry. |

@@ -10,17 +10,23 @@ from .store import Forbidden
 class Catalog:
     def __init__(self, config):
         self.config, self.cache = config, {}
-        self.lock = threading.Lock()
+        self.locks = {provider: threading.Lock() for provider in ('codex', 'claude')}
         self.stop = threading.Event()
 
     def close(self):
         self.stop.set()
-        with self.lock: pass
+        for lock in self.locks.values():
+            with lock: pass
+
+    def invalidate(self):
+        for provider, lock in self.locks.items():
+            with lock: self.cache.pop(provider, None)
 
     def read(self, provider):
         if not self.config.get('execution_enabled'): raise Forbidden('Execution is disabled for review')
         if provider not in ('codex', 'claude'): raise ValueError('Unsupported provider')
-        with self.lock:
+        with self.locks[provider]:
+            if self.stop.is_set(): raise Forbidden('Model discovery is closed')
             stamp, value = self.cache.get(provider, (0, None))
             if value and time.monotonic() - stamp < 300: return value
             command = self.config.get('commands', {}).get(provider)

@@ -42,6 +42,8 @@ class Store:
     def __init__(self, path):
         self._existing_db = str(path) != ":memory:" and Path(path).expanduser().exists()
         self.lock = threading.RLock()
+        self.changed = threading.Condition(self.lock)
+        self.closed = False
         self._file_lock = None
         self.workspaces = (Path(path).expanduser().resolve().parent if str(path) != ":memory:" else Path(tempfile.gettempdir()) / "agentdock-tests") / "workspaces"
         if str(path) != ":memory:":
@@ -267,12 +269,15 @@ class Store:
             try:
                 yield
                 self.db.execute("COMMIT")
+                self.changed.notify_all()
             except BaseException:
                 self.db.execute("ROLLBACK")
                 raise
 
     def close(self):
         with self.lock:
+            self.closed = True
+            self.changed.notify_all()
             self.db.close()
             if self._file_lock:
                 fcntl.flock(self._file_lock.fileno(), fcntl.LOCK_UN)
@@ -717,6 +722,19 @@ class Store:
         with self.lock:
             self._one("sessions",session_id)
             return self._all("SELECT * FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT 500",(session_id,max(0,int(after))))
+
+    def wait_session_events(self, session_id, after, stop, timeout=10):
+        # Subscribe and inspect the durable cursor under the same lock. A commit
+        # between a history read and the wait cannot be missed.
+        with self.changed:
+            result = []
+            def available():
+                nonlocal result
+                if self.closed or stop.is_set(): return True
+                result = self.session_events(session_id, after)
+                return bool(result)
+            self.changed.wait_for(available, timeout)
+            return result
 
     def enqueue_message(self, project_id, sender_id, recipient_id, body, correlation_id=None, idempotency_key=None, *, sender_session_id=None, recipient_session_id=None, parent_run_id=None):
         body=text(body,"body",12000)
