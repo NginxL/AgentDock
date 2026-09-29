@@ -17,6 +17,7 @@ import type {
 import { Brand, Icon, errorMessage } from "./ui";
 import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
+import Conversations from "./views/Conversations";
 import Messages from "./views/Messages";
 import Memories from "./views/Memories";
 import { ProjectHeader, ProjectList } from "./views/Projects";
@@ -70,6 +71,7 @@ export default function App() {
     projectID,
     projectView,
     agentID: agentPageID,
+    sessionID: conversationID,
     navigate,
   } = useNavigation();
   const setTab = (tab: Tab) => {
@@ -567,6 +569,12 @@ export default function App() {
       badge: approvals.length,
     },
     {
+      key: "conversations",
+      icon: "message",
+      zh: "对话",
+      en: "Conversations",
+    },
+    {
       key: "projects",
       icon: "folder",
       zh: "项目",
@@ -684,7 +692,7 @@ export default function App() {
         </header>
         <main
           id="main-content"
-          className={`main-content ${pageAgent ? "agent-content" : ""}`}
+          className={`main-content ${pageAgent || tab === "conversations" ? "agent-content" : ""}`}
         >
           {(demo || !state.runtime.enabled) && (
             <div
@@ -727,6 +735,27 @@ export default function App() {
                 <Icon name="close" size={16} />
               </button>
             </div>
+          )}
+          {tab === "conversations" && (
+            <Conversations
+              state={state}
+              sessionID={conversationID}
+              token={token}
+              demo={demo}
+              busy={!!busy || demo}
+              mutate={mutate}
+              lang={lang}
+              t={t}
+              onSelect={(id) => navigate({ sessionID: id })}
+              onAgent={(id, projectID) =>
+                navigate({
+                  tab: projectID ? "projects" : "workspace",
+                  projectID: projectID ?? "",
+                  projectView: "agents",
+                  agentID: id,
+                })
+              }
+            />
           )}
           {tab === "projects" && !pageAgent && (
             <ProjectHeader
@@ -791,6 +820,15 @@ export default function App() {
               }
               initialEnvironment={agentEnvironment ?? undefined}
               onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
+              onConfigureAgent={() => {
+                setAgentEnvironment(project?.environment_id ?? "local");
+                navigate({
+                  tab: "workspace",
+                  projectID: "",
+                  projectView: "agents",
+                  agentID: "",
+                });
+              }}
             />
           )}
           {tab === "projects" && project && projectView === "tasks" && (

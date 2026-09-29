@@ -39,6 +39,8 @@ Local Codex 0.154.0 and Claude Code 2.1.283 passed two-turn text continuation in
 
 ## Isolated verification
 
+Project reuse checks cover separate project names, roles, settings, native bindings, directories, memory, tool capabilities and cancellation, including everyday conversations. Deletion and schema migration preserve other members. Browser tests cover the shared conversation index, project/everyday filters, explicit recipients, drafts, creation, missing IDs and history navigation. Production SSH hosts and real model requests are not used by these checks.
+
 Backend checks use temporary SQLite databases, fake native CLI processes, and fake Built-in usage helpers. Dispatcher integration tests use a temporary loopback HTTP endpoint and the actual MCP bridge, but all coding agents are deterministic local fixtures. No real model, provider login, or live quota endpoint is involved.
 
 Frontend checks use simulated DOM and HTTP responses. The production build validates TypeScript and generates static assets. The offline demonstration renders fictional projects, conversations, and quota values; it disables execution, mutation, and provider requests. Screenshots of that mode illustrate the interface only.

@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type Tab = "workspace" | "projects" | "usage" | "tokens";
+export type Tab =
+  | "workspace"
+  | "projects"
+  | "conversations"
+  | "usage"
+  | "tokens";
 export type ProjectView = "agents" | "tasks" | "memory";
 type Route = {
   tab: Tab;
   projectID: string;
   projectView: ProjectView;
   agentID: string;
+  sessionID: string;
 };
 const home: Route = {
   tab: "workspace",
   projectID: "",
   projectView: "agents",
   agentID: "",
+  sessionID: "",
 };
 
 function readRoute(): Route | null {
@@ -23,9 +30,16 @@ function readRoute(): Route | null {
   const [path, query] = hash.slice(2).split("?", 2);
   const params = new URLSearchParams(query);
   const projectID = params.get("project") ?? "";
+  if (path === "conversations")
+    return {
+      ...home,
+      tab: "conversations",
+      sessionID: params.get("session") ?? "",
+    };
   if (path.startsWith("agents/")) {
     try {
       return {
+        ...home,
         tab: projectID ? "projects" : "workspace",
         projectID,
         projectView: "agents",
@@ -38,6 +52,7 @@ function readRoute(): Route | null {
   // Existing bookmarks retain their project and destination inside Projects.
   if (path === "messages" || path === "memory")
     return {
+      ...home,
       tab: "projects",
       projectID,
       projectView: path === "messages" ? "tasks" : "memory",
@@ -46,6 +61,7 @@ function readRoute(): Route | null {
   if (path === "projects" || (path === "workspace" && projectID)) {
     const view = params.get("view");
     return {
+      ...home,
       tab: "projects",
       projectID,
       projectView: view === "tasks" || view === "memory" ? view : "agents",
@@ -68,6 +84,8 @@ export function useNavigation() {
         ? `agents/${encodeURIComponent(next.agentID)}`
         : next.tab;
     const params = new URLSearchParams();
+    if (next.tab === "conversations" && next.sessionID)
+      params.set("session", next.sessionID);
     if (next.tab === "projects" && next.projectID) {
       params.set("project", next.projectID);
       if (!next.agentID && next.projectView !== "agents")

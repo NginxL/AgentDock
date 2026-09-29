@@ -779,6 +779,165 @@ input[readonly] {
 .inset-form {
   padding: 20px;
 }
+.project-agent-source {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+}
+.project-agent-actions {
+  justify-content: flex-end;
+}
+.conversation-hub {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+.conversation-index {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.conversation-index h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.conversation-filters,
+.conversation-create {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.conversation-create {
+  overflow-y: auto;
+  flex-shrink: 0;
+  max-height: 60%;
+}
+.conversation-create .panel-heading {
+  padding: 0;
+  border: 0;
+}
+.conversation-index-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 80px;
+  padding: 8px;
+}
+.conversation-index-item {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  padding: 14px 10px;
+}
+.conversation-index-item.active {
+  background: #eeeef9;
+}
+.conversation-index-item:hover {
+  background: var(--soft);
+}
+.conversation-index-item > span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.conversation-index-item strong,
+.conversation-index-item small {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.conversation-index-item small,
+.conversation-context {
+  color: var(--muted);
+  font-size: 12px;
+}
+.conversation-detail,
+.conversation-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.conversation-view .workspace-grid {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.conversation-view .conversation-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.conversation-view .conversation-panel > .panel-heading,
+.conversation-view .prompt-form {
+  flex-shrink: 0;
+}
+.conversation-view .prompt-form textarea {
+  max-height: 24vh;
+}
+.conversation-view .event-feed {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+}
+.conversation-context {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px 12px;
+  gap: 12px;
+}
+.conversation-context .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.conversation-placeholder {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+.conversation-empty {
+  padding: 16px;
+}
+@media (max-width: 900px) {
+  .conversation-hub {
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 10px;
+  }
+}
+@media (max-width: 650px) {
+  .conversation-hub {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .conversation-index {
+    flex-shrink: 0;
+    max-height: 330px;
+  }
+  .conversation-detail {
+    min-height: 550px;
+  }
+}
+.agent-project-name {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
 .inset-form > .panel-heading {
   padding: 0 0 15px;
   margin-bottom: 18px;

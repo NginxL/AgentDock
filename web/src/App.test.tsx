@@ -221,7 +221,6 @@ describe("user-defined agent roles", () => {
     async (provider) => {
       render(<App />);
       await connect();
-      openProject();
       fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
       const name = screen.getByLabelText("名称") as HTMLInputElement;
       const role = screen.getByLabelText(
@@ -247,7 +246,7 @@ describe("user-defined agent roles", () => {
       )!;
       expect(JSON.parse(call[1].body)).toEqual({
         environment_id: "local",
-        project_id: "project-a",
+        project_id: null,
         workspace: null,
         model: null,
         effort: null,
@@ -467,7 +466,7 @@ describe("selection after delayed mutation refresh", () => {
     fetchMock.mockImplementation(async (path: string) => {
       if (path.startsWith("/api/providers?"))
         return response(providerFixture(path));
-      if (path === "/api/agents") {
+      if (path === "/api/projects/project-a/agents") {
         created = true;
         return response(agent);
       }
@@ -479,11 +478,16 @@ describe("selection after delayed mutation refresh", () => {
     await connect();
     openProject();
     fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-    fireEvent.change(screen.getByLabelText("名称"), {
+    fireEvent.change(screen.getByLabelText("项目内名称"), {
       target: { value: agent.name },
     });
-    await chooseProvider("claude");
-    fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
+    fireEvent.change(screen.getByLabelText("使用 Agent"), {
+      target: { value: "agent-a" },
+    });
+    fireEvent.change(screen.getByLabelText("项目内名称"), {
+      target: { value: agent.name },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加到项目" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(([path]) => path === "/api/state"),

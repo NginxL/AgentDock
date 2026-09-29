@@ -22,6 +22,14 @@ Open **Projects** in the sidebar to create or select a project, then switch betw
 
 ![Project list, fictional demo data](docs/images/projects.en.png)
 
+**One agent, multiple projects:** configure an agent in Workspace, then open **Projects → Agents → Add agent**, select it and set its project name and role. The same Codex can be `cr` in project A and `coding` in project B. Device, model, effort and permission defaults are copied when added; later edits stay independent. Conversations and project memory remain separate. Same-device members use the target project directory; cross-device members require an explicit directory on the agent's device. Existing everyday conversations are preserved. Project TPS includes only that project's members.
+
+**Conversations** brings project and everyday chats into one sidebar entry. Search by title, agent or project, filter by project or **Everyday chats**, and select a conversation to follow progress, read the final reply or send another message. **New conversation** selects an everyday or project agent.
+
+![Unified conversations, fictional demo data](docs/images/conversations.en.png)
+
+Configuration and context are isolated; using the same CLI account still shares provider quota. Tasks targeting overlapping directories remain serialized. Project separation is not an additional OS sandbox.
+
 <details>
 <summary>Role configuration, task handoffs, and usage monitoring</summary>
 

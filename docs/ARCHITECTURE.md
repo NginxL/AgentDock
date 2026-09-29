@@ -37,6 +37,14 @@ The browser's `?demo=1` mode reads fictional fixtures and makes no API requests.
 CLI entry points live in `agentdock/registry.py`. `agentdock/acp.py` handles ACP capabilities, native continuation, model settings, permissions and streaming events. `agentdock/acp_home.py` provides private HOME/XDG state and selected configuration snapshots. SSH workers reuse these modules; provider discovery submits no model requests. See [CLI support](PROVIDERS.md) for capability and live-validation boundaries.
 
 
+## Reusable agents and project members
+
+`POST /api/projects/{id}/agents` creates a new agent execution identity with the target `project_id` and a nullable `source_agent_id` reference. It snapshots the selected agent's provider, device, model, effort and permissions, with project-local name and role. It never copies sessions, native identifiers, events or the source workspace. Same-device members use the target project path; cross-device members require an explicit project path on the selected device. Legacy project agents can also be selected as a source.
+
+The source link records provenance, not live inheritance. Editing or deleting a member does not update its source or siblings. Source deletion sets links to null while retaining members and their conversations. The migration only adds a nullable column; existing IDs, sessions and roles remain intact. Each member is a separate scheduler identity, while overlapping directories still serialize. Memory and dispatch capabilities continue to use the run's project scope. Independent conversations retain null project ownership and receive no project memory or teammates. Native accounts and provider quota are shared when the same CLI login is reused.
+
+`Conversations.tsx` indexes the existing sessions without moving them. Routes use `#/conversations?session=<id>`; selection, search and project/everyday filters do not alter ownership. The detail pane reuses the existing stream, task timeline, approvals and composer with an explicit session ID; a missing ID never falls back to another session.
+
 ## Sessions and turns
 
 A session belongs to one agent and optionally a project. Its working directory is fixed when created. Its `native_session_id` is initially empty and is bound only by that session's active run. Once bound, a different native ID is rejected. IDs belonging to another managed session cannot be rebound.

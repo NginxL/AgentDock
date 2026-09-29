@@ -30,6 +30,30 @@ export interface Activity {
   updated_at: number | null;
   status: string;
 }
+type TPSMeter = Pick<
+  Meter,
+  "points" | "active_sessions" | "current_tps" | "average_tps"
+>;
+export function agentTPS(
+  metrics: Metrics | null | undefined,
+  ids: string[],
+): TPSMeter | undefined {
+  if (!metrics || ids.some((id) => !metrics.agents[id])) return undefined;
+  const meters = [...new Set(ids)].map((id) => metrics.agents[id]);
+  return {
+    points: Array.from({ length: 60 }, (_, i) =>
+      meters.reduce((sum, meter) => sum + (meter.points[i] ?? 0), 0),
+    ),
+    active_sessions: meters.reduce(
+      (sum, meter) => sum + meter.active_sessions,
+      0,
+    ),
+    current_tps: meters.some((meter) => meter.current_tps === null)
+      ? null
+      : meters.reduce((sum, meter) => sum + (meter.current_tps ?? 0), 0),
+    average_tps: meters.reduce((sum, meter) => sum + meter.average_tps, 0),
+  };
+}
 export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [failed, setFailed] = useState(false);
@@ -160,7 +184,7 @@ export function TPS({
   compact = false,
   stale = false,
 }: {
-  meter?: Meter;
+  meter?: TPSMeter;
   t: Translate;
   compact?: boolean;
   stale?: boolean;

@@ -85,10 +85,15 @@ export default function AgentDeletion({
             </button>
           </div>
           <p>
-            {t(
-              `将删除此 Agent、${sessionCount} 个会话及其私有文件，无法撤销。共用项目文件和原生 CLI 配置会保留。`,
-              `This permanently deletes the agent, its ${sessionCount} conversations and their private files. Shared project files and native CLI settings are kept.`,
-            )}
+            {agent.project_id
+              ? t(
+                  `将删除此项目中的「${agent.name}」、${sessionCount} 个会话及其私有文件，无法撤销。其他项目的 Agent 和共用项目文件会保留。`,
+                  `This permanently deletes “${agent.name}” in this project, its ${sessionCount} conversations and their private files. Agents in other projects and shared project files are kept.`,
+                )
+              : t(
+                  `将删除此 Agent、${sessionCount} 个会话及其私有文件，无法撤销。共用项目文件和原生 CLI 配置会保留。`,
+                  `This permanently deletes the agent, its ${sessionCount} conversations and their private files. Shared project files and native CLI settings are kept.`,
+                )}
           </p>
           <div className="button-row">
             <button

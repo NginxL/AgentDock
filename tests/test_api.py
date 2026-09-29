@@ -13,6 +13,18 @@ class APITests(unittest.TestCase):
         self.h={'Host':'127.0.0.1:47831','Authorization':'Bearer test-admin','Content-Type':'application/json','Origin':'http://127.0.0.1:47831'}
     def tearDown(self): self.store.close(); self.tmp.cleanup()
     def call(self,method,path,payload=None,headers=None): return self.api.dispatch(method,path,self.h if headers is None else headers,json.dumps(payload or {}).encode())
+    def test_project_agent_reuse_requires_human_auth_and_preserves_source(self):
+        p = self.store.add_project('Project A', self.tmp.name)
+        source = self.store.add_agent(None, 'Codex', 'codex')
+        route = '/api/projects/' + p['id'] + '/agents'
+        body = {'source_agent_id': source['id'], 'name': 'cr', 'role': 'Review'}
+        self.assertEqual(self.call('POST', route, body, {**self.h, 'Authorization': 'Bearer invalid'})[0], 401)
+        status, member = self.call('POST', route, body)
+        self.assertEqual(status, 200)
+        self.assertEqual((member['project_id'], member['source_agent_id'], member['name']), (p['id'], source['id'], 'cr'))
+        self.assertEqual(self.store.get_agent(source['id']), source)
+        self.assertEqual(self.call('POST', route, {**body, 'environment_id': 'other'})[0], 400)
+        self.runtime.start.assert_not_called()
     def test_provider_discovery_is_authenticated_read_only_and_device_specific(self):
         self.runtime.config = {'commands': {}}
         self.assertEqual(self.call('GET', '/api/providers', headers={**self.h, 'Authorization':'Bearer wrong'})[0], 401)

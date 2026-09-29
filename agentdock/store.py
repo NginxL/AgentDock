@@ -84,6 +84,7 @@ class Store:
         self._migrate_environments()
         self._migrate_session_workspaces()
         self._migrate_inference_settings()
+        self._migrate_project_agents()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -158,6 +159,33 @@ class Store:
         if value not in ("ask", "full_access"):
             raise Invalid("Invalid agent permission mode")
         return value
+
+    def _migrate_project_agents(self):
+        # A project member has its own execution identity. The source link is
+        # provenance only: updates/deletion must never cascade into other projects.
+        with self.transaction():
+            if 'source_agent_id' not in {r[1] for r in self.db.execute('PRAGMA table_info(agents)')}:
+                self.db.execute('ALTER TABLE agents ADD COLUMN source_agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL')
+
+    def add_project_agent(self, project_id, changes):
+        if not isinstance(changes, dict) or set(changes) - {'source_agent_id', 'name', 'role', 'workspace'}:
+            raise Invalid('Invalid project agent settings')
+        with self.transaction():
+            project = self._one('projects', project_id)
+            source = self._one('agents', text(changes.get('source_agent_id'), 'source_agent_id', 160))
+            workspace = changes.get('workspace')
+            if project['environment_id'] != source['environment_id'] and not workspace:
+                raise Invalid('Choose this project\'s working directory on the agent device')
+            item = {**source, 'id': str(uuid.uuid4()), 'project_id': project_id,
+                    'source_agent_id': source['id'], 'created_at': now(),
+                    'name': text(changes.get('name', source['name']), 'name', 100),
+                    'role': text(changes.get('role', source['role']), 'role', 4000, True)}
+            # Never copy the source's workspace or any native history. Same-device
+            # members use the target project directory; cross-device paths are explicit.
+            item['workspace'] = self._workspace(project_id, workspace, item['id'], item['environment_id'])
+            self.db.execute('''INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode,source_agent_id)
+                VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode,:source_agent_id)''', item)
+            return item
 
     def _migrate_inference_settings(self):
         with self.transaction():
@@ -392,7 +420,7 @@ class Store:
         permission_mode = self._permission_mode(permission_mode)
         environment_id=environment_id or 'local'
         self.get_environment(environment_id)
-        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode)
+        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None)
         with self.transaction():
             item["workspace"] = self._workspace(project_id, workspace, item["id"],environment_id)
             self.db.execute("INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode) VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode)",item)
@@ -409,6 +437,8 @@ class Store:
             model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]), agent['provider'])
             permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
+            if agent['source_agent_id'] and project_id != agent['project_id']:
+                raise Conflict('Add this agent to the other project separately')
             workspace = changes.get("workspace", None if relocated else agent["workspace"])
             moved = project_id != agent["project_id"] or workspace != agent["workspace"]
             if (project_id != agent['project_id'] or (moved and not relocated)) and self.db.execute("SELECT 1 FROM sessions WHERE agent_id=?", (agent_id,)).fetchone():

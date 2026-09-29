@@ -40,6 +40,7 @@ export interface Project {
   path: string;
 }
 export interface Agent {
+  source_agent_id?: string | null;
   environment_id?: string;
   id: string;
   project_id: string | null;

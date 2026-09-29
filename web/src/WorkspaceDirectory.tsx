@@ -17,6 +17,7 @@ export default function WorkspaceDirectory({
   token,
   disabled,
   browseEnabled,
+  required = false,
   t,
 }: {
   value: string;
@@ -25,6 +26,7 @@ export default function WorkspaceDirectory({
   token: string;
   disabled: boolean;
   browseEnabled: boolean;
+  required?: boolean;
   t: Translate;
 }) {
   const [open, setOpen] = useState(false);
@@ -100,22 +102,30 @@ export default function WorkspaceDirectory({
   return (
     <div className="workspace-directory" ref={root}>
       <label>
-        {t("工作目录（可留空）", "Working directory (optional)")}
+        {required
+          ? t(
+              "此项目在 Agent 设备上的目录",
+              "Project directory on the agent device",
+            )
+          : t("工作目录（可留空）", "Working directory (optional)")}
         <input
+          required={required}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           spellCheck={false}
           placeholder={
-            remote
-              ? t(
-                  "留空在远端创建独立目录",
-                  "Leave blank for a private remote directory",
-                )
-              : t(
-                  "留空在本机创建独立目录",
-                  "Leave blank for a private local directory",
-                )
+            required
+              ? t("填写此项目的绝对路径", "Enter this project's absolute path")
+              : remote
+                ? t(
+                    "留空在远端创建独立目录",
+                    "Leave blank for a private remote directory",
+                  )
+                : t(
+                    "留空在本机创建独立目录",
+                    "Leave blank for a private local directory",
+                  )
           }
         />
       </label>

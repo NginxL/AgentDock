@@ -73,8 +73,9 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 服务缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `GET /api/directories` | 查询参数 `environment_id`（默认 `local`）及 `path`（默认 `~`）。仅管理员可用，只读返回最多 200 个目录，包含 `path`、`parent`、`directories`、`truncated`，不读取文件内容。SSH 浏览要求启用执行并连接远端组件；路径在所选设备上解析。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
+| `POST /api/projects/{id}/agents` | `source_agent_id`；可选 `name`、`role`、`workspace`。按目标项目创建独立成员，复制来源默认设置，不复制会话或历史。同设备默认用项目目录；跨设备必须明确填写目录。需要用户令牌，不启动 CLI。 |
 | `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`、`permission_mode`（默认 `ask`，或 `full_access`）。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
-| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`、`permission_mode`、`environment_id`。切换位置允许在任务执行期间进行，并保留旧会话的默认设置；未提供的模型、思考强度和目录重置为新位置默认值。`workspace` 可在尚无会话或同时切换位置时修改；`project_id` 仅在尚无会话时可修改。其他模型及权限变更须无排队和运行任务。提供方不可更改。 |
+| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`、`permission_mode`、`environment_id`。切换位置允许在任务执行期间进行，并保留旧会话的默认设置；未提供的模型、思考强度和目录重置为新位置默认值。`workspace` 可在尚无会话或同时切换位置时修改；`project_id` 仅在尚无会话且无来源引用时可修改；有关联来源的成员须在另一项目单独添加。其他模型及权限变更须无排队和运行任务。提供方不可更改。 |
 | `POST /api/agents/{id}/delete` | 空对象；用户认证接口。清理此 Agent 的全部会话专属目录后删除 Agent 和会话记录。存在排队、执行中或未结束的协作任务时拒绝删除。共用项目、共享记忆及其他 Agent 保留。 |
 | `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
 | `POST /api/sessions/{id}/settings` | `{ "model": string或null, "effort": string或null }` 覆盖当前会话设置，或 `{ "inherit": true }` 恢复使用 Agent 默认值。仅影响后续提交的消息，不启动 CLI，不更改 Agent 或原生配置。 |
@@ -103,7 +104,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 | 记录 | 主要字段 |
 | --- | --- |
-| Agent | `id`、`project_id`、`environment_id`、`name`、`provider`、`role`、`workspace`、`workspace_is_default`（状态响应中的派生字段）、`model`、`effort`、`permission_mode`。修改权限需要用户访问令牌，MCP 能力令牌不能编辑 Agent。 |
+| Agent | `id`、`project_id`、`source_agent_id`（可空来源引用）、`environment_id`、`name`、`provider`、`role`、`workspace`、`workspace_is_default`（状态响应中的派生字段）、`model`、`effort`、`permission_mode`。修改权限需要用户访问令牌，MCP 能力令牌不能编辑 Agent。 |
 | 会话 | `id`、`project_id`、`agent_id`、`title`、`status`、`native_session_id`、`environment_id`、`workspace`、`agent_defaults`、`model`、`effort`、`model_override`、`created_at`、`updated_at`。首次执行前原生标识为 null，公共 API 不允许指定或修改它。 |
 | 运行 | `id`、`session_id`、`project_id`、`agent_id`、`prompt`、`status`、`origin`、`parent_run_id`、`root_run_id`、`task_run_id`、`depth`、`delivery_id`、`model`、`effort`、`permission_mode`、`result`、`error`、时间戳。模型、推理等级和权限在提交时记录。 |
 | 投递（`messages`） | `id`、`project_id`、`sender_id`、`recipient_id`、`sender_session_id`、`recipient_session_id`、`sender_run_id`、`run_id`、`reply_run_id`、`body`、`status`、`result`、`error`、`correlation_id`、`idempotency_key`、时间戳。 |

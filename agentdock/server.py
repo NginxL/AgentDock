@@ -112,6 +112,7 @@ class API:
                 elif parts[3]=='remove': self.store.remove_environment(parts[2]); result={'ok':True}
                 else: raise Missing('Route not found')
             elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
+            elif len(parts)==4 and parts[:2]==['api','projects'] and parts[3]=='agents': result=self.store.add_project_agent(parts[2],p)
             elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif len(parts)==4 and parts[:2]==["api","agents"] and parts[3]=='delete': return 200,self.runtime.delete_agent(parts[2])

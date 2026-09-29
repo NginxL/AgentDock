@@ -5,6 +5,7 @@ import InferenceControls from "../InferenceControls";
 import AgentDeletion from "../AgentDeletion";
 import ProviderIcon from "../ProviderIcon";
 import ProviderSelect from "../ProviderSelect";
+import ProjectAgentForm from "../ProjectAgentForm";
 import { useProviderAvailability } from "../providerAvailability";
 import WorkspaceDirectory from "../WorkspaceDirectory";
 import { useModelCatalog } from "../modelCatalog";
@@ -12,7 +13,7 @@ import AgentConnection, {
   NEW_SSH_CONNECTION,
   type SSHConnectionDraft,
 } from "../AgentConnection";
-import { TPS, type Metrics } from "../metrics";
+import { TPS, agentTPS, type Metrics } from "../metrics";
 import { listOf, remainingPercent, request } from "../api";
 import type {
   Agent,
@@ -56,6 +57,9 @@ export default function Workspace({
   onNavigateAgent,
   initialEnvironment,
   onInitialEnvironmentUsed,
+  onConfigureAgent,
+  conversationOnly = false,
+  sessionPageID,
 }: {
   t: Translate;
   lang: Language;
@@ -75,8 +79,12 @@ export default function Workspace({
   onNavigateAgent?: (id: string, replace?: boolean) => void;
   initialEnvironment?: string;
   onInitialEnvironmentUsed?: () => void;
+  onConfigureAgent?: () => void;
+  conversationOnly?: boolean;
+  sessionPageID?: string;
 }) {
   const [agentForm, setAgentForm] = useState(initialEnvironment !== undefined);
+  const [projectAgentForm, setProjectAgentForm] = useState(false);
   const draftTarget = useRef<string | null>(
     initialEnvironment !== undefined ? "new" : null,
   );
@@ -147,11 +155,14 @@ export default function Workspace({
     Record<string, string>
   >({});
   const relevantSessions = sessions.filter((s) => s.agent_id === agentID);
-  const sessionID = relevantSessions.some(
-    (s) => s.id === sessionSelections[agentID],
-  )
-    ? sessionSelections[agentID]
-    : (relevantSessions[0]?.id ?? "");
+  const sessionID =
+    sessionPageID !== undefined
+      ? relevantSessions.some((s) => s.id === sessionPageID)
+        ? sessionPageID
+        : ""
+      : relevantSessions.some((s) => s.id === sessionSelections[agentID])
+        ? sessionSelections[agentID]
+        : (relevantSessions[0]?.id ?? "");
   function setSessionID(id: string) {
     setSessionSelections((current) => ({ ...current, [agentID]: id }));
   }
@@ -213,6 +224,7 @@ export default function Workspace({
     if (previousAgent.current === agentID) return;
     previousAgent.current = agentID;
     setAgentForm(false);
+    setProjectAgentForm(false);
     setEditingAgentID(null);
     draftTarget.current = null;
     setDeletingSession(null);
@@ -264,144 +276,162 @@ export default function Workspace({
 
   const Heading = project && !selectedAgent ? "h2" : "h1";
   return (
-    <section className={selectedAgent ? "agent-page" : "workspace-overview"}>
-      <div className="page-heading">
-        <div className="agent-page-title">
-          {selectedAgent && (
-            <button
-              className="icon-button back-to-agents"
-              onClick={() => setAgentID("")}
-              aria-label={t("返回 Agent 列表", "Back to agents")}
-              title={t("返回 Agent 列表", "Back to agents")}
-            >
-              <span aria-hidden="true">←</span>
-            </button>
-          )}
-          <Heading ref={pageTitle} tabIndex={-1}>
-            {selectedAgent?.name ??
-              (project ? t("Agent", "Agents") : t("协作工作台", "Workspace"))}
-          </Heading>
+    <section
+      className={
+        conversationOnly
+          ? "conversation-view"
+          : selectedAgent
+            ? "agent-page"
+            : "workspace-overview"
+      }
+    >
+      {!conversationOnly && (
+        <div className="page-heading">
+          <div className="agent-page-title">
+            {selectedAgent && (
+              <button
+                className="icon-button back-to-agents"
+                onClick={() => setAgentID("")}
+                aria-label={t("返回 Agent 列表", "Back to agents")}
+                title={t("返回 Agent 列表", "Back to agents")}
+              >
+                <span aria-hidden="true">←</span>
+              </button>
+            )}
+            <Heading ref={pageTitle} tabIndex={-1}>
+              {selectedAgent?.name ??
+                (project ? t("Agent", "Agents") : t("协作工作台", "Workspace"))}
+            </Heading>
+          </div>
+          <div className="button-row">
+            {selectedAgent && (
+              <button
+                className="secondary"
+                disabled={busy && !demo}
+                aria-expanded={agentForm && editingAgentID === selectedAgent.id}
+                aria-controls="agent-form"
+                aria-label={t(
+                  `设置 ${selectedAgent.name}`,
+                  `Configure ${selectedAgent.name}`,
+                )}
+                onClick={() => {
+                  if (agentForm && editingAgentID === selectedAgent.id) {
+                    setAgentForm(false);
+                    return;
+                  }
+                  if (draftTarget.current !== selectedAgent.id) {
+                    setEditingAgentID(selectedAgent.id);
+                    setAgentName(selectedAgent.name);
+                    setProvider(selectedAgent.provider);
+                    setEnvironment(selectedAgent.environment_id ?? "local");
+                    setRole(selectedAgent.role);
+                    setWorkspace(
+                      selectedAgent.workspace_is_default
+                        ? ""
+                        : (selectedAgent.workspace ?? ""),
+                    );
+                    setAgentProject(selectedAgent.project_id ?? "");
+                    setModel(selectedAgent.model ?? "");
+                    setEffort(selectedAgent.effort ?? "");
+                    setPermissionMode(selectedAgent.permission_mode ?? "ask");
+                    draftTarget.current = selectedAgent.id;
+                  }
+                  setAgentForm(true);
+                }}
+              >
+                {t("Agent 设置", "Agent settings")}
+              </button>
+            )}
+            {selectedAgent && (
+              <AgentDeletion
+                key={selectedAgent.id}
+                agent={selectedAgent}
+                sessionCount={
+                  sessions.filter((s) => s.agent_id === selectedAgent.id).length
+                }
+                active={
+                  (state.runs ?? []).some(
+                    (r) =>
+                      r.agent_id === selectedAgent.id &&
+                      ["queued", "running"].includes(r.status),
+                  ) ||
+                  sessions.some(
+                    (s) =>
+                      s.agent_id === selectedAgent.id &&
+                      ["queued", "running", "waiting"].includes(s.status),
+                  ) ||
+                  state.messages.some(
+                    (m) =>
+                      (m.sender_id === selectedAgent.id ||
+                        m.recipient_id === selectedAgent.id) &&
+                      ["queued", "running", "waiting"].includes(m.status ?? ""),
+                  )
+                }
+                busy={busy}
+                mutate={mutate}
+                t={t}
+                onDeleted={() => {
+                  if (editingAgentID === selectedAgent.id) {
+                    setAgentForm(false);
+                    setEditingAgentID(null);
+                    draftTarget.current = null;
+                  }
+                  if (agentID === selectedAgent.id) {
+                    setAgentID("");
+                    setSessionID("");
+                    setEvents([]);
+                    setPrompt("");
+                  }
+                }}
+              />
+            )}
+            {!selectedAgent && (
+              <button
+                className="primary"
+                disabled={busy && !demo}
+                aria-expanded={
+                  project
+                    ? projectAgentForm
+                    : agentForm && editingAgentID === null
+                }
+                aria-controls={project ? "project-agent-form" : "agent-form"}
+                onClick={() => {
+                  if (project) {
+                    setProjectAgentForm(!projectAgentForm);
+                    return;
+                  }
+                  if (agentForm && editingAgentID === null) {
+                    setAgentForm(false);
+                    return;
+                  }
+                  if (draftTarget.current !== "new") {
+                    setEditingAgentID(null);
+                    setAgentName("");
+                    setProvider("codex");
+                    setEnvironment("local");
+                    setConnectionDraft({
+                      host: "",
+                      python: "python3",
+                      previous: "local",
+                    });
+                    setRole("");
+                    setWorkspace("");
+                    setAgentProject("");
+                    setModel("");
+                    setEffort("");
+                    setPermissionMode("ask");
+                    draftTarget.current = "new";
+                  }
+                  setAgentForm(true);
+                }}
+              >
+                <Icon name="plus" size={18} />
+                {t("添加 Agent", "Add agent")}
+              </button>
+            )}
+          </div>
         </div>
-        <div className="button-row">
-          {selectedAgent && (
-            <button
-              className="secondary"
-              disabled={busy && !demo}
-              aria-expanded={agentForm && editingAgentID === selectedAgent.id}
-              aria-controls="agent-form"
-              aria-label={t(
-                `设置 ${selectedAgent.name}`,
-                `Configure ${selectedAgent.name}`,
-              )}
-              onClick={() => {
-                if (agentForm && editingAgentID === selectedAgent.id) {
-                  setAgentForm(false);
-                  return;
-                }
-                if (draftTarget.current !== selectedAgent.id) {
-                  setEditingAgentID(selectedAgent.id);
-                  setAgentName(selectedAgent.name);
-                  setProvider(selectedAgent.provider);
-                  setEnvironment(selectedAgent.environment_id ?? "local");
-                  setRole(selectedAgent.role);
-                  setWorkspace(
-                    selectedAgent.workspace_is_default
-                      ? ""
-                      : (selectedAgent.workspace ?? ""),
-                  );
-                  setAgentProject(selectedAgent.project_id ?? "");
-                  setModel(selectedAgent.model ?? "");
-                  setEffort(selectedAgent.effort ?? "");
-                  setPermissionMode(selectedAgent.permission_mode ?? "ask");
-                  draftTarget.current = selectedAgent.id;
-                }
-                setAgentForm(true);
-              }}
-            >
-              {t("Agent 设置", "Agent settings")}
-            </button>
-          )}
-          {selectedAgent && (
-            <AgentDeletion
-              key={selectedAgent.id}
-              agent={selectedAgent}
-              sessionCount={
-                sessions.filter((s) => s.agent_id === selectedAgent.id).length
-              }
-              active={
-                (state.runs ?? []).some(
-                  (r) =>
-                    r.agent_id === selectedAgent.id &&
-                    ["queued", "running"].includes(r.status),
-                ) ||
-                sessions.some(
-                  (s) =>
-                    s.agent_id === selectedAgent.id &&
-                    ["queued", "running", "waiting"].includes(s.status),
-                ) ||
-                state.messages.some(
-                  (m) =>
-                    (m.sender_id === selectedAgent.id ||
-                      m.recipient_id === selectedAgent.id) &&
-                    ["queued", "running", "waiting"].includes(m.status ?? ""),
-                )
-              }
-              busy={busy}
-              mutate={mutate}
-              t={t}
-              onDeleted={() => {
-                if (editingAgentID === selectedAgent.id) {
-                  setAgentForm(false);
-                  setEditingAgentID(null);
-                  draftTarget.current = null;
-                }
-                if (agentID === selectedAgent.id) {
-                  setAgentID("");
-                  setSessionID("");
-                  setEvents([]);
-                  setPrompt("");
-                }
-              }}
-            />
-          )}
-          {!selectedAgent && (
-            <button
-              className="primary"
-              disabled={busy && !demo}
-              aria-expanded={agentForm && editingAgentID === null}
-              aria-controls="agent-form"
-              onClick={() => {
-                if (agentForm && editingAgentID === null) {
-                  setAgentForm(false);
-                  return;
-                }
-                if (draftTarget.current !== "new") {
-                  setEditingAgentID(null);
-                  setAgentName("");
-                  setProvider("codex");
-                  setEnvironment(project?.environment_id ?? "local");
-                  setConnectionDraft({
-                    host: "",
-                    python: "python3",
-                    previous: project?.environment_id ?? "local",
-                  });
-                  setRole("");
-                  setWorkspace("");
-                  setAgentProject(project?.id ?? "");
-                  setModel("");
-                  setEffort("");
-                  setPermissionMode("ask");
-                  draftTarget.current = "new";
-                }
-                setAgentForm(true);
-              }}
-            >
-              <Icon name="plus" size={18} />
-              {t("添加 Agent", "Add agent")}
-            </button>
-          )}
-        </div>
-      </div>
+      )}
       {!selectedAgent && (
         <div className={`stat-grid ${project ? "" : "workspace-stats"}`}>
           <Stat
@@ -623,26 +653,12 @@ export default function Workspace({
                   )}
                 </select>
               </label>
-              <label>
-                {t("关联项目（可选）", "Project (optional)")}
-                <select
-                  value={agentProject}
-                  disabled={
-                    !!editingAgentID &&
-                    sessions.some((s) => s.agent_id === editingAgentID)
-                  }
-                  onChange={(e) => setAgentProject(e.target.value)}
-                >
-                  <option value="">
-                    {t("独立 Agent", "Independent agent")}
-                  </option>
-                  {state.projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {editingAgent?.project_id && (
+                <label>
+                  {t("所属项目", "Project")}
+                  <input readOnly value={selectedProject?.name ?? ""} />
+                </label>
+              )}
             </div>
             <p className="settings-note">
               {catalogLoading
@@ -749,11 +765,39 @@ export default function Workspace({
           </form>
         </section>
       )}
+      {project && projectAgentForm && !selectedAgent && (
+        <ProjectAgentForm
+          project={project}
+          state={state}
+          busy={busy && !demo}
+          token={token}
+          demo={demo}
+          mutate={mutate}
+          t={t}
+          onClose={() => setProjectAgentForm(false)}
+          onConfigure={onConfigureAgent}
+          onAdded={(agent) => {
+            setProjectAgentForm(false);
+            setAgentID(agent.id);
+          }}
+        />
+      )}
       {!selectedAgent && (
         <>
           {!!agents.length && (
             <section className="panel workspace-tps">
-              <TPS meter={metrics?.total} t={t} stale={metricsFailed} />
+              <TPS
+                meter={
+                  project
+                    ? agentTPS(
+                        metrics,
+                        agents.map((a) => a.id),
+                      )
+                    : metrics?.total
+                }
+                t={t}
+                stale={metricsFailed}
+              />
             </section>
           )}
           {agents.length ? (
@@ -769,6 +813,14 @@ export default function Workspace({
                   </div>
                   <div className="agent-info">
                     <strong>{agent.name}</strong>
+                    {!project && agent.project_id && (
+                      <span className="agent-project-name">
+                        {
+                          state.projects.find((p) => p.id === agent.project_id)
+                            ?.name
+                        }
+                      </span>
+                    )}
                     <p>
                       {agent.role ||
                         t(
@@ -845,141 +897,143 @@ export default function Workspace({
       )}
       {selectedAgent && !agentForm && (
         <div className="workspace-grid">
-          <section className="panel session-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>{t("会话", "Sessions")}</h2>
-                <p>{selectedAgent?.name}</p>
+          {!conversationOnly && (
+            <section className="panel session-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>{t("会话", "Sessions")}</h2>
+                  <p>{selectedAgent?.name}</p>
+                </div>
+                <span className="count-badge">{relevantSessions.length}</span>
               </div>
-              <span className="count-badge">{relevantSessions.length}</span>
-            </div>
-            {selectedSession && (
-              <div className="session-delete">
-                <button
-                  className="text-button"
-                  disabled={busy || hasSessionTasks}
-                  aria-expanded={deletingSession === sessionID}
-                  onClick={() =>
-                    setDeletingSession(
-                      deletingSession === sessionID ? null : sessionID,
-                    )
-                  }
-                >
-                  {t("删除会话", "Delete session")}
-                </button>
-                {deletingSession === sessionID && (
-                  <div
-                    role="alertdialog"
-                    aria-label={t("删除会话", "Delete session")}
+              {selectedSession && (
+                <div className="session-delete">
+                  <button
+                    className="text-button"
+                    disabled={busy || hasSessionTasks}
+                    aria-expanded={deletingSession === sessionID}
+                    onClick={() =>
+                      setDeletingSession(
+                        deletingSession === sessionID ? null : sessionID,
+                      )
+                    }
                   >
-                    <button
-                      className="icon-button"
-                      aria-label={t("关闭", "Close")}
-                      onClick={() => setDeletingSession(null)}
+                    {t("删除会话", "Delete session")}
+                  </button>
+                  {deletingSession === sessionID && (
+                    <div
+                      role="alertdialog"
+                      aria-label={t("删除会话", "Delete session")}
                     >
-                      ×
-                    </button>
-                    <p>
-                      {t(
-                        "删除此会话及其专属文件？此操作无法撤销。共用项目目录会保留。",
-                        "Delete this conversation and its private files? This cannot be undone. Shared project directories are kept.",
-                      )}
-                    </p>
-                    <div className="button-row">
                       <button
-                        className="secondary"
-                        disabled={busy}
+                        className="icon-button"
+                        aria-label={t("关闭", "Close")}
                         onClick={() => setDeletingSession(null)}
                       >
-                        {t("取消", "Cancel")}
+                        ×
                       </button>
-                      <button
-                        className="danger"
-                        disabled={busy || hasSessionTasks}
-                        onClick={async () => {
-                          await mutate(
-                            `/api/sessions/${encodeURIComponent(sessionID)}/delete`,
-                            {},
-                            () => {
-                              setDeletingSession(null);
-                              setSessionID("");
-                              setEvents([]);
-                            },
-                          );
-                        }}
-                      >
-                        {t("确认删除", "Delete permanently")}
-                      </button>
+                      <p>
+                        {t(
+                          "删除此会话及其专属文件？此操作无法撤销。共用项目目录会保留。",
+                          "Delete this conversation and its private files? This cannot be undone. Shared project directories are kept.",
+                        )}
+                      </p>
+                      <div className="button-row">
+                        <button
+                          className="secondary"
+                          disabled={busy}
+                          onClick={() => setDeletingSession(null)}
+                        >
+                          {t("取消", "Cancel")}
+                        </button>
+                        <button
+                          className="danger"
+                          disabled={busy || hasSessionTasks}
+                          onClick={async () => {
+                            await mutate(
+                              `/api/sessions/${encodeURIComponent(sessionID)}/delete`,
+                              {},
+                              () => {
+                                setDeletingSession(null);
+                                setSessionID("");
+                                setEvents([]);
+                              },
+                            );
+                          }}
+                        >
+                          {t("确认删除", "Delete permanently")}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                </div>
+              )}
+              <div className="session-list">
+                {relevantSessions.map((session) => (
+                  <button
+                    key={session.id}
+                    className={`session-item ${session.id === sessionID ? "active" : ""}`}
+                    aria-current={session.id === sessionID ? "true" : undefined}
+                    onClick={() => {
+                      setSessionID(session.id);
+                      setDeletingSession(null);
+                    }}
+                  >
+                    <strong>{session.title}</strong>
+                    <span>
+                      {statusLabel(session.status, t)}
+                      <span>·</span>
+                      <DateText date={session.updated_at} lang={lang} />
+                    </span>
+                  </button>
+                ))}
+                {!relevantSessions.length && (
+                  <p className="muted small-text">
+                    {t(
+                      "尚无会话。为这位 Agent 创建一个任务。",
+                      "No sessions yet. Create a task for this agent.",
+                    )}
+                  </p>
                 )}
               </div>
-            )}
-            <div className="session-list">
-              {relevantSessions.map((session) => (
-                <button
-                  key={session.id}
-                  className={`session-item ${session.id === sessionID ? "active" : ""}`}
-                  aria-current={session.id === sessionID ? "true" : undefined}
-                  onClick={() => {
-                    setSessionID(session.id);
-                    setDeletingSession(null);
-                  }}
-                >
-                  <strong>{session.title}</strong>
-                  <span>
-                    {statusLabel(session.status, t)}
-                    <span>·</span>
-                    <DateText date={session.updated_at} lang={lang} />
-                  </span>
-                </button>
-              ))}
-              {!relevantSessions.length && (
-                <p className="muted small-text">
-                  {t(
-                    "尚无会话。为这位 Agent 创建一个任务。",
-                    "No sessions yet. Create a task for this agent.",
-                  )}
-                </p>
-              )}
-            </div>
-            <form
-              className="session-create"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                await mutate(
-                  "/api/sessions",
-                  { agent_id: agentID, title: sessionTitle.trim() },
-                  (result) => {
-                    setSessionID(result.id);
-                    setSessionTitle("");
-                  },
-                );
-              }}
-            >
-              <label htmlFor="session-title">
-                {t("新会话标题", "New session title")}
-              </label>
-              <input
-                id="session-title"
-                value={sessionTitle}
-                onChange={(e) => setSessionTitle(e.target.value)}
-                required
-                maxLength={160}
-                placeholder={t(
-                  "例如：审阅登录流程",
-                  "For example: Review sign-in",
-                )}
-              />
-              <button
-                className="secondary full"
-                disabled={busy || !sessionTitle.trim()}
+              <form
+                className="session-create"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await mutate(
+                    "/api/sessions",
+                    { agent_id: agentID, title: sessionTitle.trim() },
+                    (result) => {
+                      setSessionID(result.id);
+                      setSessionTitle("");
+                    },
+                  );
+                }}
               >
-                <Icon name="plus" size={16} />
-                {t("创建会话", "Create session")}
-              </button>
-            </form>
-          </section>
+                <label htmlFor="session-title">
+                  {t("新会话标题", "New session title")}
+                </label>
+                <input
+                  id="session-title"
+                  value={sessionTitle}
+                  onChange={(e) => setSessionTitle(e.target.value)}
+                  required
+                  maxLength={160}
+                  placeholder={t(
+                    "例如：审阅登录流程",
+                    "For example: Review sign-in",
+                  )}
+                />
+                <button
+                  className="secondary full"
+                  disabled={busy || !sessionTitle.trim()}
+                >
+                  <Icon name="plus" size={16} />
+                  {t("创建会话", "Create session")}
+                </button>
+              </form>
+            </section>
+          )}
           <section className="panel conversation-panel">
             <div className="panel-heading">
               <div>
