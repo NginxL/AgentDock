@@ -111,7 +111,7 @@ if provider == "codex":
         assert request["params"]["effort"] == "high"
         usage = {"inputTokens": 10, "outputTokens": 5, "cachedInputTokens": 4}
         send({"method": "thread/tokenUsage/updated", "params": {"threadId": native_id, "turnId": "turn-1", "tokenUsage": {"total": usage, "last": usage}}})
-    if scenario == "progress":
+    if scenario in ("progress", "unphased", "commentary_only"):
         assert request["params"]["summary"] == "auto"
         base = {"threadId":native_id,"turnId":"turn-1"}
         send({"method":"item/reasoning/summaryTextDelta","params":{**base,"itemId":"thought-1","summaryIndex":0,"delta":"Inspect "}})
@@ -120,14 +120,18 @@ if provider == "codex":
         send({"method":"item/started","params":{**base,"item":{"type":"commandExecution","id":"tool-1","command":"pwd","status":"inProgress"}}})
         send({"method":"item/commandExecution/outputDelta","params":{**base,"itemId":"tool-1","delta":"/fixture/workspace"}})
         send({"method":"item/completed","params":{**base,"item":{"type":"commandExecution","id":"tool-1","command":"pwd","status":"completed","exitCode":0,"aggregatedOutput":"/fixture/workspace"}}})
-        send({"method":"item/completed","params":{**base,"item":{"type":"agentMessage","id":"commentary-1","phase":"commentary","text":"Working on the task"}}})
+        send({"method":"item/completed","params":{**base,"item":{"type":"agentMessage","id":"commentary-1","text":"Working on the task",
+            **({} if scenario == "unphased" else {"phase":"commentary"})}}})
     params = {"threadId": "wrong-thread" if scenario == "wrong_session" else native_id,
               "turnId": "wrong-turn" if scenario == "wrong_turn" else "turn-1", "itemId": "answer-1", "delta": "hello "}
+    phase = {} if scenario == "unphased" else {"phase": "commentary" if scenario == "commentary_only" else "final_answer"}
+    send({"method": "item/started", "params": {"threadId": native_id, "turnId": "turn-1", "item": {
+        "id": "answer-1", "type": "agentMessage", "text": "", **phase}}})
     send({"method": "item/agentMessage/delta", "params": params})
     params["delta"] = os.environ.get("AGENTDOCK_CAPABILITY", "missing") if scenario == "redact" else "world"
     send({"method": "item/agentMessage/delta", "params": params})
     send({"method": "item/completed", "params": {"threadId": native_id, "turnId": "turn-1", "item": {
-        "id": "answer-1", "type": "agentMessage", "phase": "final_answer", "text": "hello " + params["delta"]}}})
+        "id": "answer-1", "type": "agentMessage", "text": "hello " + params["delta"]}}})
     send({"method": "turn/completed", "params": {"threadId": native_id, "turn": {
         "id": "turn-1", "status": "failed" if scenario == "failed" else "completed",
         "error": {"message": "private-token"} if scenario == "failed" else None}}})
@@ -164,7 +168,10 @@ else:
         if scenario == "duplicate_permission":
             send(permission)
             hang()
-    send({"type": "stream_event", "session_id": native_id, "event": {"type": "message_start"}})
+    if scenario == "unphased":
+        send({"type": "assistant", "session_id": native_id, "message": {"id": "progress-1", "content": [
+            {"type": "text", "text": "Working on the task"}]}})
+    send({"type": "stream_event", "session_id": native_id, "event": {"type": "message_start", "message": {"id": "answer-1"}}})
     if scenario == "progress":
         send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Inspect private-token"}}})
         send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"do not forward signatures"}}})
@@ -177,7 +184,11 @@ else:
         send({"type": "stream_event", "session_id": native_id, "event": {
             "type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}})
     result = "hello " + text
-    send({"type": "assistant", "session_id": native_id, "message": {"content": [{"type": "text", "text": result}]}})
+    if scenario == "unphased":
+        send({"type": "stream_event", "session_id": native_id, "event": {
+            "type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "Second paragraph"}}})
+    send({"type": "assistant", "session_id": native_id, "message": {"id": "answer-1", "content": [
+        {"type": "text", "text": result}, *([{"type": "text", "text": "Second paragraph"}] if scenario == "unphased" else [])]}})
     send({"type": "result", "session_id": native_id, "subtype": "success", "is_error": scenario == "failed",
-          "result": "private-token" if scenario == "failed" else result})
+          **({} if scenario == "unphased" else {"result": "private-token" if scenario == "failed" else result})})
     hang()

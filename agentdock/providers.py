@@ -184,11 +184,16 @@ class _Callbacks:
     def emit(self, kind, payload):
         self.emit_callback(kind, self.clean(payload))
 
-    def text(self, text):
+    def text(self, text, *, item_id=None, provider=None, part=0, phase=None, complete=False):
         if not isinstance(text, str):
             raise ProviderError("Native CLI returned an invalid text event.")
-        if text:
-            self.emit("agent_message_chunk", {"content": {"type": "text", "text": text}})
+        if text or complete:
+            payload = {"content": {"type": "text", "text": text}}
+            if item_id is not None:
+                payload.update(item_id=item_id, provider=provider, part=part)
+            if phase in ("commentary", "final_answer"):
+                payload["phase"] = phase
+            self.emit("agent_message" if complete else "agent_message_chunk", payload)
 
     def approve(self, request, allow="accept", deny="decline"):
         self.approvals += 1
@@ -225,7 +230,8 @@ class _Codex:
         self.permission_ids = set()
         self.finished = None
         self.final_messages = {}
-        self.final_reply = None
+        self.message_phases = {}
+        self.message_order = {}
         self.deltas = {}
         self.usage_output = None
         self.usage_at = None
@@ -285,9 +291,10 @@ class _Codex:
             if not _identifier(item) or not isinstance(params.get("delta"), str):
                 raise ProviderError("Codex returned an invalid message delta.")
             self.deltas[item] = self.deltas.get(item, "") + params["delta"]
+            self.message_order[item] = None
             if sum(len(v.encode()) for v in self.deltas.values()) > _MAX_RESULT:
                 raise ProviderError("Codex response exceeded the text limit.")
-            self.cb.text(params["delta"])
+            self.cb.text(params["delta"], item_id=item, provider="codex", phase=self.message_phases.get(item))
         elif method in ("item/reasoning/summaryTextDelta", "item/commandExecution/outputDelta", "item/fileChange/outputDelta"):
             item, delta = params.get("itemId"), params.get("delta")
             if not _identifier(item) or not isinstance(delta, str):
@@ -302,14 +309,21 @@ class _Codex:
             item = params.get("item")
             if not isinstance(item, dict):
                 raise ProviderError("Codex returned an invalid item event.")
-            if item.get("type") == "agentMessage" and method == "item/completed":
+            if item.get("type") == "agentMessage":
                 identifier, text = item.get("id"), item.get("text")
-                if not _identifier(identifier) or not isinstance(text, str):
+                if not _identifier(identifier):
                     raise ProviderError("Codex returned an invalid assistant message.")
-                self.final_messages[identifier] = text
-                if item.get("phase") == "final_answer": self.final_reply = text
-                if identifier not in self.deltas:
-                    self.cb.text(text)
+                self.message_order[identifier] = None
+                if item.get("phase") in ("commentary", "final_answer"):
+                    self.message_phases[identifier] = item["phase"]
+                if method == "item/completed":
+                    if not isinstance(text, str):
+                        raise ProviderError("Codex returned an invalid assistant message.")
+                    self.final_messages[identifier] = text
+                    metadata = {"item_id": identifier, "provider": "codex", "phase": self.message_phases.get(identifier)}
+                    if identifier not in self.deltas:
+                        self.cb.text(text, **metadata)
+                    self.cb.text(text, complete=True, **metadata)
             elif item.get("type") == "reasoning":
                 if method == "item/completed":
                     summary = item.get("summary", [])
@@ -393,7 +407,14 @@ class _Codex:
             raise ProviderCancelled()
         if status != "completed":
             raise ProviderError("Codex stopped before completing the turn.")
-        result = self.final_reply if self.final_reply is not None else "\n".join(self.final_messages.values() or self.deltas.values())
+        # Some gateways omit phase. The last assistant item is the reply;
+        # concatenating all items would also include earlier progress updates.
+        candidates = [item for item in self.message_order
+                      if item in self.final_messages or item in self.deltas]
+        finals = [item for item in candidates if self.message_phases.get(item) == "final_answer"]
+        candidates = finals or [item for item in candidates if self.message_phases.get(item) != "commentary"]
+        identifier = candidates[-1] if candidates else None
+        result = self.final_messages.get(identifier, self.deltas.get(identifier, ""))
         if len(result.encode()) > _MAX_RESULT:
             raise ProviderError("Codex response exceeded the text limit.")
         return self.cb.clean(result)
@@ -413,7 +434,7 @@ class _Claude:
         self.thinking_blocks = set()
         self.message_number = 0
         self.message_id = None
-        self.messages = []
+        self.messages = {}
         self.usage_messages = {}
         self.usage_id = None
         self.turn_started = time.time()
@@ -495,6 +516,7 @@ class _Claude:
                     self.thinking_blocks = set()
                     body = event.get("message", {})
                     self.usage_id = body.get("id")
+                    self.message_id = self.usage_id if _identifier(self.usage_id) else f"message-{self.message_number}"
                     if _identifier(self.usage_id):
                         self.usage_messages[self.usage_id] = {"raw": {}, "at": time.time(), "out": 0}
                         self.usage(body)
@@ -503,8 +525,11 @@ class _Claude:
                 if event.get("type") == "content_block_delta":
                     delta = event.get("delta", {})
                     if isinstance(delta, dict) and delta.get("type") == "text_delta":
+                        index = event.get("index", 0)
+                        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+                            raise ProviderError("Claude returned an invalid text block index.")
                         self.saw_delta = True
-                        self.cb.text(delta.get("text"))
+                        self.cb.text(delta.get("text"), item_id=self.message_id, provider="claude", part=index)
                     elif isinstance(delta, dict) and delta.get("type") == "thinking_delta":
                         text, index = delta.get("thinking"), event.get("index", 0)
                         if not isinstance(text, str) or not isinstance(index, int) or isinstance(index, bool) or index < 0:
@@ -523,6 +548,10 @@ class _Claude:
                 content = body.get("content", []) if isinstance(body, dict) else []
                 if not isinstance(content, list):
                     raise ProviderError("Claude returned invalid message content.")
+                identifier = body.get("id") if isinstance(body, dict) and _identifier(body.get("id")) else self.message_id
+                if kind == "assistant" and identifier is None:
+                    self.message_number += 1
+                    identifier = f"message-{self.message_number}"
                 for index, block in enumerate(content):
                     if not isinstance(block, dict):
                         raise ProviderError("Claude returned an invalid content block.")
@@ -530,11 +559,14 @@ class _Claude:
                         text = block.get("text")
                         if not isinstance(text, str):
                             raise ProviderError("Claude returned an invalid assistant message.")
-                        self.messages.append(text)
-                        if sum(len(v.encode()) for v in self.messages) > _MAX_RESULT:
+                        parts = self.messages.setdefault(identifier, {})
+                        parts[index] = text
+                        if sum(len(v.encode()) for values in self.messages.values() for v in values.values()) > _MAX_RESULT:
                             raise ProviderError("Claude response exceeded the text limit.")
+                        metadata = {"item_id": identifier, "provider": "claude", "part": index}
                         if not self.saw_delta:
-                            self.cb.text(text)
+                            self.cb.text(text, **metadata)
+                        self.cb.text(text, complete=True, **metadata)
                     elif block.get("type") == "thinking" and kind == "assistant" and not message.get("parent_tool_use_id"):
                         text = block.get("thinking")
                         if not isinstance(text, str): raise ProviderError("Claude returned an invalid thinking block.")
@@ -548,7 +580,8 @@ class _Claude:
                     raise ProviderError("Claude stopped before completing the turn. Check CLI login and limits.")
                 if not self.bound:
                     raise ProviderError("Claude did not confirm the native session.")
-                result = message.get("result", "\n".join(self.messages))
+                last_message = next(reversed(self.messages.values()), {})
+                result = message.get("result", "\n".join(last_message[index] for index in sorted(last_message)))
                 if not isinstance(result, str) or len(result.encode()) > _MAX_RESULT:
                     raise ProviderError("Claude returned an invalid final result.")
                 if not self.messages and not self.saw_delta:

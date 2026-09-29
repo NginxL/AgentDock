@@ -49,6 +49,8 @@ Frontend checks use simulated DOM and HTTP responses. The production build valid
 | Storage and authorization | Project and sender isolation, user-defined role persistence and administrator-only edits, native-session ownership, database migration, restart behavior, single-instance locking, memory version conflicts, and reviewed provenance. |
 | Quotas and interface | Role creation/editing/clearing without provider presets, future-turn role changes, preservation of failed-edit drafts and native history, stale/unknown/zero quota distinctions, configured-agent quota scope, empty-state behavior, task status transitions and expandable execution details, page-entry refresh, repeated-click coalescing, delayed state updates, safe rendering, language switching, and consistency between visible status and API records. |
 
+Conversation checks cover distinct question bubbles, public process output and final replies; automatic expansion before a reply, collapse on final arrival, manual toggles preserved across polling, and separate state per task. Protocol fixtures cover missing Codex phases, native message identity, completed-text replacement, Claude multi-block replies, and exclusion of commentary from final results. Legacy joined results are split for display only when complete event groups reproduce the stored text exactly; incomplete history is preserved.
+
 Reproduce the automated checks without starting a real agent:
 
 ```bash

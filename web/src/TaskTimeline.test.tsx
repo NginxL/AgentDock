@@ -6,7 +6,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import TaskTimeline, { executionSteps } from "./TaskTimeline";
+import TaskTimeline, { executionSteps, turnContent } from "./TaskTimeline";
 import type { AgentEvent, Run } from "./types";
 const run: Run = {
   id: "r",
@@ -59,8 +59,6 @@ it("shows running work, live thinking and command output, then a separate final 
   const view = render(<TaskTimeline {...props} runs={[run]} events={events} />);
   const summary = screen.getByText("任务执行中");
   const disclosure = summary.closest("details")!;
-  expect(disclosure.open).toBe(false);
-  fireEvent.click(summary);
   expect(disclosure.open).toBe(true);
   fireEvent.click(summary);
   expect(disclosure.open).toBe(false);
@@ -105,6 +103,9 @@ it("shows running work, live thinking and command output, then a separate final 
     />,
   );
   expect(screen.getByText("任务已完成")).toBeTruthy();
+  expect(disclosure.open).toBe(false);
+  fireEvent.click(screen.getByText("任务已完成"));
+  expect(disclosure.open).toBe(true);
   expect(screen.queryByText("任务执行中")).toBeNull();
   expect(screen.getAllByText("The directory is /workspace.")).toHaveLength(1);
   expect(
@@ -120,6 +121,9 @@ it("shows running work, live thinking and command output, then a separate final 
     />,
   );
   expect(screen.getByText("Saved answer")).toBeTruthy();
+  expect(disclosure.open).toBe(true);
+  fireEvent.click(screen.getByText("任务已完成"));
+  expect(disclosure.open).toBe(false);
 });
 it("replaces streamed reasoning with its final summary and merges Claude tool-start/result identity", () => {
   const steps = executionSteps([
@@ -247,6 +251,8 @@ it("can stay collapsed while remote progress continues and shows the final reply
     />,
   );
   const details = screen.getByText("连接中断 · 正在重连").closest("details")!;
+  expect(details.open).toBe(true);
+  fireEvent.click(screen.getByText("连接中断 · 正在重连"));
   expect(details.open).toBe(false);
   view.rerender(
     <TaskTimeline
@@ -289,4 +295,138 @@ it("uses native model metadata instead of guessing from the assistant answer", (
   );
   expect(screen.getByText("custom/route-model · xhigh")).toBeTruthy();
   expect(screen.getByText("I am GPT-6")).toBeTruthy();
+});
+
+it("keeps commentary in the live process and collapses as soon as the final reply arrives", () => {
+  const events = [
+    event(1, "agent_message_chunk", {
+      item_id: "progress",
+      content: { text: "I will check." },
+    }),
+    event(2, "agent_message", {
+      item_id: "progress",
+      phase: "commentary",
+      content: { text: "I will check the directory." },
+    }),
+    event(3, "tool_result", {
+      item: { id: "pwd", command: "pwd", output: "/workspace" },
+    }),
+    event(4, "agent_message_chunk", {
+      item_id: "answer",
+      content: { text: "The directory" },
+    }),
+  ];
+  const view = render(<TaskTimeline {...props} runs={[run]} events={events} />);
+  const process = screen.getByText("任务执行中").closest("details")!;
+  expect(process.open).toBe(true);
+  expect(view.container.querySelector(".task-answer")).toBeNull();
+  expect(screen.queryByText("I will check.")).toBeNull();
+  expect(
+    screen.getByText("I will check the directory.").closest("details"),
+  ).toBe(process);
+  expect(screen.getByText(run.prompt).closest(".from-user")).toBeTruthy();
+  events.push(
+    event(5, "agent_message", {
+      item_id: "answer",
+      phase: "final_answer",
+      content: { text: "The directory is /workspace." },
+    }),
+    event(6, "assistant_message", { text: "The directory is /workspace." }),
+  );
+  view.rerender(<TaskTimeline {...props} runs={[run]} events={events} />);
+  expect(process.open).toBe(false);
+  expect(screen.getAllByText("The directory is /workspace.")).toHaveLength(1);
+  expect(
+    screen.getByText("The directory is /workspace.").closest(".task-answer"),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByText("任务执行中"));
+  expect(process.open).toBe(true);
+  events.push(event(7, "run_finished", { status: "completed" }));
+  view.rerender(<TaskTimeline {...props} runs={[run]} events={events} />);
+  expect(process.open).toBe(true);
+  expect(
+    within(process).queryByText("The directory is /workspace."),
+  ).toBeNull();
+  const next = {
+    ...run,
+    id: "next",
+    prompt: "Next question",
+    created_at: "2026-09-28T10:01:00Z",
+  };
+  view.rerender(<TaskTimeline {...props} runs={[run, next]} events={events} />);
+  expect(screen.getByText("任务执行中").closest("details")!.open).toBe(true);
+});
+
+it("separates legacy joined results only when the complete event groups match exactly", () => {
+  const events = [
+    event(1, "agent_message_chunk", { content: { text: "Let me check." } }),
+    event(2, "tool_result", {
+      item: { id: "tool", command: "pwd", output: "/workspace" },
+    }),
+    event(3, "agent_message_chunk", { content: { text: "The answer." } }),
+  ];
+  const content = turnContent(events, "Let me check.\nThe answer.");
+  expect(content.answer).toBe("The answer.");
+  expect(content.steps.map((step) => step.text)).toEqual([
+    "Let me check.",
+    "/workspace",
+  ]);
+  // Truncated history or independently authored text must never be trimmed.
+  expect(
+    turnContent(events.slice(1), "Let me check.\nThe answer.").answer,
+  ).toBe("Let me check.\nThe answer.");
+  expect(turnContent(events, "A different full answer.").answer).toBe(
+    "A different full answer.",
+  );
+});
+
+it("keeps native message boundaries and multiple Claude text blocks without duplicate finals", () => {
+  const events = [
+    event(1, "agent_message_chunk", {
+      item_id: "comment",
+      content: { text: "Progress" },
+    }),
+    event(2, "agent_message_chunk", {
+      item_id: "answer",
+      part: 0,
+      content: { text: "First" },
+    }),
+    event(3, "agent_message", {
+      item_id: "answer",
+      part: 0,
+      content: { text: "First paragraph" },
+    }),
+    event(4, "agent_message_chunk", {
+      item_id: "answer",
+      part: 1,
+      content: { text: "Second paragraph" },
+    }),
+  ];
+  expect(executionSteps(events).map((step) => step.text)).toEqual([
+    "Progress",
+    "First paragraph",
+    "Second paragraph",
+  ]);
+  const result = turnContent(events, "First paragraph\nSecond paragraph");
+  expect(result.steps.map((step) => step.text)).toEqual(["Progress"]);
+  expect(result.answer).toBe("First paragraph\nSecond paragraph");
+});
+
+it("keeps failure diagnostics visible when no final reply is returned", () => {
+  const view = render(<TaskTimeline {...props} runs={[run]} events={[]} />);
+  const process = screen.getByText("任务执行中").closest("details")!;
+  view.rerender(
+    <TaskTimeline
+      {...props}
+      runs={[{ ...run, status: "failed", error: "CLI stopped" }]}
+      events={[
+        event(1, "agent_message_chunk", {
+          content: { text: "Checking files" },
+        }),
+      ]}
+    />,
+  );
+  expect(process.open).toBe(true);
+  expect(screen.getByText("CLI stopped")).toBeTruthy();
+  expect(view.container.querySelector(".task-answer")).toBeNull();
 });

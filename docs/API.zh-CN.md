@@ -29,6 +29,8 @@
 
 任务事件包含 `reasoning_chunk`、`reasoning_message`（替换同一 `item_id`、`part` 的最终摘要）、`tool_call`、`tool_output` 和 `tool_result`，均携带 `run_id`，工具输出增量使用 `item_id`。Codex 提供思考摘要，Claude 提供公开输出的 thinking 块。`run_finished.status` 表示最终状态，`runs.result` 保留最终回复。可见会话每秒读取事件并连续读取完整游标页。
 
+`agent_message_chunk` 携带文本增量；`agent_message` 替换同一 `provider`、`item_id`、`part` 的完整文本。Codex 可选的 `phase` 区分 `commentary` 和 `final_answer`。这些消息项归入实时过程，`assistant_message` 和 `runs.result` 提供最终回复。Codex 未提供阶段时取最后一条助手消息，明确标为进展的消息不作为回复。Claude 优先使用结果字段，缺失时采用最后一条助手消息的文本块。界面在最终回复到达时收起过程，并移除过程区中重复的回复文本。
+
 ## 身份认证与请求边界
 
 管理员请求必须携带 `Authorization: Bearer <local admin token>`，占位符替换为本地管理员令牌。`Host` 必须与 `127.0.0.1:<configured port>` 完全一致，端口为配置值。浏览器请求如果携带 `Origin`，必须与同一 HTTP 来源一致；跨站请求会被拒绝。POST 请求体使用 `application/json`，最大为 256 KiB。不支持 CORS 或绑定远程地址。

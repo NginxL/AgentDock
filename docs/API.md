@@ -29,6 +29,8 @@ Independent sessions have a null `project_id` and fixed `workspace`. Independent
 
 Task events include `reasoning_chunk`, `reasoning_message` (a final replacement for the same `item_id` and `part`), `tool_call`, `tool_output` and `tool_result`. Each carries `run_id`; tool chunks use `item_id`. Codex supplies reasoning summaries; Claude supplies published thinking blocks. `run_finished.status` is authoritative for terminal state, and `runs.result` preserves the final reply. Visible conversations poll events every second and drain full cursor pages.
 
+`agent_message_chunk` carries incremental text; `agent_message` replaces the text for the same `provider`, `item_id` and `part`. Codex's optional `phase` distinguishes `commentary` from `final_answer`. These item events belong to the live process; `assistant_message` and `runs.result` supply the final reply. Without a Codex phase, the last assistant item supplies the reply; explicit commentary is excluded. Claude's result takes precedence, with its last assistant message's text blocks as the fallback. The interface collapses the process on final-reply arrival and omits duplicate reply text from the process.
+
 ## Authentication and request boundary
 
 Administrator requests require `Authorization: Bearer <local admin token>`. `Host` must exactly match `127.0.0.1:<configured port>`. Browser `Origin`, when present, must match the same HTTP origin; cross-site requests are rejected. POST bodies use `application/json` and are limited to 256 KiB. CORS and remote binding are not supported.

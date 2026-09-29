@@ -30,6 +30,8 @@ type Step = {
   name?: string;
   input?: string;
   status?: string;
+  itemId?: string;
+  phase?: string;
 };
 export function executionSteps(events: AgentEvent[]): Step[] {
   const steps: Step[] = [];
@@ -83,16 +85,59 @@ export function executionSteps(events: AgentEvent[]): Step[] {
               ? "failed"
               : "completed";
       }
-    } else if (event.kind === "agent_message_chunk") {
-      let step = steps.at(-1);
-      if (step?.kind !== "message") {
-        step = { id: event.id, kind: "message", text: "" };
+    } else if (["agent_message_chunk", "agent_message"].includes(event.kind)) {
+      const itemId = typeof p.item_id === "string" ? p.item_id : undefined;
+      const id = itemId
+        ? `message:${p.provider ?? "cli"}:${itemId}:${p.part ?? 0}`
+        : event.id;
+      let step = itemId ? keyed.get(id) : steps.at(-1);
+      if (step?.kind !== "message" || (!itemId && step.itemId)) {
+        step = { id, kind: "message", text: "", itemId };
+        keyed.set(id, step);
         steps.push(step);
       }
-      step.text += eventText(event.payload);
+      if (typeof p.phase === "string") step.phase = p.phase;
+      const text = eventText(event.payload);
+      step.text = event.kind === "agent_message" ? text : step.text + text;
     }
   }
   return steps;
+}
+
+export function turnContent(events: AgentEvent[], storedAnswer: string) {
+  const steps = executionSteps(events);
+  const messages = steps.filter((step) => step.kind === "message");
+  let answer = storedAnswer;
+  // Older versions joined unphased Codex items into the saved result. Only
+  // separate them when the complete event groups reproduce that exact result.
+  if (
+    answer &&
+    messages.length > 1 &&
+    steps.at(-1)?.kind === "message" &&
+    messages.every((step) => !step.itemId && !step.phase) &&
+    messages.map((step) => step.text).join("\n") === answer
+  ) {
+    answer = messages.at(-1)!.text;
+  }
+  const replyIds = new Set<string>();
+  if (answer) {
+    const suffix: Step[] = [];
+    for (const step of steps.slice().reverse()) {
+      if (step.kind !== "message") break;
+      suffix.unshift(step);
+      if (suffix.map((part) => part.text).join("\n") === answer) {
+        suffix.forEach((part) => replyIds.add(part.id));
+        break;
+      }
+    }
+  }
+  return {
+    answer,
+    steps: steps.filter(
+      (step) =>
+        !answer || (!replyIds.has(step.id) && step.phase !== "final_answer"),
+    ),
+  };
 }
 
 export default function TaskTimeline({
@@ -158,7 +203,6 @@ export default function TaskTimeline({
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
         .map((run) => {
           const runEvents = grouped.get(run.id) ?? [];
-          const steps = executionSteps(runEvents);
           const modelEvent = runEvents
             .filter((event) => event.kind === "model_info")
             .at(-1);
@@ -167,8 +211,10 @@ export default function TaskTimeline({
             .slice()
             .reverse()
             .find((e) => e.kind === "assistant_message");
-          const answer =
-            run.result || (answerEvent ? eventText(answerEvent.payload) : "");
+          const { answer, steps } = turnContent(
+            runEvents,
+            run.result || (answerEvent ? eventText(answerEvent.payload) : ""),
+          );
           const active = ["running", "queued"].includes(run.status);
           const waiting =
             runEvents.filter((e) => e.kind === "approval_required").length >
@@ -196,15 +242,12 @@ export default function TaskTimeline({
                     : run.status === "loading"
                       ? t("正在读取任务…", "Loading task…")
                       : t("任务", "Task") + " · " + statusLabel(run.status, t);
-          // A terminal result takes precedence over chunks and survives reopening the app.
-          const streaming =
-            !answer && run.status === "running"
-              ? steps.filter((s) => s.kind === "message").at(-1)?.text
-              : "";
           return (
             <article className="task-turn" key={run.id}>
               {run.prompt && (
-                <div className="task-prompt">
+                <div
+                  className={`task-prompt ${run.origin === "human" ? "from-user" : "delegated"}`}
+                >
                   <div className="event-meta">
                     <span>
                       {run.origin === "human"
@@ -217,7 +260,14 @@ export default function TaskTimeline({
                 </div>
               )}
               <div className="task-progress-row">
-                <details className={`task-progress ${run.status}`}>
+                {/* Native toggles survive polling; changing this default on final
+                    arrival collapses once, then the user can reopen it freely. */}
+                <details
+                  className={`task-progress ${run.status}`}
+                  open={
+                    !answer && !["completed", "loading"].includes(run.status)
+                  }
+                >
                   <summary>
                     <span
                       className={`task-indicator ${active && run.status === "running" ? "spinning" : ""}`}
@@ -285,7 +335,9 @@ export default function TaskTimeline({
                           <small>
                             {step.kind === "reasoning"
                               ? t("思考", "Thinking")
-                              : agentName}
+                              : step.phase === "final_answer"
+                                ? t("正在生成回复", "Composing reply")
+                                : t("进展", "Progress")}
                           </small>
                           <pre>{step.text}</pre>
                         </div>
@@ -314,13 +366,18 @@ export default function TaskTimeline({
                   {errorMessage(run.error, t)}
                 </p>
               )}
-              {(answer || streaming) && (
-                <div className="task-answer">
+              {answer && (
+                <div
+                  className="task-answer"
+                  aria-label={t("Agent 回复", "Agent reply")}
+                >
                   <div className="event-meta">
                     <span>{agentName}</span>
-                    {!answer && <span className="status-dot" />}
+                    <span className="task-reply-label">
+                      {t("回复", "Reply")}
+                    </span>
                   </div>
-                  <pre>{answer || streaming}</pre>
+                  <pre>{answer}</pre>
                 </div>
               )}
             </article>

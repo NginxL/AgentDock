@@ -83,6 +83,25 @@ class NativeProvidersTest(unittest.TestCase):
         self.assertEqual(usage["native_id"], self.bound[0])
         self.assertNotIn("private-token", json.dumps(usage))
 
+    def test_unphased_progress_never_leaks_into_final_result(self):
+        for provider, result in (("codex", "hello world"), ("claude", "hello world\nSecond paragraph")):
+            with self.subTest(provider=provider):
+                self.events = []
+                self.assertEqual(self.run_provider(provider, "unphased"), result)
+                snapshots = [p for k, p in self.events if k == "agent_message"]
+                self.assertEqual(snapshots[0]["content"]["text"], "Working on the task")
+                self.assertNotEqual(snapshots[0]["item_id"], snapshots[-1]["item_id"])
+                self.assertEqual(snapshots[-1]["item_id"], "answer-1")
+                chunks = [p for k, p in self.events if k == "agent_message_chunk" and p["item_id"] == "answer-1"]
+                self.assertEqual(chunks[0]["part"], 0)
+                if provider == "claude": self.assertEqual(chunks[-1]["part"], 1)
+
+    def test_codex_preserves_started_message_phase_and_does_not_promote_commentary(self):
+        self.assertEqual(self.run_provider("codex", "progress"), "hello world")
+        snapshots = [p for k, p in self.events if k == "agent_message"]
+        self.assertEqual([p["phase"] for p in snapshots], ["commentary", "final_answer"])
+        self.assertEqual(self.run_provider("codex", "commentary_only"), "")
+
     def test_effective_model_comes_from_native_protocol(self):
         self.run_provider('codex', 'metadata')
         metadata = next(p for k,p in self.events if k == 'model_info')
@@ -101,7 +120,7 @@ class NativeProvidersTest(unittest.TestCase):
         self.assertEqual(self.bound, ["native-codex-1"])
         self.assertEqual([m["method"] for m in self.contract()[:4]], ["initialize", "initialized", "thread/start", "turn/start"])
         self.assertNotIn("excludeTurns", self.contract()[2]["params"])
-        self.assertEqual("".join(e[1]["content"]["text"] for e in self.events), "hello world")
+        self.assertEqual("".join(p["content"]["text"] for k, p in self.events if k == "agent_message_chunk"), "hello world")
         self.assert_process_stopped()
         (self.cwd / "fake-contract.jsonl").unlink()
         self.run_provider("codex", native_id=self.bound[0])
@@ -114,7 +133,7 @@ class NativeProvidersTest(unittest.TestCase):
         self.assertEqual(self.run_provider("claude"), "hello world")
         self.assertEqual(len(self.bound), 1)
         first_id = self.bound[0]
-        self.assertEqual("".join(e[1]["content"]["text"] for e in self.events), "hello world")
+        self.assertEqual("".join(p["content"]["text"] for k, p in self.events if k == "agent_message_chunk"), "hello world")
         self.assert_process_stopped()
         self.run_provider("claude", native_id=first_id)
         self.assertEqual(self.bound, [first_id, first_id])
