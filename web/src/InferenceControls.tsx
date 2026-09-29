@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { request } from "./api";
+import { useModelCatalog } from "./modelCatalog";
 import type { Agent, Session, Mutate, Translate } from "./types";
 
-type Model = { id: string; name: string; efforts: string[] };
 const effortLabels: Record<string, [string, string]> = {
   none: ["关闭", "None"],
   minimal: ["最低", "Minimal"],
@@ -35,9 +34,6 @@ export default function InferenceControls({
   t: Translate;
 }) {
   const [open, setOpen] = useState<"model" | "effort" | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const modelButton = useRef<HTMLButtonElement>(null);
@@ -45,21 +41,16 @@ export default function InferenceControls({
   const settings = session.model_override ? session : agent;
   const model = settings.model ?? "";
   const effort = settings.effort ?? "";
-  const selected = models.find((item) => item.id === model);
-  const modelName = selected?.name || model || t("默认模型", "Default model");
-  const effortName = effortLabels[effort]
-    ? t(...effortLabels[effort])
-    : effort || t("自动", "Auto");
   const environment = agent.environment_id ?? "local";
-  const catalogOpen = open !== null;
-
-  useEffect(() => {
-    if (!catalogOpen) return;
-    setFailed(false);
-    setLoading(false);
-    setModels([]);
-    if (demo) {
-      setModels([
+  const catalog = useModelCatalog(
+    token,
+    agent.provider,
+    environment,
+    runtimeEnabled && !demo,
+    open,
+  );
+  const models = demo
+    ? [
         {
           id: "example-model",
           name: "Example model",
@@ -70,30 +61,14 @@ export default function InferenceControls({
           name: "Example fast",
           efforts: ["low", "medium", "high"],
         },
-      ]);
-      return;
-    }
-    if (!runtimeEnabled) return;
-    const abort = new AbortController();
-    setLoading(true);
-    void request<{ models: Model[] }>(
-      token,
-      `/api/models/${agent.provider}?environment_id=${encodeURIComponent(environment)}`,
-      undefined,
-      abort.signal,
-    )
-      .then((value) => {
-        if (!abort.signal.aborted)
-          setModels(Array.isArray(value.models) ? value.models : []);
-      })
-      .catch(() => {
-        if (!abort.signal.aborted) setFailed(true);
-      })
-      .finally(() => {
-        if (!abort.signal.aborted) setLoading(false);
-      });
-    return () => abort.abort();
-  }, [catalogOpen, agent.provider, environment, runtimeEnabled, token, demo]);
+      ]
+    : catalog.models;
+  const { loading, failed } = catalog;
+  const selected = models.find((item) => item.id === model);
+  const modelName = selected?.name || model || t("默认模型", "Default model");
+  const effortName = effortLabels[effort]
+    ? t(...effortLabels[effort])
+    : effort || t("自动", "Auto");
 
   useEffect(() => {
     if (!open) return;

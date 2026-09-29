@@ -41,7 +41,9 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 ### 运行环境路由
 
-`environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话继承 Agent 的环境，Agent 环境不可更改。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。只有本机模型列表缓存五分钟。
+`environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话继承 Agent 的环境，Agent 环境不可更改。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。本机与 SSH 模型列表均在控制端按环境／服务分别缓存五分钟；相同组合的并发 SSH 查询合并为一次，重新连接会使对应环境的缓存失效。读取失败不缓存。
+
+界面在进入会话时预读模型元信息，与 Agent 设置共享一分钟的内存缓存。重复打开菜单复用已有列表；缓存过期后在保留列表的同时刷新。工作台凭据、服务和运行环境分别隔离，断开工作台或重新连接环境后清理界面缓存。模型发现不提交 Agent 提示词。
 
 额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照包含兼容字段 `environment_name`，以及该连接下的自定义名称数组 `agent_names`。菜单使用这些名称展示，不附加设备标签；名称不作为路由标识。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
 

@@ -85,6 +85,8 @@ class RemoteManager:
         self.transport = transport or self._ssh
         self.closed = threading.Event()
         self._connections = threading.Lock()
+        self._model_guard = threading.Lock()
+        self._model_locks, self._model_cache, self._model_generations = {}, {}, {}
 
     def _ssh(self, environment, payload, stop=None):
         host, python = environment['ssh_host'], environment['python']
@@ -150,6 +152,10 @@ class RemoteManager:
         if not self.enabled: raise Forbidden('Remote execution is disabled.')
         if self.store.get_environment(environment_id)['kind'] != 'ssh': raise ValueError('Select an SSH environment')
         with self._connections:
+            with self._model_guard:
+                self._model_generations[environment_id] = self._model_generations.get(environment_id, 0) + 1
+                for key in list(self._model_cache):
+                    if key[0] == environment_id: self._model_cache.pop(key)
             self.store.update_environment_status(environment_id, 'connecting')
             try:
                 result = self.rpc(environment_id, {'op': 'probe'}, install=True)
@@ -166,8 +172,25 @@ class RemoteManager:
             raise Conflict('The selected native CLI was not found on this environment.')
 
     def models(self, environment_id, provider):
+        if not self.enabled or self.closed.is_set(): raise Forbidden('Remote execution is disabled.')
         self.check({'environment_id': environment_id, 'provider': provider})
-        return self.rpc(environment_id, {'op': 'models', 'provider': provider})
+        key = (environment_id, provider)
+        with self._model_guard:
+            lock = self._model_locks.setdefault(key, threading.Lock())
+        # The remote bootstrap exits after each RPC, so its Catalog cache cannot
+        # survive. Cache only model metadata in this long-lived controller.
+        with lock:
+            if not self.enabled or self.closed.is_set(): raise Forbidden('Remote execution is disabled.')
+            self.check({'environment_id': environment_id, 'provider': provider})
+            with self._model_guard:
+                generation = self._model_generations.get(environment_id, 0)
+                cached = self._model_cache.get(key)
+                if cached and time.monotonic() - cached[0] < 300: return cached[1]
+            value = self.rpc(environment_id, {'op': 'models', 'provider': provider})
+            with self._model_guard:
+                if not self.closed.is_set() and generation == self._model_generations.get(environment_id, 0):
+                    self._model_cache[key] = (time.monotonic(), value)
+            return value
 
     def run(self, environment_id, run_id, spec, stop, emit, bind, approve, tool):
         identity = {'controller': self.store.controller_id, 'run_id': run_id}
@@ -239,3 +262,4 @@ class RemoteManager:
 
     def close(self):
         self.closed.set()
+        with self._model_guard: self._model_cache.clear()

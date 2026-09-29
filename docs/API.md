@@ -41,7 +41,9 @@ Execution is disabled by default. In review mode, project, agent, session, memor
 
 ### Environment routing
 
-`environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions inherit their agent's environment. Agent environments cannot change. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Only local model catalogs are cached for five minutes.
+`environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions inherit their agent's environment. Agent environments cannot change. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Local and SSH model catalogs are cached in the controller for five minutes per environment/provider. Concurrent SSH lookups for the same pair share one request; reconnecting invalidates that environment's cache. Failed lookups are not cached.
+
+The interface preloads metadata when entering a conversation and shares a one-minute memory cache with agent settings. Reopening a menu reuses the list; expired entries remain visible during refresh. Workbench credentials, providers and environments have separate cache scopes. Disconnecting or reconnecting clears the interface cache. Discovery never submits an agent prompt.
 
 Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID. Menu snapshots retain `environment_name` for compatibility and include `agent_names`, the custom names associated with that connection. The menu displays these names without device labels; names are not routing identifiers. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
 

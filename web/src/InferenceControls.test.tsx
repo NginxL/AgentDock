@@ -8,9 +8,11 @@ import {
 } from "@testing-library/react";
 import { useState } from "react";
 import InferenceControls from "./InferenceControls";
+import { clearModelCatalog } from "./modelCatalog";
 import type { Agent, Session, Language } from "./types";
 afterEach(() => {
   cleanup();
+  clearModelCatalog();
   vi.unstubAllGlobals();
 });
 const agent: Agent = {
@@ -71,7 +73,8 @@ it.each<Language>(["zh", "en"])(
   "selects environment models and resets incompatible effort (%s)",
   async (lang) => {
     const { fetch, mutation, t } = setup(lang);
-    expect(fetch).not.toHaveBeenCalled();
+    // The selected conversation warms its catalog before opening the menu.
+    expect(fetch).toHaveBeenCalledTimes(1);
     fireEvent.click(
       screen.getByRole("button", {
         name: new RegExp("^" + t("模型", "Model") + ":"),
@@ -108,6 +111,7 @@ it.each<Language>(["zh", "en"])(
     );
     expect(agent.model).toBe("model-a");
     expect(agent.effort).toBe("high");
+    expect(fetch).toHaveBeenCalledTimes(1);
   },
 );
 it("supports second-click, close, outside-click and Escape without changing settings", async () => {

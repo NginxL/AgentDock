@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
 import InferenceControls from "../InferenceControls";
 import AgentDeletion from "../AgentDeletion";
+import { useModelCatalog } from "../modelCatalog";
 import AgentConnection, {
   NEW_SSH_CONNECTION,
   type SSHConnectionDraft,
@@ -96,57 +97,28 @@ export default function Workspace({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
-  const [models, setModels] = useState<
-    { id: string; name: string; efforts: string[] }[]
-  >([]);
-  const [catalogError, setCatalogError] = useState(false);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  useEffect(() => {
-    if (!agentForm) return;
-    setModels([]);
-    setCatalogError(false);
-    setCatalogLoading(false);
-    if (environment === NEW_SSH_CONNECTION || !connectionReady) return;
-    if (demo) {
-      setModels([
+  const catalog = useModelCatalog(
+    token,
+    provider,
+    environment,
+    agentForm &&
+      !demo &&
+      runtimeEnabled &&
+      connectionReady &&
+      environment !== NEW_SSH_CONNECTION,
+    connectionVersion,
+  );
+  const models = demo
+    ? [
         {
           id: "demo-model",
           name: "Demo model",
           efforts: ["low", "medium", "high"],
         },
-      ]);
-      return;
-    }
-    if (!runtimeEnabled) return;
-    const abort = new AbortController();
-    setCatalogLoading(true);
-    void request<{ models: { id: string; name: string; efforts: string[] }[] }>(
-      token,
-      `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}`,
-      undefined,
-      abort.signal,
-    )
-      .then((r) => {
-        if (!abort.signal.aborted)
-          setModels(Array.isArray(r.models) ? r.models : []);
-      })
-      .catch(() => {
-        if (!abort.signal.aborted) setCatalogError(true);
-      })
-      .finally(() => {
-        if (!abort.signal.aborted) setCatalogLoading(false);
-      });
-    return () => abort.abort();
-  }, [
-    agentForm,
-    provider,
-    environment,
-    connectionReady,
-    connectionVersion,
-    token,
-    demo,
-    runtimeEnabled,
-  ]);
+      ]
+    : catalog.models;
+  const catalogError = catalog.failed;
+  const catalogLoading = catalog.loading;
   const [agentID, setAgentID] = useState(agents[0]?.id ?? "");
   const [sessionID, setSessionID] = useState("");
   const [deletingSession, setDeletingSession] = useState<string | null>(null);

@@ -22,6 +22,7 @@ import Memories from "./views/Memories";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
 import { useMetrics } from "./metrics";
+import { clearModelCatalog } from "./modelCatalog";
 
 type Tab = "workspace" | "messages" | "memory" | "usage" | "tokens";
 
@@ -111,6 +112,7 @@ export default function App() {
   }, [lang, demo]);
 
   const disconnect = useCallback(() => {
+    clearModelCatalog();
     setDemo(false);
     tokenRef.current = "";
     stateEpoch.current += 1;
@@ -318,6 +320,8 @@ export default function App() {
     try {
       const result = await request<unknown>(currentToken, path, data);
       if (currentToken !== tokenRef.current) return false;
+      if (/^\/api\/environments\/[^/]+\/(connect|remove)$/.test(path))
+        clearModelCatalog();
       try {
         const refreshed = await refresh();
         // Newly selected IDs must already exist in state, otherwise selection
