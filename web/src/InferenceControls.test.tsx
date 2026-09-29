@@ -170,3 +170,62 @@ it("clears a stale model catalog when switching conversations and hosts", async 
     ),
   );
 });
+
+it.each<Language>(["zh", "en"])(
+  "uses the original host and frozen defaults after an agent moves (%s)",
+  async (lang) => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ models }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const t = (zh: string, en: string) => (lang === "zh" ? zh : en);
+    const props = {
+      agent: { ...agent, environment_id: "local", model: "new-host-model" },
+      session: {
+        ...original,
+        environment_id: "devbox",
+        agent_defaults: { model: "model-b", effort: "low" },
+      },
+      token: "fixture",
+      runtimeEnabled: true,
+      busy: false,
+      demo: false,
+      mutate: vi.fn(async () => true),
+      t,
+    };
+    const { rerender } = render(<InferenceControls {...props} />);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/models/codex?environment_id=devbox",
+      expect.any(Object),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("模型: model-b", "Model: model-b"),
+      }),
+    );
+    expect(
+      (
+        await screen.findByRole("menuitemradio", { name: "Model B" })
+      ).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.queryByText("new-host-model")).toBeNull();
+    rerender(
+      <InferenceControls
+        {...props}
+        session={{ ...props.session, model_override: 1, model: "model-a" }}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: t("使用会话默认设置", "Use conversation defaults"),
+      }),
+    );
+    await waitFor(() =>
+      expect(props.mutate).toHaveBeenCalledWith(
+        "/api/sessions/first/settings",
+        { inherit: true },
+      ),
+    );
+  },
+);

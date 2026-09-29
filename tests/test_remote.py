@@ -255,7 +255,9 @@ class EnvironmentTests(unittest.TestCase):
         for session in sessions: self.store.enqueue_run(session['id'],'Hello')
         self.assertIsNotNone(self.store.claim_next_run()); self.assertIsNotNone(self.store.claim_next_run())
         with self.assertRaises(Conflict): self.store.remove_environment(remote['id'])
-        with self.assertRaises(Invalid): self.store.update_agent(b['id'],{'environment_id':'local'})
+        self.store.update_agent(b['id'],{'environment_id':'local'})
+        self.assertEqual(self.store.get_session(sessions[1]['id'])['environment_id'], remote['id'])
+        with self.assertRaises(Conflict): self.store.remove_environment(remote['id'])
 
     def test_reject_shell_ssh_option_and_path_injection(self):
         for host in ('-oProxyCommand=evil','host;echo secret','host\nother','$(whoami)'):

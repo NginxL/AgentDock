@@ -289,6 +289,7 @@ describe("user-defined agent roles", () => {
     expect(JSON.parse(call[1].body)).toEqual({
       name: "Custom helper",
       role: "",
+      environment_id: "local",
       model: null,
       effort: null,
       permission_mode: "ask",

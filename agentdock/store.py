@@ -159,8 +159,8 @@ class Store:
     def _migrate_inference_settings(self):
         with self.transaction():
             for table, fields in {
-                'sessions': {'model': 'TEXT', 'effort': 'TEXT', 'model_override': 'INTEGER NOT NULL DEFAULT 0'},
-                'runs': {'model': 'TEXT', 'effort': 'TEXT'},
+                'sessions': {'model': 'TEXT', 'effort': 'TEXT', 'model_override': 'INTEGER NOT NULL DEFAULT 0', 'agent_defaults': 'TEXT'},
+                'runs': {'model': 'TEXT', 'effort': 'TEXT', 'permission_mode': 'TEXT'},
             }.items():
                 existing = {r[1] for r in self.db.execute('PRAGMA table_info(' + table + ')')}
                 for name, definition in fields.items():
@@ -237,7 +237,7 @@ class Store:
     def remove_environment(self, identifier):
         with self.transaction():
             self._one('environments',identifier)
-            if identifier=='local' or self.db.execute('SELECT 1 FROM agents WHERE environment_id=? UNION SELECT 1 FROM projects WHERE environment_id=?',(identifier,identifier)).fetchone():
+            if identifier=='local' or self.db.execute('SELECT 1 FROM agents WHERE environment_id=? UNION SELECT 1 FROM projects WHERE environment_id=? UNION SELECT 1 FROM sessions WHERE environment_id=?',(identifier,identifier,identifier)).fetchone():
                 raise Conflict('This environment is still in use')
             self.db.execute('DELETE FROM environments WHERE id=?',(identifier,))
             return {'ok':True}
@@ -287,6 +287,8 @@ class Store:
     def _decode(row):
         for key in ("payload", "options", "request"):
             if key in row: row[key] = json.loads(row[key])
+        if row.get('agent_defaults') is not None:
+            row['agent_defaults'] = json.loads(row['agent_defaults'])
         return row
 
     def _all(self, query, args=()):
@@ -297,6 +299,14 @@ class Store:
 
     def get_agent(self, identifier):
         with self.lock: return self._one("agents", identifier)
+
+    def session_agent(self, session_id):
+        """Execution settings belong to the conversation, even after its agent moves."""
+        with self.lock:
+            session = self._one('sessions', session_id)
+            agent = self._one('agents', session['agent_id'])
+            return {**agent, **(session['agent_defaults'] or {}),
+                    **{key: session[key] for key in ('environment_id', 'workspace', 'project_id')}}
 
     def get_session(self, identifier):
         with self.lock: return self._one("sessions", identifier)
@@ -376,19 +386,29 @@ class Store:
         return item
 
     def update_agent(self, agent_id, changes):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode"}:
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id"}:
             raise Invalid("Only agent settings can be updated")
         with self.transaction():
             agent = self._one("agents", agent_id)
-            if set(changes) - {"name", "role"} and self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone(): raise Conflict("Wait for active tasks before changing agent settings")
-            model, effort = self._settings(changes.get("model", agent["model"]), changes.get("effort", agent["effort"]))
+            environment_id = text(changes.get('environment_id', agent['environment_id']), 'environment_id', 160)
+            self._one('environments', environment_id)
+            relocated = environment_id != agent['environment_id']
+            model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]))
             permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
-            workspace = changes.get("workspace", agent["workspace"])
+            workspace = changes.get("workspace", None if relocated else agent["workspace"])
             moved = project_id != agent["project_id"] or workspace != agent["workspace"]
-            if moved and self.db.execute("SELECT 1 FROM sessions WHERE agent_id=?", (agent_id,)).fetchone(): raise Conflict("Create a new agent to change the workspace after a conversation exists")
-            workspace = self._workspace(project_id, workspace, agent_id,agent['environment_id']) if moved else workspace
-            self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=?,permission_mode=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, permission_mode, agent_id))
+            if (project_id != agent['project_id'] or (moved and not relocated)) and self.db.execute("SELECT 1 FROM sessions WHERE agent_id=?", (agent_id,)).fetchone():
+                raise Conflict("Create a new agent to change the workspace or project after a conversation exists")
+            if not relocated and (moved or (model, effort, permission_mode) != (agent['model'], agent['effort'], agent['permission_mode'])) and self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone():
+                raise Conflict("Wait for active tasks before changing agent settings")
+            workspace = self._workspace(project_id, workspace, agent_id,environment_id) if moved or relocated else workspace
+            if relocated:
+                # Freeze inherited defaults once; repeated moves must not rebind old conversations.
+                defaults = {key: agent[key] for key in ('model', 'effort', 'permission_mode')}
+                self.db.execute('UPDATE sessions SET agent_defaults=? WHERE agent_id=? AND agent_defaults IS NULL',
+                                (json.dumps(defaults), agent_id))
+            self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=?,permission_mode=?,environment_id=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, permission_mode, environment_id, agent_id))
             return self._one("agents", agent_id)
 
     def _add_session(self, agent_id, title):
@@ -531,9 +551,11 @@ class Store:
         identifier = str(uuid.uuid4())
         task_run_id = sender["task_run_id"] if origin == "reply" else identifier
         run = dict(id=identifier,task_run_id=task_run_id,session_id=session_id,project_id=session["project_id"],agent_id=session["agent_id"],prompt=prompt,status="queued",error=None,created_at=now(),updated_at=now(),origin=origin,parent_run_id=parent_run_id,root_run_id=expected_root or identifier,depth=expected_depth,delivery_id=delivery_id,result=None)
-        settings = sender if origin == 'reply' else (session if session['model_override'] else self._one('agents', session['agent_id']))
+        session_agent = self.session_agent(session_id)
+        settings = sender if origin == 'reply' else (session if session['model_override'] else session_agent)
         run.update(model=settings['model'], effort=settings['effort'])
-        self.db.execute("INSERT INTO runs(id,session_id,project_id,agent_id,prompt,status,error,created_at,updated_at,origin,parent_run_id,root_run_id,depth,delivery_id,task_run_id,model,effort) VALUES(:id,:session_id,:project_id,:agent_id,:prompt,:status,:error,:created_at,:updated_at,:origin,:parent_run_id,:root_run_id,:depth,:delivery_id,:task_run_id,:model,:effort)",run)
+        run['permission_mode'] = sender['permission_mode'] if origin == 'reply' else session_agent['permission_mode']
+        self.db.execute("INSERT INTO runs(id,session_id,project_id,agent_id,prompt,status,error,created_at,updated_at,origin,parent_run_id,root_run_id,depth,delivery_id,task_run_id,model,effort,permission_mode) VALUES(:id,:session_id,:project_id,:agent_id,:prompt,:status,:error,:created_at,:updated_at,:origin,:parent_run_id,:root_run_id,:depth,:delivery_id,:task_run_id,:model,:effort,:permission_mode)",run)
         self._refresh_session(session_id, "queued")
         self._event(run["project_id"], session_id, "run_queued", {"run_id":identifier,"origin":origin,"parent_run_id":parent_run_id,"delivery_id":delivery_id})
         return run
@@ -544,6 +566,7 @@ class Store:
 
     def _can_claim(self, run):
         if run["status"] != "queued": return False
+        if self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status='running'", (run['agent_id'],)).fetchone(): return False
         session=self._one('sessions',run['session_id'])
         chosen = Path(session['workspace'])
         active = self.db.execute("SELECT runs.agent_id,sessions.workspace AS path FROM runs JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running' AND sessions.environment_id=?",(session['environment_id'],)).fetchall()
@@ -725,7 +748,7 @@ class Store:
                     if mismatched: raise Conflict("Idempotency key already used for another message")
                     return dict(row)
             if recipient_session_id is None:
-                latest = self.db.execute("SELECT id FROM sessions WHERE agent_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1", (recipient_id,)).fetchone()
+                latest = self.db.execute("SELECT id FROM sessions WHERE agent_id=? AND environment_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 1", (recipient_id,recipient['environment_id'])).fetchone()
                 recipient_session_id = latest["id"] if latest else self._add_session(recipient_id, "Delegated task" if sender_id != "human" else "New task")["id"]
             identifier = str(uuid.uuid4())
             run = self._enqueue_run(recipient_session_id, body, "human" if sender_id == "human" else "delegate", parent_run_id=parent_run_id, delivery_id=identifier)

@@ -32,6 +32,11 @@ export interface Agent {
   permission_mode?: PermissionMode;
 }
 export interface Session {
+  agent_defaults?: {
+    model?: string | null;
+    effort?: string | null;
+    permission_mode?: PermissionMode;
+  } | null;
   model?: string | null;
   effort?: string | null;
   model_override?: boolean | 0 | 1;

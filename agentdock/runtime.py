@@ -55,6 +55,12 @@ class Runtime:
             return None
         return self._command(agent['provider'])
 
+    def _recipient_command(self, recipient_id, session_id=None):
+        agent = self.store.session_agent(session_id) if session_id else self.store.get_agent(recipient_id)
+        if agent['id'] != recipient_id:
+            raise Forbidden('Recipient session does not belong to the target agent')
+        return self._agent_command(agent)
+
     def _check_enabled(self):
         if not self.enabled:
             raise Forbidden("Agent execution is disabled. Review the code before enabling it.")
@@ -79,8 +85,7 @@ class Runtime:
     def start(self, session_id: str, prompt: str) -> dict:
         with self._lock:
             self._check_enabled()
-            session = self.store.get_session(session_id)
-            self._agent_command(self.store.get_agent(session["agent_id"]))
+            self._agent_command(self.store.session_agent(session_id))
             record = self.store.enqueue_run(session_id, prompt)
             self._notify()
             return record
@@ -117,7 +122,7 @@ class Runtime:
                      idempotency_key=None, recipient_session_id=None):
         with self._lock:
             self._check_enabled()
-            self._agent_command(self.store.get_agent(recipient_id))
+            self._recipient_command(recipient_id, recipient_session_id)
             message = self.store.enqueue_message(
                 project_id, "human", recipient_id, body, correlation_id, idempotency_key,
                 recipient_session_id=recipient_session_id)
@@ -138,7 +143,7 @@ class Runtime:
             caller = self.store.capability_run(token)
             if name == "message_send":
                 if caller["project_id"] is None: raise Forbidden("Agent collaboration requires a project")
-                self._agent_command(self.store.get_agent(arguments.get("recipient_id")))
+                self._recipient_command(arguments.get("recipient_id"), arguments.get("recipient_session_id"))
                 message = self.store.enqueue_message(
                     caller["project_id"], caller["agent_id"], arguments.get("recipient_id"),
                     arguments.get("body"), arguments.get("correlation_id"), arguments.get("idempotency_key"),
@@ -167,7 +172,7 @@ class Runtime:
                     if record is None:
                         break
                     try:
-                        self._agent_command(self.store.get_agent(record["agent_id"]))
+                        self._agent_command(self.store.session_agent(record["session_id"]))
                         capability = self.store.issue_capability(record["id"])
                         run = _Run(record, capability)
                         run.thread = threading.Thread(target=self._worker, args=(run,), daemon=True,
@@ -244,7 +249,7 @@ class Runtime:
                 raise ProviderCancelled()
             record = run.record
             session = self.store.get_session(record["session_id"])
-            agent = self.store.get_agent(record["agent_id"])
+            agent = self.store.session_agent(record["session_id"])
             workspace = session["workspace"]
             self._event(run, "run_started", {"provider": agent["provider"], "protocol": "native",
                                              "native_resume": bool(session.get("native_session_id"))})
@@ -262,7 +267,7 @@ class Runtime:
                     'legacy_workspace': session.get('legacy_workspace'),
                     'native_session_id': session.get('native_session_id'),
                     'model': record.get('model'), 'effort': record.get('effort'),
-                    'permission_mode': agent['permission_mode'],
+                    'permission_mode': record['permission_mode'],
                     'timeout': self.config.get('run_timeout', 900)}, run.stop,
                     lambda kind, payload: self._event(run, kind, payload),
                     lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
@@ -275,7 +280,7 @@ class Runtime:
                 lambda kind, payload: self._event(run, kind, payload),
                 lambda native_id: self.store.bind_native_session(session["id"], native_id, run_id=record["id"]),
                 lambda request, options: self._request_approval(run, request, options),
-                timeout=self.config.get("run_timeout", 900), permission_mode=agent['permission_mode'],
+                timeout=self.config.get("run_timeout", 900), permission_mode=record['permission_mode'],
                 session_home=str(self.store.session_directory(session['id'])),
                 **({"model": record["model"], "effort": record["effort"]} if record.get("model") or record.get("effort") else {}))
             if not isinstance(result, str):

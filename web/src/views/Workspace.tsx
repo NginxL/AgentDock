@@ -132,6 +132,8 @@ export default function Workspace({
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
   const editingAgent = agents.find((a) => a.id === editingAgentID);
+  const changingEnvironment =
+    !!editingAgent && environment !== (editingAgent.environment_id ?? "local");
   const running = selectedSession?.status === "running";
   const sessionRuns = (state.runs ?? []).filter(
     (run) => run.session_id === sessionID,
@@ -413,7 +415,10 @@ export default function Workspace({
                       model: model || null,
                       effort: effort || null,
                       permission_mode: permissionMode,
-                      ...(!sessions.some((s) => s.agent_id === editingAgentID)
+                      environment_id: environment,
+                      ...(!sessions.some(
+                        (s) => s.agent_id === editingAgentID,
+                      ) || changingEnvironment
                         ? {
                             project_id: agentProject || null,
                             workspace: workspace || null,
@@ -476,7 +481,7 @@ export default function Workspace({
               value={environment}
               draft={connectionDraft}
               onDraftChange={setConnectionDraft}
-              locked={!!editingAgentID}
+              locked={false}
               environments={state.environments ?? []}
               t={t}
               busy={busy && !demo}
@@ -484,9 +489,14 @@ export default function Workspace({
               mutate={mutate}
               onChange={(id) => {
                 setEnvironment(id);
-                setWorkspace("");
-                setModel("");
-                setEffort("");
+                const original =
+                  editingAgent &&
+                  id === (editingAgent.environment_id ?? "local")
+                    ? editingAgent
+                    : undefined;
+                setWorkspace(original?.workspace ?? "");
+                setModel(original?.model ?? "");
+                setEffort(original?.effort ?? "");
               }}
             />
             <div className="form-grid">
@@ -519,6 +529,7 @@ export default function Workspace({
                     value={workspace}
                     disabled={
                       !!editingAgentID &&
+                      !changingEnvironment &&
                       sessions.some((s) => s.agent_id === editingAgentID)
                     }
                     onChange={(e) => setWorkspace(e.target.value)}
@@ -595,8 +606,8 @@ export default function Workspace({
                       "Model list unavailable. Keep client settings and reopen this panel to retry.",
                     )
                   : t(
-                      "模型与思考强度作为 Agent 默认设置，会话可单独覆盖。访问权限用于后续消息；建立会话后，工作目录及项目固定。",
-                      "Model and effort set agent defaults; conversations can override them. Permissions apply to future messages. Workspace and project stay fixed once a conversation exists.",
+                      "模型与思考强度作为 Agent 默认设置，会话可单独覆盖。",
+                      "Model and effort set agent defaults; conversations can override them.",
                     )}
             </p>
             <label>
@@ -606,6 +617,7 @@ export default function Workspace({
                 aria-describedby="agent-permission-description"
                 disabled={
                   !!editingAgentID &&
+                  !changingEnvironment &&
                   state.runs?.some(
                     (run) =>
                       run.agent_id === editingAgentID &&
@@ -657,8 +669,8 @@ export default function Workspace({
             {editingAgentID && (
               <p className="form-hint">
                 {t(
-                  "运行位置与服务保持不变，以保留已有会话绑定。需要更换时，请添加新的 Agent。",
-                  "The device and provider stay unchanged to preserve session bindings. Add a new agent to use another device or provider.",
+                  "更改运行位置后，新会话使用新位置；已有会话保留原位置、目录和设置，正在执行的任务不受影响。",
+                  "Changing the runtime location applies to new conversations. Existing conversations keep their original location, directory and settings; active tasks continue unchanged.",
                 )}
               </p>
             )}

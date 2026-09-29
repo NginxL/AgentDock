@@ -97,11 +97,11 @@ Create a conversation and send a message to your agent. **Task running** changes
 
 ![Expandable execution details and final response, fictional demo data](docs/images/conversation.en.png)
 
-Click **Model** or **Reasoning effort** below the conversation input to choose from the selected agent's native model catalog. Changes apply to future messages in this conversation. Submitted and queued messages retain their original choices. Changing models resets effort to Auto; **Use agent defaults** restores inheritance.
+Click **Model** or **Reasoning effort** below the conversation input to choose from the conversation's original runtime location. Changes apply to future messages in this conversation. Submitted and queued messages retain their original choices. Changing models resets effort to Auto; **Use agent defaults** restores inheritance.
 
 ![Choose a conversation model below the input, fictional demo data](docs/images/inference.en.png)
 
-**Agent settings** controls the name, role, default model and default effort. Changing agent defaults requires current tasks to finish. Existing conversations retain context; their workspace and project stay fixed. Create another agent to use a different directory.
+**Agent settings** lets you change the name, role, default model, effort and **Run on** location. To switch between a local CLI and Devbox, select the new location and save; there is no need to delete the agent. New conversations use the new location and its working directory. Existing conversations keep their original location, native history, directory, model defaults and permissions; queued and active tasks continue unchanged. A conversation on the previous location uses **Use conversation defaults** to reset model overrides. Its original connection must remain available to continue or delete that conversation.
 
 Each task shows the model identifier and reasoning effort reported by the CLI. An assistant’s self-description is not used as configuration evidence.
 
@@ -116,7 +116,7 @@ Choose **Access permissions** when adding an agent or opening **Agent settings**
 | Ask for approval (default) | Keep controlled execution; operations requiring approval wait in the workbench. Existing agents without a saved permission setting use this default. |
 | Full access | Disable routine CLI permission prompts for file changes, commands and network access in the selected environment. System account and organization policies still apply. |
 
-Changes apply to future messages without clearing the conversation. Wait for queued or running tasks to finish, or cancel them, before changing permissions.
+Permission changes apply to future messages in conversations still inheriting agent defaults. Conversations retained during a location change keep their original permissions. Changing permissions at the same location requires queued and active tasks to finish; switching location can set separate permissions for new conversations.
 
 ![Choosing access permissions for a new agent, fictional demo data](docs/images/permissions.en.jpg)
 

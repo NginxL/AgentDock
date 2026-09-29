@@ -38,10 +38,12 @@ export default function InferenceControls({
   const root = useRef<HTMLDivElement>(null);
   const modelButton = useRef<HTMLButtonElement>(null);
   const effortButton = useRef<HTMLButtonElement>(null);
-  const settings = session.model_override ? session : agent;
+  const settings = session.model_override
+    ? session
+    : (session.agent_defaults ?? agent);
   const model = settings.model ?? "";
   const effort = settings.effort ?? "";
-  const environment = agent.environment_id ?? "local";
+  const environment = session.environment_id ?? agent.environment_id ?? "local";
   const catalog = useModelCatalog(
     token,
     agent.provider,
@@ -250,7 +252,9 @@ export default function InferenceControls({
               disabled={busy || saving || demo}
               onClick={() => void choose("", "", true)}
             >
-              {t("使用 Agent 默认设置", "Use agent defaults")}
+              {session.agent_defaults
+                ? t("使用会话默认设置", "Use conversation defaults")
+                : t("使用 Agent 默认设置", "Use agent defaults")}
             </button>
           )}
         </div>
