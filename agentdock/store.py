@@ -952,6 +952,8 @@ class Store:
     def state(self):
         with self.lock:
             result={name:self._all("SELECT * FROM "+name+" ORDER BY created_at") for name in ("projects","agents","sessions","messages","memories","proposals")}
+            for agent in result['agents']:
+                agent['workspace_is_default'] = self._automatic_workspace(agent['workspace'], agent['id'], agent['environment_id'])
             result["runs"]=self._all("SELECT * FROM runs WHERE id IN (SELECT id FROM runs ORDER BY created_at DESC,rowid DESC LIMIT 300) ORDER BY created_at,rowid")
             result["events"]=self._all("SELECT * FROM (SELECT * FROM events ORDER BY seq DESC LIMIT 300) ORDER BY seq")
             result["approvals"]=self._all("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at")

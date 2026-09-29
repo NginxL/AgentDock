@@ -61,6 +61,7 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 | --- | --- |
 | `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
 | `GET /api/quotas` | Cached Codex/Claude snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
+| `GET /api/directories` | Query `environment_id` (default `local`) and `path` (default `~`). Administrator-only, read-only listing of up to 200 directories; returns `path`, `parent`, `directories` and `truncated`, never file contents. SSH browsing requires execution enabled and a connected runner. Resolves paths on the selected host. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
 | `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`, `permission_mode`, `environment_id`. Changing location is allowed during active tasks and freezes existing session defaults. Omitted model, effort and workspace reset to the new location’s defaults. `workspace` may change before any conversation exists or together with location; `project_id` may change only before any conversation exists. Other model/permission changes require no queued or running tasks. Provider is immutable. |
@@ -91,7 +92,7 @@ Names and roles are user-defined and independent of `provider`. Updates require 
 
 | Record | Relevant fields |
 | --- | --- |
-| Agent | `id`, `project_id`, `environment_id`, `name`, `provider`, `role`, `workspace`, `model`, `effort`, `permission_mode`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
+| Agent | `id`, `project_id`, `environment_id`, `name`, `provider`, `role`, `workspace`, `workspace_is_default` (derived in state responses), `model`, `effort`, `permission_mode`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
 | Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `environment_id`, `workspace`, `agent_defaults`, `model`, `effort`, `model_override`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
 | Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `model`, `effort`, `permission_mode`, `result`, `error`, timestamps. Model, effort and permissions are captured at submission. |
 | Delivery (`messages`) | `id`, `project_id`, `sender_id`, `recipient_id`, `sender_session_id`, `recipient_session_id`, `sender_run_id`, `run_id`, `reply_run_id`, `body`, `status`, `result`, `error`, `correlation_id`, `idempotency_key`, timestamps. |

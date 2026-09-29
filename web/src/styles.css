@@ -700,7 +700,7 @@ input[readonly] {
 }
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
 }
 .form-hint {
@@ -2273,10 +2273,124 @@ input[readonly] {
 }
 
 .connection-setup {
-  padding: 20px;
+  padding: 12px 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--soft);
+  margin-bottom: 18px;
+}
+.inset-form input,
+.inset-form select {
+  min-height: 40px;
+  border-radius: 10px;
+}
+.inset-form select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23777b87' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.device-field,
+.workspace-directory {
+  min-width: 0;
+  position: relative;
+}
+.device-field:has(.device-status) select {
+  padding-right: 114px;
+}
+.device-status {
+  position: absolute;
+  right: 36px;
+  top: 35px;
+  pointer-events: none;
+  border-radius: 20px;
+}
+.ssh-address-row {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+.ssh-address-row label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.ssh-address-row > button {
+  height: 40px;
+  flex-shrink: 0;
+}
+.connection-setup .connection-advanced {
+  margin: 12px 0 0;
+}
+.workspace-directory > label input {
+  padding-right: 40px;
+}
+.directory-toggle {
+  position: absolute;
+  right: 5px;
+  top: 29px;
+}
+.directory-picker {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  top: 72px;
+  width: min(510px, calc(100vw - 48px));
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 36px #24283220;
+}
+.directory-picker .panel-heading {
+  padding: 0;
+  margin-bottom: 12px;
+}
+.directory-navigation {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.directory-navigation input {
+  flex: 1;
+  margin: 0;
+}
+.directory-list {
+  max-height: 190px;
+  min-height: 60px;
+  overflow-y: auto;
+  margin: 12px 0;
+}
+.directory-list > button {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 9px;
+  border-radius: 6px;
+}
+.directory-list > button:hover {
+  background: var(--soft);
+}
+.directory-list > button span:first-of-type {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.directory-list > p {
+  font-size: 12px;
+  color: var(--muted);
+}
+@media (max-width: 700px) {
+  .ssh-address-row {
+    flex-wrap: wrap;
+  }
+  .ssh-address-row label {
+    flex-basis: 100%;
+  }
 }
 .connection-setup .panel-heading {
   margin-bottom: 16px;

@@ -1331,7 +1331,7 @@ describe("independent agents and usage", () => {
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "Personal assistant" },
     });
-    await screen.findByRole("option", { name: "fixture-model" });
+    await screen.findByRole("option", { name: "Fixture" });
     fireEvent.change(screen.getByLabelText("模型"), {
       target: { value: "fixture-model" },
     });

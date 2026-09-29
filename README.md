@@ -89,11 +89,13 @@ The workbench starts in **review mode**. Creating projects and viewing saved sta
 python3 -m agentdock --config config.local.json --enable-execution
 ```
 
-Choose **Workspace → Add agent**, select a provider and enter a name. Under **Run on**, choose **Local CLI**, a saved SSH connection or **New SSH connection…**. Connection setup stays in this form, and no project is required. Choose a trusted working directory or leave it blank for a private directory under the application data folder on that device. Associate a project when you need shared memory or task handoffs.
+Choose **Workspace → Add agent**, select a provider and enter a name. Under **Device**, choose **Local CLI**, **New SSH / Devbox connection…**, or a connection you saved. New SSH addresses start empty: enter your own `user@hostname` or SSH Host alias. Editing a saved address creates or reuses a connection without changing conversations on the original one. The folder button browses directories on the selected device. SSH workspace files and native histories stay on the remote host; local CLI workspaces stay on this Mac. Leaving the directory blank creates a private directory for each conversation on its device. Workbench configuration, messages and usage records remain in the local database. Associate a project when you need shared memory or task handoffs.
+
+![Device, SSH address and workspace setup, fictional demo data](docs/images/agent-setup.en.png)
 
 Agent lists, conversation headings and quota summaries use your custom names without automatic device or provider labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card.
 
-Create a conversation and send a message to your agent. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
+Create a conversation and send a message to your agent. **Enter** sends; **Shift + Enter** inserts a new line. Confirming text with an input method does not send the draft. **Task running** changes to **Task completed** when its CLI confirms completion. Click the status to expand live thinking summaries, tool calls and output; the final reply appears below it. Failed, cancelled and approval-waiting tasks have distinct states. The process panel contains only what the CLI publishes; it does not generate additional reasoning.
 
 ![Expandable execution details and final response, fictional demo data](docs/images/conversation.en.png)
 
@@ -101,7 +103,7 @@ Click **Model** or **Reasoning effort** below the conversation input to choose f
 
 ![Choose a conversation model below the input, fictional demo data](docs/images/inference.en.png)
 
-**Agent settings** lets you change the name, role, default model, effort and **Run on** location. To switch between a local CLI and Devbox, select the new location and save; there is no need to delete the agent. New conversations use the new location and its working directory. Existing conversations keep their original location, native history, directory, model defaults and permissions; queued and active tasks continue unchanged. A conversation on the previous location uses **Use conversation defaults** to reset model overrides. Its original connection must remain available to continue or delete that conversation.
+**Agent settings** lets you change the name, role, default model, effort and **Device** location. To switch between a local CLI and Devbox, select the new location and save; there is no need to delete the agent. New conversations use the new location and its working directory. Existing conversations keep their original location, native history, directory, model defaults and permissions; queued and active tasks continue unchanged. A conversation on the previous location uses **Use conversation defaults** to reset model overrides. Its original connection must remain available to continue or delete that conversation.
 
 Each task shows the model identifier and reasoning effort reported by the CLI. An assistant’s self-description is not used as configuration evidence.
 
@@ -128,7 +130,7 @@ Click an add, settings or edit button again to collapse its panel, or use × to 
 
 ![SSH connection setup inside Add agent, fictional demo data](docs/images/environments.en.jpg)
 
-Open **Workspace → Add agent → Run on → New SSH connection…**, enter a system SSH Host alias or `user@host`, and choose **Connect and use**. **Advanced connection settings** lets you specify the remote Python command. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
+Open **Workspace → Add agent → Device → New SSH / Devbox connection…**, enter a system SSH Host alias or `user@host`, and choose **Connect and use**. **Advanced connection settings** lets you specify the remote Python command. The remote host needs Python 3.9+ and an installed, authenticated agent CLI. AgentDock installs its runner under the remote user's private data directory; it does not install a system service or export local credentials.
 
 After connecting, choose the model, role and permissions, then select **Create agent**. Other agents can reuse the saved connection. **Agent settings** shows connection details and offers **Connect / check** after creation. Progress can stay collapsed or be expanded while the task runs; the final reply appears separately. Brief network interruptions resume from the last event cursor. Cancellation and a 90-second lease stop owned remote tasks when the controller disappears. See [SSH setup and recovery](docs/SSH.md).
 

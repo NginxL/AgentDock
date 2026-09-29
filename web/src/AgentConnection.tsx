@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { Environment, Mutate, Translate } from "./types";
 import { Icon } from "./ui";
 
@@ -21,7 +21,9 @@ export default function AgentConnection({
   runtimeEnabled,
   locked,
   mutate,
+  children,
 }: {
+  children?: ReactNode;
   value: string;
   onChange: (id: string) => void;
   draft: SSHConnectionDraft;
@@ -33,11 +35,13 @@ export default function AgentConnection({
   locked: boolean;
   mutate: Mutate;
 }) {
-  const { host, python } = draft;
   const [connecting, setConnecting] = useState(false);
   const inFlight = useRef(false);
   const selected = environments.find((e) => e.id === value);
   const newConnection = value === NEW_SSH_CONNECTION;
+  const remote = value !== "local";
+  const host = newConnection ? draft.host : (selected?.ssh_host ?? draft.host);
+  const python = newConnection ? draft.python : (selected?.python ?? "python3");
   const disabled = busy || connecting;
   const labels: Record<string, string> = {
     connected: t("已连接", "Connected"),
@@ -86,59 +90,98 @@ export default function AgentConnection({
 
   return (
     <div className="agent-connection">
-      <label>
-        {t("运行位置", "Run on")}
-        <select
-          value={value}
-          disabled={locked || disabled}
-          onChange={(e) => {
-            if (value !== NEW_SSH_CONNECTION)
-              onDraftChange({ ...draft, previous: value });
-            onChange(e.target.value);
-          }}
-        >
-          <option value="local">{t("本机 CLI", "Local CLI")}</option>
-          {environments
-            .filter((e) => e.kind === "ssh")
-            .map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} · SSH
-              </option>
-            ))}
-          {!locked && (
-            <option value={NEW_SSH_CONNECTION}>
-              {t("新的 SSH 连接…", "New SSH connection…")}
-            </option>
+      <div className="form-grid device-directory-row">
+        <div className="device-field">
+          <label>
+            {t("设备", "Device")}
+            <select
+              value={value}
+              disabled={locked || disabled}
+              onChange={(e) => {
+                if (value !== NEW_SSH_CONNECTION)
+                  onDraftChange({ ...draft, previous: value });
+                onChange(e.target.value);
+              }}
+            >
+              <option value="local">{t("本机 CLI", "Local CLI")}</option>
+              {!locked && (
+                <option value={NEW_SSH_CONNECTION}>
+                  {t("新建 SSH / Devbox 连接…", "New SSH / Devbox connection…")}
+                </option>
+              )}
+              {!!environments.some((e) => e.kind === "ssh") && (
+                <optgroup label={t("已保存的连接", "Saved connections")}>
+                  {environments
+                    .filter((e) => e.kind === "ssh")
+                    .map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                </optgroup>
+              )}
+            </select>
+          </label>
+          {remote && !newConnection && selected && (
+            <span
+              className={`pill device-status ${selected.status === "connected" ? "good" : ""}`}
+            >
+              {connecting
+                ? t("连接中", "Connecting")
+                : (labels[selected.status] ?? selected.status)}
+            </span>
           )}
-        </select>
-      </label>
-      {newConnection ? (
+        </div>
+        {children}
+      </div>
+      {remote && (
         <div className="connection-setup">
-          <div className="panel-heading">
-            <h3>{t("连接远端 CLI", "Connect remote CLI")}</h3>
+          <div className="ssh-address-row">
+            <label>
+              {t("SSH 地址或 Host 别名", "SSH destination or Host alias")}
+              <input
+                value={host}
+                onChange={(e) => {
+                  onDraftChange({
+                    host: e.target.value,
+                    python,
+                    previous: newConnection ? draft.previous : value,
+                  });
+                  if (!newConnection) onChange(NEW_SSH_CONNECTION);
+                }}
+                disabled={disabled || locked}
+                maxLength={255}
+                placeholder="user@hostname / ssh-host-alias"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
             <button
               type="button"
-              className="icon-button"
-              disabled={disabled}
-              aria-label={t("关闭 SSH 连接配置", "Close SSH setup")}
-              onClick={() => onChange(draft.previous)}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <label>
-            {t("SSH 地址或 Host 别名", "SSH destination or Host alias")}
-            <input
-              value={host}
-              onChange={(e) =>
-                onDraftChange({ ...draft, host: e.target.value })
+              className="secondary"
+              disabled={
+                disabled || !runtimeEnabled || !host.trim() || !python.trim()
               }
-              disabled={disabled}
-              maxLength={255}
-              placeholder="user@devbox / devbox"
-              autoComplete="off"
-            />
-          </label>
+              onClick={() => void connect()}
+            >
+              {connecting
+                ? t("连接中…", "Connecting…")
+                : newConnection
+                  ? t("连接并使用", "Connect and use")
+                  : t("连接 / 检查", "Connect / check")}
+            </button>
+            {newConnection && (
+              <button
+                type="button"
+                className="icon-button"
+                disabled={disabled}
+                aria-label={t("关闭 SSH 连接配置", "Close SSH setup")}
+                onClick={() => onChange(draft.previous)}
+              >
+                <Icon name="close" />
+              </button>
+            )}
+          </div>
           <details className="connection-advanced">
             <summary>
               {t("高级连接设置", "Advanced connection settings")}
@@ -147,53 +190,27 @@ export default function AgentConnection({
               {t("远端 Python", "Remote Python")}
               <input
                 value={python}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, python: e.target.value })
-                }
-                disabled={disabled}
+                onChange={(e) => {
+                  onDraftChange({
+                    host,
+                    python: e.target.value,
+                    previous: newConnection ? draft.previous : value,
+                  });
+                  if (!newConnection) onChange(NEW_SSH_CONNECTION);
+                }}
+                disabled={disabled || locked}
                 placeholder="python3"
               />
             </label>
+            <p className="form-hint">
+              {t(
+                "沿用你的 SSH 配置与远端 CLI 登录。",
+                "Uses your SSH configuration and remote CLI login.",
+              )}
+            </p>
           </details>
-          <p className="form-hint">
-            {t(
-              "沿用 SSH 配置与远端 CLI 登录。连接时会在远端用户目录安装执行组件。",
-              "Uses your SSH settings and remote CLI login. Connecting installs a runner in the remote user's home directory.",
-            )}
-          </p>
-          <button
-            type="button"
-            className="secondary"
-            disabled={
-              disabled || !runtimeEnabled || !host.trim() || !python.trim()
-            }
-            onClick={() => void connect()}
-          >
-            {connecting
-              ? t("连接中…", "Connecting…")
-              : t("连接并使用", "Connect and use")}
-          </button>
         </div>
-      ) : selected?.kind === "ssh" ? (
-        <div className="connection-status">
-          <span
-            className={`pill ${selected.status === "connected" ? "good" : ""}`}
-          >
-            {connecting
-              ? t("连接中", "Connecting")
-              : (labels[selected.status] ?? selected.status)}
-          </span>
-          <span className="path-line">{selected.ssh_host}</span>
-          <button
-            type="button"
-            className="text-button"
-            disabled={disabled || !runtimeEnabled}
-            onClick={() => void connect()}
-          >
-            {t("连接 / 检查", "Connect / check")}
-          </button>
-        </div>
-      ) : null}
+      )}
     </div>
   );
 }

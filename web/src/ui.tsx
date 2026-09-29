@@ -56,6 +56,9 @@ export function errorMessage(message: string, t: Translate): string {
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
+    folder: (
+      <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Zm0 2h18" />
+    ),
     dock: (
       <>
         <path d="M4 5h6v14H4zM14 5h6v6h-6zM14 15h6v4h-6z" />

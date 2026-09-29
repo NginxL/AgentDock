@@ -70,6 +70,8 @@ Runtime relocation checks cover local-to-SSH and SSH-to-local execution for both
 
 The agent setup checks cover inline SSH registration and retry, connection reuse, deferred model discovery, preserved collapsed drafts, and equal agent names with separate session and quota bindings. Menu summaries use custom names and retain compatibility with older quota snapshots.
 
+Device setup checks cover blank user-entered SSH addresses, reuse and replacement of saved connections, read-only directory browsing on each selected host, bounded listings, cancellation and retries. Composer checks cover Enter submission, Shift+Enter, IME confirmation, empty and disabled drafts, and duplicate-submit prevention.
+
 ## Code review map
 
 SSH tests execute the actual bootstrap and detached runner under an isolated home directory with fake CLIs. They cover lost acknowledgments, event-read retries, permission responses, shared-memory calls, cancellation, expired leases, final-result persistence and environment isolation. A separate live Linux check exercised Codex 0.155.1 and Claude Code 2.1.277 model discovery, two-turn continuation and usage events. Existing Codex, Claude and SSH configuration files were compared against pre-test hashes. See [SSH verification scope](SSH.md#verification-scope).

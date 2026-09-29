@@ -41,6 +41,17 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method=="GET" and parsed.path=="/api/directories":
+                query=parse_qs(parsed.query)
+                environment=self.store.get_environment(query.get('environment_id',['local'])[0])
+                path=query.get('path',['~'])[0]
+                if environment['kind']=='ssh':
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    if environment['payload'].get('digest') != self.runtime.remote.digest:
+                        raise Conflict('Connect this SSH environment before browsing directories.')
+                    return 200,self.runtime.remote.rpc(environment['id'], {'op':'directories','path':path})
+                from .directories import list_directories
+                return 200,list_directories(path)
             if method=="GET" and parsed.path=="/api/metrics":
                 from .metrics import snapshot
                 result=snapshot(self.store)

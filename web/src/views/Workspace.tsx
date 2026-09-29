@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
 import InferenceControls from "../InferenceControls";
 import AgentDeletion from "../AgentDeletion";
+import WorkspaceDirectory from "../WorkspaceDirectory";
 import { useModelCatalog } from "../modelCatalog";
 import AgentConnection, {
   NEW_SSH_CONNECTION,
@@ -124,6 +125,8 @@ export default function Workspace({
   const [deletingSession, setDeletingSession] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState("");
   const [prompt, setPrompt] = useState("");
+  const submittingPrompt = useRef(false);
+  const composingPrompt = useRef(false);
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [eventError, setEventError] = useState("");
   const [eventLoading, setEventLoading] = useState(false);
@@ -132,6 +135,13 @@ export default function Workspace({
   const selectedSession = relevantSessions.find((s) => s.id === sessionID);
   const selectedAgent = agents.find((a) => a.id === agentID);
   const editingAgent = agents.find((a) => a.id === editingAgentID);
+  const selectedProject = state.projects.find((p) => p.id === agentProject);
+  const projectDirectory =
+    selectedProject &&
+    !workspace &&
+    (selectedProject.environment_id ?? "local") === environment
+      ? selectedProject.path
+      : undefined;
   const changingEnvironment =
     !!editingAgent && environment !== (editingAgent.environment_id ?? "local");
   const running = selectedSession?.status === "running";
@@ -262,7 +272,11 @@ export default function Workspace({
                   setProvider(selectedAgent.provider);
                   setEnvironment(selectedAgent.environment_id ?? "local");
                   setRole(selectedAgent.role);
-                  setWorkspace(selectedAgent.workspace ?? "");
+                  setWorkspace(
+                    selectedAgent.workspace_is_default
+                      ? ""
+                      : (selectedAgent.workspace ?? ""),
+                  );
                   setAgentProject(selectedAgent.project_id ?? "");
                   setModel(selectedAgent.model ?? "");
                   setEffort(selectedAgent.effort ?? "");
@@ -447,36 +461,19 @@ export default function Workspace({
               );
             }}
           >
-            <div className="form-grid">
-              <label>
-                {t("名称", "Name")}
-                <input
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  required
-                  maxLength={100}
-                  placeholder={t(
-                    "为这位 Agent 命名",
-                    "Choose a name for this agent",
-                  )}
-                />
-              </label>
-              <label>
-                {t("服务", "Provider")}
-                <select
-                  value={provider}
-                  onChange={(e) => {
-                    setProvider(e.target.value as Provider);
-                    setModel("");
-                    setEffort("");
-                  }}
-                  disabled={!!editingAgentID}
-                >
-                  <option value="codex">Codex</option>
-                  <option value="claude">Claude</option>
-                </select>
-              </label>
-            </div>
+            <label>
+              {t("名称", "Name")}
+              <input
+                value={agentName}
+                onChange={(e) => setAgentName(e.target.value)}
+                required
+                maxLength={100}
+                placeholder={t(
+                  "为这位 Agent 命名",
+                  "Choose a name for this agent",
+                )}
+              />
+            </label>
             <AgentConnection
               value={environment}
               draft={connectionDraft}
@@ -494,12 +491,96 @@ export default function Workspace({
                   id === (editingAgent.environment_id ?? "local")
                     ? editingAgent
                     : undefined;
-                setWorkspace(original?.workspace ?? "");
+                setWorkspace(
+                  original?.workspace_is_default
+                    ? ""
+                    : (original?.workspace ?? ""),
+                );
                 setModel(original?.model ?? "");
                 setEffort(original?.effort ?? "");
               }}
-            />
+            >
+              <WorkspaceDirectory
+                key={environment}
+                value={projectDirectory ?? workspace}
+                onChange={setWorkspace}
+                environment={environment}
+                token={token}
+                t={t}
+                disabled={
+                  !!projectDirectory ||
+                  (!!editingAgentID &&
+                    !changingEnvironment &&
+                    sessions.some((s) => s.agent_id === editingAgentID)) ||
+                  busy ||
+                  demo
+                }
+                browseEnabled={
+                  environment !== NEW_SSH_CONNECTION &&
+                  (environment === "local" ||
+                    (connectionReady && runtimeEnabled))
+                }
+              />
+            </AgentConnection>
             <div className="form-grid">
+              <label>
+                {t("服务", "Provider")}
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    setProvider(e.target.value as Provider);
+                    setModel("");
+                    setEffort("");
+                  }}
+                  disabled={!!editingAgentID}
+                >
+                  <option value="codex">Codex</option>
+                  <option value="claude">Claude Code</option>
+                </select>
+              </label>
+              <label>
+                {t("模型", "Model")}
+                <select
+                  value={model}
+                  onChange={(e) => {
+                    setModel(e.target.value);
+                    setEffort("");
+                  }}
+                >
+                  <option value="">{t("CLI 默认", "CLI default")}</option>
+                  {model && !models.some((m) => m.id === model) && (
+                    <option value={model}>{model}</option>
+                  )}
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name || m.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {t("思考强度", "Reasoning effort")}
+                <select
+                  value={effort}
+                  disabled={!model}
+                  onChange={(e) => setEffort(e.target.value)}
+                >
+                  <option value="">{t("自动", "Auto")}</option>
+                  {effort &&
+                    !models
+                      .find((m) => m.id === model)
+                      ?.efforts.includes(effort) && (
+                      <option value={effort}>{effort}</option>
+                    )}
+                  {(models.find((m) => m.id === model)?.efforts ?? []).map(
+                    (e) => (
+                      <option key={e} value={e}>
+                        {e}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
               <label>
                 {t("关联项目（可选）", "Project (optional)")}
                 <select
@@ -518,79 +599,6 @@ export default function Workspace({
                       {p.name}
                     </option>
                   ))}
-                </select>
-              </label>
-              {(!agentProject ||
-                (state.projects.find((p) => p.id === agentProject)
-                  ?.environment_id ?? "local") !== environment) && (
-                <label>
-                  {t("工作目录（可留空）", "Working directory (optional)")}
-                  <input
-                    value={workspace}
-                    disabled={
-                      !!editingAgentID &&
-                      !changingEnvironment &&
-                      sessions.some((s) => s.agent_id === editingAgentID)
-                    }
-                    onChange={(e) => setWorkspace(e.target.value)}
-                    placeholder={t(
-                      "留空自动创建独立目录",
-                      "Leave blank for a private directory",
-                    )}
-                  />
-                </label>
-              )}
-              <label>
-                {t("模型", "Model")}
-                <select
-                  value={model}
-                  onChange={(e) => {
-                    setModel(e.target.value);
-                    setEffort("");
-                  }}
-                >
-                  <option value="">
-                    {t(
-                      "沿用客户端 / 会话设置",
-                      "Use client / session settings",
-                    )}
-                  </option>
-                  {model && !models.some((m) => m.id === model) && (
-                    <option value={model}>{model}</option>
-                  )}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("思考强度", "Reasoning effort")}
-                <select
-                  value={effort}
-                  disabled={!model}
-                  onChange={(e) => setEffort(e.target.value)}
-                >
-                  <option value="">
-                    {t(
-                      "沿用客户端 / 会话设置",
-                      "Use client / session settings",
-                    )}
-                  </option>
-                  {effort &&
-                    !models
-                      .find((m) => m.id === model)
-                      ?.efforts.includes(effort) && (
-                      <option value={effort}>{effort}</option>
-                    )}
-                  {(models.find((m) => m.id === model)?.efforts ?? []).map(
-                    (e) => (
-                      <option key={e} value={e}>
-                        {e}
-                      </option>
-                    ),
-                  )}
                 </select>
               </label>
             </div>
@@ -981,11 +989,24 @@ export default function Workspace({
                   className="prompt-form"
                   onSubmit={async (e) => {
                     e.preventDefault();
-                    await mutate(
-                      `/api/sessions/${encodeURIComponent(sessionID)}/run`,
-                      { prompt: prompt.trim() },
-                      () => setPrompt(""),
-                    );
+                    if (
+                      submittingPrompt.current ||
+                      busy ||
+                      !runtimeEnabled ||
+                      demo ||
+                      !prompt.trim()
+                    )
+                      return;
+                    submittingPrompt.current = true;
+                    try {
+                      await mutate(
+                        `/api/sessions/${encodeURIComponent(sessionID)}/run`,
+                        { prompt: prompt.trim() },
+                        () => setPrompt(""),
+                      );
+                    } finally {
+                      submittingPrompt.current = false;
+                    }
                   }}
                 >
                   <label htmlFor="run-prompt">
@@ -995,6 +1016,35 @@ export default function Workspace({
                     id="run-prompt"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
+                    onCompositionStart={() => {
+                      composingPrompt.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                      composingPrompt.current = false;
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key !== "Enter" ||
+                        e.shiftKey ||
+                        e.altKey ||
+                        e.ctrlKey ||
+                        e.metaKey ||
+                        composingPrompt.current ||
+                        e.nativeEvent.isComposing ||
+                        e.nativeEvent.keyCode === 229
+                      )
+                        return;
+                      e.preventDefault();
+                      if (
+                        !e.repeat &&
+                        !busy &&
+                        runtimeEnabled &&
+                        !demo &&
+                        prompt.trim() &&
+                        !submittingPrompt.current
+                      )
+                        e.currentTarget.form?.requestSubmit();
+                    }}
                     rows={3}
                     required
                     maxLength={24000}
@@ -1037,6 +1087,11 @@ export default function Workspace({
                       <button
                         className="primary"
                         disabled={busy || !runtimeEnabled || !prompt.trim()}
+                        title={t(
+                          "Enter 发送，Shift + Enter 换行",
+                          "Enter to send, Shift + Enter for a new line",
+                        )}
+                        aria-keyshortcuts="Enter"
                       >
                         <Icon name="arrow" size={17} />
                         {running

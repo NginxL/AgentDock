@@ -143,14 +143,14 @@ it.each(["local", "remote"])(
     const fetchMock = await setup();
     expect(screen.queryByRole("button", { name: "设备与连接" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-    fireEvent.change(screen.getByLabelText("运行位置"), {
+    fireEvent.change(screen.getByLabelText("设备"), {
       target: { value: id },
     });
     fireEvent.change(screen.getByLabelText("名称"), {
       target: { value: "My helper" },
     });
     fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
-    await waitFor(() => expect(screen.queryByLabelText("运行位置")).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText("设备")).toBeNull());
     const writes = fetchMock.mock.calls.filter(
       ([, init]) => init?.method === "POST",
     );
@@ -170,7 +170,7 @@ it("opens agent creation from the empty billing page and keeps connection setup 
   await setup({ agents: [] });
   fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
   fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "new-ssh-connection" },
   });
   expect(screen.getByLabelText("SSH 地址或 Host 别名")).toBeTruthy();
@@ -178,10 +178,10 @@ it("opens agent creation from the empty billing page and keeps connection setup 
   expect(
     screen.queryByRole("button", { name: "Devices & connections" }),
   ).toBeNull();
-  expect(screen.getByLabelText("Run on")).toBeTruthy();
+  expect(screen.getByLabelText("Device")).toBeTruthy();
   expect(screen.getByLabelText("SSH destination or Host alias")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Close SSH setup" }));
-  expect((screen.getByLabelText("Run on") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("Device") as HTMLSelectElement).value).toBe(
     "local",
   );
   expect(screen.queryByLabelText("SSH destination or Host alias")).toBeNull();
@@ -195,7 +195,7 @@ it("connects a new host inside the agent form, preserves the agent draft, and di
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "My assistant" },
   });
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "new-ssh-connection" },
   });
   expect(
@@ -221,11 +221,11 @@ it("connects a new host inside the agent form, preserves the agent draft, and di
   expect((screen.getByLabelText("名称") as HTMLInputElement).value).toBe(
     "My assistant",
   );
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "new-host",
   );
   fireEvent.click(screen.getByRole("button", { name: "创建 Agent" }));
-  await waitFor(() => expect(screen.queryByLabelText("运行位置")).toBeNull());
+  await waitFor(() => expect(screen.queryByLabelText("设备")).toBeNull());
   const writes = fetchMock.mock.calls.filter(
     ([, init]) => init?.method === "POST",
   );
@@ -254,13 +254,13 @@ it("shows user names without provider or device suffixes and selects equal names
   expect(cards[1].getAttribute("aria-pressed")).toBe("true");
   expect(cards[0].getAttribute("aria-pressed")).toBe("false");
   fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "remote",
   );
   fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
   fireEvent.click(cards[0]);
   fireEvent.click(screen.getByRole("button", { name: "设置 Helper" }));
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "local",
   );
 });
@@ -273,10 +273,10 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "My draft" },
   });
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "remote" },
   });
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "new-ssh-connection" },
   });
   fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
@@ -299,7 +299,7 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
     "/usr/bin/python3",
   );
   fireEvent.click(screen.getByRole("button", { name: "关闭 SSH 连接配置" }));
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "remote",
   );
   fireEvent.click(settings);

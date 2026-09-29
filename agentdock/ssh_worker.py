@@ -119,6 +119,9 @@ def quota(provider):
 def rpc(request):
     operation = request.get('op')
     if operation == 'probe': return probe()
+    if operation == 'directories':
+        from .directories import list_directories
+        return list_directories(request.get('path', '~'))
     if operation == 'models':
         from .catalog import Catalog
         return Catalog({'execution_enabled': True, 'commands': commands()}).read(request['provider'])

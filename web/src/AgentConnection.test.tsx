@@ -50,13 +50,62 @@ function Harness({
   );
 }
 function enterHost(value = "builder@devbox") {
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: NEW_SSH_CONNECTION },
   });
   fireEvent.change(screen.getByLabelText("SSH 地址或 Host 别名"), {
     target: { value },
   });
 }
+
+it("starts a new SSH address empty and lets users replace a saved address without modifying it", async () => {
+  const saved: Environment = {
+    id: "saved",
+    name: "My device",
+    kind: "ssh",
+    ssh_host: "owner@previous-host",
+    status: "connected",
+  };
+  const mutate = vi.fn<Mutate>(async (path, data, success) => {
+    success?.(
+      path === "/api/environments"
+        ? { id: "replacement" }
+        : { status: "connected" },
+    );
+    return true;
+  });
+  render(<Harness mutate={mutate} environments={[saved]} />);
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
+    "local",
+  );
+  fireEvent.change(screen.getByLabelText("设备"), {
+    target: { value: NEW_SSH_CONNECTION },
+  });
+  expect(
+    (screen.getByLabelText("SSH 地址或 Host 别名") as HTMLInputElement).value,
+  ).toBe("");
+  expect(screen.getByRole("group", { name: "已保存的连接" })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("设备"), {
+    target: { value: "saved" },
+  });
+  const address = screen.getByLabelText(
+    "SSH 地址或 Host 别名",
+  ) as HTMLInputElement;
+  expect(address.value).toBe("owner@previous-host");
+  fireEvent.change(address, { target: { value: "me@my-host" } });
+  expect(document.body.contains(address)).toBe(true);
+  expect(address.value).toBe("me@my-host");
+  expect(mutate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "连接并使用" }));
+  await waitFor(() =>
+    expect(mutate).toHaveBeenCalledWith(
+      "/api/environments",
+      expect.objectContaining({ ssh_host: "me@my-host" }),
+      expect.any(Function),
+    ),
+  );
+  expect(saved.ssh_host).toBe("owner@previous-host");
+});
 
 it("registers and connects an SSH host only after an explicit click, without creating an agent or changing its name", async () => {
   const mutate = vi.fn<Mutate>(async (path, _data, success) => {
@@ -103,7 +152,7 @@ it("reuses an existing SSH connection and keeps retries on the same saved host",
   await waitFor(() =>
     expect((retry as HTMLButtonElement).disabled).toBe(false),
   );
-  expect((screen.getByLabelText("运行位置") as HTMLSelectElement).value).toBe(
+  expect((screen.getByLabelText("设备") as HTMLSelectElement).value).toBe(
     "saved",
   );
   fireEvent.click(retry);

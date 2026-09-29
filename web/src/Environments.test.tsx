@@ -111,16 +111,17 @@ it.each(["zh", "en"] as const)(
     });
     fireEvent.click(toggle);
     const runtime = screen.getByLabelText(
-      t("运行位置", "Run on"),
+      t("设备", "Device"),
     ) as HTMLSelectElement;
     expect(runtime.disabled).toBe(false);
-    const workspace = screen.getByLabelText(
-      t("工作目录（可留空）", "Working directory (optional)"),
-    ) as HTMLInputElement;
-    expect(workspace.disabled).toBe(true);
+    const workspace = () =>
+      screen.getByLabelText(
+        t("工作目录（可留空）", "Working directory (optional)"),
+      ) as HTMLInputElement;
+    expect(workspace().disabled).toBe(true);
     fireEvent.change(runtime, { target: { value: "remote" } });
-    expect(workspace.disabled).toBe(false);
-    expect(workspace.value).toBe("");
+    expect(workspace().disabled).toBe(false);
+    expect(workspace().value).toBe("");
     expect(
       (screen.getByLabelText(t("模型", "Model")) as HTMLSelectElement).value,
     ).toBe("");
@@ -134,13 +135,13 @@ it.each(["zh", "en"] as const)(
     );
     // Changing one's mind restores the original defaults without a write.
     fireEvent.change(runtime, { target: { value: "local" } });
-    expect(workspace.value).toBe("/local/project");
+    expect(workspace().value).toBe("/local/project");
     expect(
       (screen.getByLabelText(t("模型", "Model")) as HTMLSelectElement).value,
     ).toBe("local-model");
     expect(mutate).not.toHaveBeenCalled();
     fireEvent.change(runtime, { target: { value: "remote" } });
-    fireEvent.change(workspace, { target: { value: "/remote/project" } });
+    fireEvent.change(workspace(), { target: { value: "/remote/project" } });
     fireEvent.click(
       screen.getByRole("button", { name: t("保存设置", "Save settings") }),
     );
@@ -159,14 +160,14 @@ it.each(["zh", "en"] as const)(
     expect(session.environment_id).toBe("local");
     expect(session.native_session_id).toBe("original-native");
     fireEvent.click(toggle);
-    expect(screen.queryByLabelText(t("运行位置", "Run on"))).toBeNull();
+    expect(screen.queryByLabelText(t("设备", "Device"))).toBeNull();
     fireEvent.click(toggle);
     fireEvent.click(
       screen.getByRole("button", {
         name: t("取消编辑 Agent", "Cancel editing agent"),
       }),
     );
-    expect(screen.queryByLabelText(t("运行位置", "Run on"))).toBeNull();
+    expect(screen.queryByLabelText(t("设备", "Device"))).toBeNull();
   },
 );
 it("keeps the same provider's local and remote quota cards separate", () => {
@@ -245,7 +246,7 @@ it("discovers models on the selected environment and binds a new independent age
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
-  fireEvent.change(screen.getByLabelText("运行位置"), {
+  fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "remote" },
   });
   await waitFor(() =>

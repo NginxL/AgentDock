@@ -71,6 +71,14 @@ class RemoteTests(unittest.TestCase):
         session=self.store.add_session(agent['id'],'Remote fixture')
         return agent,session
 
+    def test_directory_picker_reads_remote_home_without_starting_a_cli_task(self):
+        (self.home/'remote-project').mkdir()
+        self.requests.clear()
+        result=self.manager.rpc(self.environment['id'], {'op':'directories','path':'~'})
+        self.assertEqual(Path(result['path']), self.home.resolve())
+        self.assertIn('remote-project', [entry['name'] for entry in result['directories']])
+        self.assertEqual([item['op'] for item in self.requests], ['directories'])
+
     def run_turn(self, session, **changes):
         events, bound = [], []
         spec={'provider':self.store.get_agent(session['agent_id'])['provider'], 'cwd':session['workspace'], 'session_id':session['id'],
@@ -84,6 +92,9 @@ class RemoteTests(unittest.TestCase):
             agent, session=self.make_agent(provider)
             result,events,bound=self.run_turn(session)
             self.assertEqual(result,'hello world')
+            self.assertTrue((self.home/'.local/share/agentdock/ssh/controllers'/self.store.controller_id/'sessions'/session['id']/'workspace').is_dir())
+            self.assertFalse(self.store.session_directory(session['id']).exists())
+            self.assertFalse((self.store.workspaces/agent['id']).exists())
             self.assertIn('reasoning_chunk',[k for k,p in events])
             self.assertIn('tool_result',[k for k,p in events])
             self.assertEqual(len(bound),1)

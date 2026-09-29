@@ -13,6 +13,26 @@ class APITests(unittest.TestCase):
         self.h={'Host':'127.0.0.1:47831','Authorization':'Bearer test-admin','Content-Type':'application/json','Origin':'http://127.0.0.1:47831'}
     def tearDown(self): self.store.close(); self.tmp.cleanup()
     def call(self,method,path,payload=None,headers=None): return self.api.dispatch(method,path,self.h if headers is None else headers,json.dumps(payload or {}).encode())
+    def test_directory_browsing_is_authenticated_and_routes_to_the_selected_host(self):
+        from urllib.parse import quote
+        from pathlib import Path
+        route='/api/directories?path='+quote(self.tmp.name)
+        (Path(self.tmp.name)/'project').mkdir()
+        status, result=self.call('GET',route)
+        self.assertEqual(status,200)
+        self.assertEqual(result['directories'][0]['name'],'project')
+        self.assertEqual(self.call('GET',route,headers={**self.h,'Authorization':'Bearer invalid'})[0],401)
+        env=self.store.add_environment('User connection','user@own-host')
+        remote='/api/directories?environment_id='+env['id']+'&path=%2Fremote%2Fproject'
+        self.assertEqual(self.call('GET',remote)[0],403)
+        self.api.execution_enabled=True
+        self.runtime.remote.digest='fixture-digest'
+        self.assertEqual(self.call('GET',remote)[0],409)
+        self.store.update_environment_status(env['id'],'connected',{'digest':'fixture-digest'})
+        self.runtime.remote.rpc.return_value={'path':'/remote/project','directories':[]}
+        self.assertEqual(self.call('GET',remote),(200,{'path':'/remote/project','directories':[]}))
+        self.runtime.remote.rpc.assert_called_once_with(env['id'],{'op':'directories','path':'/remote/project'})
+
     def test_session_model_settings_require_admin_and_do_not_execute(self):
         agent=self.store.add_agent(None,'A','codex')
         session=self.store.add_session(agent['id'],'S')

@@ -27,6 +27,7 @@ export interface Agent {
   provider: Provider;
   role: string;
   workspace?: string;
+  workspace_is_default?: boolean;
   model?: string | null;
   effort?: string | null;
   permission_mode?: PermissionMode;
