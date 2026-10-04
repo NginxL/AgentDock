@@ -3,6 +3,12 @@ import { followSession } from "../sessionEvents";
 import { useEffect, useRef, useState } from "react";
 import TaskTimeline from "../TaskTimeline";
 import InferenceControls from "../InferenceControls";
+import AccountSelection, {
+  accountSettings,
+  deviceAccount,
+  supportsAccounts,
+  SessionAccountControls,
+} from "../AccountSelection";
 import AgentDeletion from "../AgentDeletion";
 import ProviderIcon from "../ProviderIcon";
 import ProviderSelect from "../ProviderSelect";
@@ -18,6 +24,7 @@ import { TPS, agentTPS, type Metrics } from "../metrics";
 import { listOf, remainingPercent, request } from "../api";
 import type {
   Agent,
+  AccountSettings,
   AgentEvent,
   Approval,
   DockState,
@@ -114,6 +121,8 @@ export default function Workspace({
   const [agentProject, setAgentProject] = useState(project?.id ?? "");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
+  const [accountDraft, setAccountDraft] =
+    useState<AccountSettings>(deviceAccount);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
   const discovery = useProviderAvailability(
     token,
@@ -129,11 +138,15 @@ export default function Workspace({
     environment,
     agentForm &&
       !demo &&
+      (accountDraft.account_policy === "manual" || !!accountDraft.account_id) &&
       runtimeEnabled &&
       selectedAvailable &&
       connectionReady &&
       environment !== NEW_SSH_CONNECTION,
     connectionVersion,
+    accountDraft.account_id,
+    state.accounts?.find((account) => account.id === accountDraft.account_id)
+      ?.generation,
   );
   const models = demo
     ? [
@@ -168,6 +181,7 @@ export default function Workspace({
     setSessionSelections((current) => ({ ...current, [agentID]: id }));
   }
   const [sessionTitle, setSessionTitle] = useState("");
+  const [accountSelectionRequest, setAccountSelectionRequest] = useState(0);
   const [prompts, setPrompts] = useState<Record<string, string>>({});
   const prompt = prompts[sessionID] ?? "";
   function setPrompt(value: string) {
@@ -333,6 +347,7 @@ export default function Workspace({
                     setModel(selectedAgent.model ?? "");
                     setEffort(selectedAgent.effort ?? "");
                     setPermissionMode(selectedAgent.permission_mode ?? "ask");
+                    setAccountDraft(accountSettings(selectedAgent));
                     draftTarget.current = selectedAgent.id;
                   }
                   setAgentForm(true);
@@ -419,6 +434,7 @@ export default function Workspace({
                     setModel("");
                     setEffort("");
                     setPermissionMode("ask");
+                    setAccountDraft(deviceAccount);
                     draftTarget.current = "new";
                   }
                   setAgentForm(true);
@@ -501,6 +517,13 @@ export default function Workspace({
                       model: model || null,
                       effort: effort || null,
                       permission_mode: permissionMode,
+                      ...(supportsAccounts(provider) &&
+                      (state.accounts?.length ||
+                        editingAgent?.account_policy ||
+                        accountDraft.account_id ||
+                        accountDraft.account_policy !== "manual")
+                        ? accountSettings(accountDraft)
+                        : {}),
                       environment_id: environment,
                       ...(!sessions.some(
                         (s) => s.agent_id === editingAgentID,
@@ -517,6 +540,13 @@ export default function Workspace({
                       model: model || null,
                       effort: effort || null,
                       permission_mode: permissionMode,
+                      ...(supportsAccounts(provider) &&
+                      (state.accounts?.length ||
+                        editingAgent?.account_policy ||
+                        accountDraft.account_id ||
+                        accountDraft.account_policy !== "manual")
+                        ? accountSettings(accountDraft)
+                        : {}),
                       name: agentName.trim(),
                       provider,
                       environment_id: environment,
@@ -558,6 +588,7 @@ export default function Workspace({
               mutate={mutate}
               onChange={(id) => {
                 setEnvironment(id);
+                setAccountDraft(deviceAccount);
                 const original =
                   editingAgent &&
                   id === (editingAgent.environment_id ?? "local")
@@ -599,6 +630,7 @@ export default function Workspace({
                 value={provider}
                 onChange={(value) => {
                   setProvider(value);
+                  setAccountDraft(deviceAccount);
                   setModel("");
                   setEffort("");
                 }}
@@ -675,6 +707,19 @@ export default function Workspace({
                       "Model and effort set agent defaults; conversations can override them.",
                     )}
             </p>
+            <AccountSelection
+              accounts={state.accounts ?? []}
+              provider={provider}
+              environment={environment}
+              value={accountDraft}
+              onChange={(value) => {
+                setAccountDraft(value);
+                setModel("");
+                setEffort("");
+              }}
+              disabled={busy && !demo}
+              t={t}
+            />
             <label>
               {t("访问权限", "Access permissions")}
               <select
@@ -833,15 +878,34 @@ export default function Workspace({
                       {agent.effort ? ` · ${agent.effort}` : ""}
                     </span>
                     {(() => {
-                      const quota = listOf(state.quotas).find(
-                        (q) =>
-                          q.provider === agent.provider &&
-                          (q.environment_id ?? "local") ===
-                            (agent.environment_id ?? "local"),
+                      const managed = state.accounts?.find(
+                        (account) =>
+                          account.id === agent.account_id &&
+                          account.provider === agent.provider &&
+                          account.environment_id ===
+                            (agent.environment_id ?? "local") &&
+                          account.status !== "removed",
                       );
+                      const usesManagedAccount =
+                        !!agent.account_id ||
+                        (agent.account_policy ?? "manual") !== "manual";
+                      const quota = usesManagedAccount
+                        ? managed?.quota
+                        : listOf(state.quotas).find(
+                            (q) =>
+                              q.provider === agent.provider &&
+                              (q.environment_id ?? "local") ===
+                                (agent.environment_id ?? "local"),
+                          );
                       const value =
                         quota &&
-                        ["ok", "available", "success"].includes(quota.status)
+                        [
+                          "ok",
+                          "ready",
+                          "available",
+                          "success",
+                          "exhausted",
+                        ].includes(quota.status)
                           ? remainingPercent(
                               quota.windows[0]?.remaining_percent,
                             )
@@ -1034,6 +1098,11 @@ export default function Workspace({
                       runs={sessionRuns}
                       events={events}
                       agentName={selectedAgent?.name ?? "Agent"}
+                      accounts={state.accounts}
+                      accountAttempts={state.account_attempts}
+                      onConfigureAccount={() =>
+                        setAccountSelectionRequest((value) => value + 1)
+                      }
                       t={t}
                       lang={lang}
                       busy={busy}
@@ -1121,6 +1190,19 @@ export default function Workspace({
                       "Describe the goal, constraints and expected outcome…",
                     )}
                   />
+                  {selectedAgent && selectedSession && (
+                    <SessionAccountControls
+                      key={`account-${sessionID}`}
+                      openRequest={accountSelectionRequest}
+                      accounts={state.accounts ?? []}
+                      agent={selectedAgent}
+                      session={selectedSession}
+                      busy={busy || hasSessionTasks}
+                      demo={demo}
+                      mutate={mutate}
+                      t={t}
+                    />
+                  )}
                   <div className="prompt-footer">
                     {selectedAgent && selectedSession && (
                       <InferenceControls
@@ -1128,6 +1210,12 @@ export default function Workspace({
                         agent={selectedAgent}
                         session={selectedSession}
                         token={token}
+                        accountGeneration={
+                          state.accounts?.find(
+                            (account) =>
+                              account.id === selectedSession.account_id,
+                          )?.generation
+                        }
                         busy={busy}
                         runtimeEnabled={runtimeEnabled}
                         demo={demo}

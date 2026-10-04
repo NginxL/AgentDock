@@ -1,4 +1,13 @@
-import type { AgentEvent, Language, Mutate, Run, Translate } from "./types";
+import AccountAttempts from "./AccountAttempts";
+import type {
+  Account,
+  AccountAttempt,
+  AgentEvent,
+  Language,
+  Mutate,
+  Run,
+  Translate,
+} from "./types";
 import {
   DateText,
   eventDescription,
@@ -144,6 +153,9 @@ export default function TaskTimeline({
   runs,
   events,
   agentName,
+  accounts,
+  accountAttempts,
+  onConfigureAccount,
   t,
   lang,
   busy,
@@ -152,6 +164,9 @@ export default function TaskTimeline({
   runs: Run[];
   events: AgentEvent[];
   agentName: string;
+  accounts?: Account[];
+  accountAttempts?: AccountAttempt[];
+  onConfigureAccount?: () => void;
   t: Translate;
   lang: Language;
   busy: boolean;
@@ -160,6 +175,16 @@ export default function TaskTimeline({
   const tasks = new Map(runs.map((r) => [r.id, { ...r }]));
   const grouped = new Map<string, AgentEvent[]>();
   const orphaned: AgentEvent[] = [];
+  const lastAccountChange = events
+    .filter((event) =>
+      [
+        "account_action_required",
+        "account_changed",
+        "account_switched",
+        "account_attempt",
+      ].includes(event.kind),
+    )
+    .at(-1);
   for (const event of events) {
     const p = payload(event);
     if (typeof p.run_id !== "string") {
@@ -361,6 +386,20 @@ export default function TaskTimeline({
                   </button>
                 )}
               </div>
+              <AccountAttempts
+                accounts={accounts}
+                attempts={accountAttempts?.filter(
+                  (attempt) => attempt.run_id === run.id,
+                )}
+                events={runEvents}
+                active={active}
+                actionRequired={
+                  lastAccountChange?.kind === "account_action_required" &&
+                  payload(lastAccountChange).run_id === run.id
+                }
+                onConfigureAccount={onConfigureAccount}
+                t={t}
+              />
               {run.error && (
                 <p className="inline-error" role="status">
                   {errorMessage(run.error, t)}
@@ -383,10 +422,30 @@ export default function TaskTimeline({
             </article>
           );
         })}
+      <AccountAttempts
+        accounts={accounts}
+        events={orphaned}
+        active={false}
+        actionRequired={
+          lastAccountChange?.kind === "account_action_required" &&
+          !payload(lastAccountChange).run_id
+        }
+        onConfigureAccount={onConfigureAccount}
+        t={t}
+      />
       {orphaned
         .filter(
           (e) =>
-            !["run_started", "run_finished", "token_usage"].includes(e.kind),
+            ![
+              "run_started",
+              "run_finished",
+              "token_usage",
+              "account_attempt",
+              "account_switched",
+              "account_changed",
+              "account_action_required",
+              "account_waiting",
+            ].includes(e.kind),
         )
         .map((event) => (
           <article className="event" key={event.id}>

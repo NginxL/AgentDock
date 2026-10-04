@@ -9,7 +9,7 @@ type Entry = {
   pending?: Promise<Model[]>;
 };
 
-// Memory only, scoped to the connected workbench and exact provider/host pair.
+// Memory only, scoped to the connected workbench and exact provider/host/account identity.
 // Closing a menu does not cancel the shared discovery already in progress.
 const entries = new Map<string, Entry>();
 let credential = "";
@@ -20,12 +20,23 @@ export function clearModelCatalog() {
   credential = "";
 }
 
-function entryFor(token: string, provider: Provider, environment: string) {
+function entryFor(
+  token: string,
+  provider: Provider,
+  environment: string,
+  account?: string | null,
+  generation?: number,
+) {
   if (credential !== token) {
     clearModelCatalog();
     credential = token;
   }
-  const key = JSON.stringify([provider, environment]);
+  const key = JSON.stringify([
+    provider,
+    environment,
+    account ?? null,
+    generation ?? 0,
+  ]);
   let entry = entries.get(key);
   if (!entry) {
     entry = { expires: 0 };
@@ -34,14 +45,20 @@ function entryFor(token: string, provider: Provider, environment: string) {
   return entry;
 }
 
-function load(token: string, provider: Provider, environment: string) {
-  const entry = entryFor(token, provider, environment);
+function load(
+  token: string,
+  provider: Provider,
+  environment: string,
+  account?: string | null,
+  generation?: number,
+) {
+  const entry = entryFor(token, provider, environment, account, generation);
   if (entry.models && Date.now() < entry.expires)
     return Promise.resolve(entry.models);
   if (entry.pending) return entry.pending;
   entry.pending = request<{ models: Model[] }>(
     token,
-    `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}`,
+    `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}${account ? `&account_id=${encodeURIComponent(account)}` : ""}`,
   )
     .then((value) => {
       if (!Array.isArray(value.models))
@@ -59,21 +76,47 @@ function load(token: string, provider: Provider, environment: string) {
 /** Warm only configured connections; keep results in memory and coalesce with menus. */
 export async function prewarmModels(
   token: string,
-  connections: { provider: Provider; environment: string }[],
+  connections: {
+    provider: Provider;
+    environment: string;
+    account?: string | null;
+    generation?: number;
+  }[],
 ) {
   const unique = [
     ...new Map(
-      connections.map((c) => [JSON.stringify([c.provider, c.environment]), c]),
+      connections.map((c) => [
+        JSON.stringify([
+          c.provider,
+          c.environment,
+          c.account ?? null,
+          c.generation ?? 0,
+        ]),
+        c,
+      ]),
     ).values(),
   ];
-  if (unique.length) entryFor(token, unique[0].provider, unique[0].environment);
+  if (unique.length)
+    entryFor(
+      token,
+      unique[0].provider,
+      unique[0].environment,
+      unique[0].account,
+      unique[0].generation,
+    );
   let next = 0;
   await Promise.all(
     Array.from({ length: Math.min(2, unique.length) }, async () => {
       while (next < unique.length && credential === token) {
         const connection = unique[next++];
         try {
-          await load(token, connection.provider, connection.environment);
+          await load(
+            token,
+            connection.provider,
+            connection.environment,
+            connection.account,
+            connection.generation,
+          );
         } catch {
           /* Retry on next visit or refresh. */
         }
@@ -88,8 +131,16 @@ export function useModelCatalog(
   environment: string,
   enabled: boolean,
   refreshKey?: unknown,
+  account?: string | null,
+  generation?: number,
 ) {
-  const key = JSON.stringify([token, provider, environment]);
+  const key = JSON.stringify([
+    token,
+    provider,
+    environment,
+    account ?? null,
+    generation ?? 0,
+  ]);
   const [state, setState] = useState<{
     key: string;
     models: Model[];
@@ -99,9 +150,15 @@ export function useModelCatalog(
   useEffect(() => {
     if (!enabled) return;
     let disposed = false;
-    const cached = entryFor(token, provider, environment).models;
+    const cached = entryFor(
+      token,
+      provider,
+      environment,
+      account,
+      generation,
+    ).models;
     setState({ key, models: cached ?? [], loading: !cached, failed: false });
-    void load(token, provider, environment)
+    void load(token, provider, environment, account, generation)
       .then((models) => {
         if (!disposed) setState({ key, models, loading: false, failed: false });
       })
@@ -112,9 +169,24 @@ export function useModelCatalog(
     return () => {
       disposed = true;
     };
-  }, [key, token, provider, environment, enabled, refreshKey]);
+  }, [
+    key,
+    token,
+    provider,
+    environment,
+    enabled,
+    refreshKey,
+    account,
+    generation,
+  ]);
   if (!enabled) return { models: [], loading: false, failed: false };
   if (state?.key === key) return state;
-  const cached = entryFor(token, provider, environment).models;
+  const cached = entryFor(
+    token,
+    provider,
+    environment,
+    account,
+    generation,
+  ).models;
   return { models: cached ?? [], loading: !cached, failed: false };
 }

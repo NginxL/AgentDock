@@ -87,14 +87,29 @@ class API:
                 return 200,{'quotas':quotas}
             if method=="GET" and parsed.path=="/api/state":
                 state=self.store.state()
+                from .account_service import account_usage
+                state['accounts']=account_usage(self.store,state.get('accounts',[]))
                 connections=set(self.store.configured_connections())
                 state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
                 state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
                 state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
+            if method=='GET' and parsed.path=='/api/accounts':
+                from .account_service import account_usage
+                return 200, {'accounts': account_usage(self.store,self.store.accounts())}
+            if method=='GET' and len(parts)==4 and parts[:2]==['api','accounts'] and parts[3]=='login':
+                return 200, self.runtime.accounts.login_status(parts[2])
             if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
-                environment_id=parse_qs(parsed.query).get('environment_id',['local'])[0]
+                query=parse_qs(parsed.query)
+                environment_id=query.get('environment_id',['local'])[0]
+                account_id=query.get('account_id',[None])[0]
+                if account_id:
+                    account=self.store.get_account(account_id)
+                    if account['provider'] != parts[2] or account['environment_id'] != environment_id:
+                        raise Invalid('Account must match this service and device')
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    return 200,self.runtime.accounts.models(account,self.catalog)
                 if environment_id!='local':
                     if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
                     return 200,self.runtime.remote.models(environment_id,parts[2])
@@ -104,7 +119,24 @@ class API:
                 return 200,{"events":self.store.session_events(parts[2],int(query.get("after",[0])[0]))}
             if method!="POST": return 404,{"error":"Route not found"}
             p=self._json(headers,body)
-            if parsed.path=="/api/environments": result=self.store.add_environment(p.get('name'),p.get('ssh_host'),p.get('python','python3'))
+            if parsed.path=='/api/accounts':
+                result=self.store.add_account(p.get('provider'),p.get('label'),p.get('environment_id','local'),p.get('priority',0))
+            elif len(parts)==3 and parts[:2]==['api','accounts']:
+                result=self.store.update_account(parts[2],p)
+                if p.get('enabled') is True and self.execution_enabled:
+                    self.runtime.accounts.check(parts[2])
+                    result=self.store.get_account(parts[2])
+            elif len(parts)==4 and parts[:2]==['api','accounts']:
+                if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                account_id=parts[2]
+                if parts[3]=='login': result=self.runtime.accounts.start_login(account_id,p.get('method'))
+                elif parts[3]=='check': result=self.runtime.accounts.check(account_id)
+                elif parts[3]=='refresh': result=self.runtime.accounts.refresh(account_id)
+                elif parts[3]=='cancel': result=self.runtime.accounts.cancel(account_id)
+                elif parts[3]=='input': result=self.runtime.accounts.submit(account_id,p.get('code'))
+                elif parts[3]=='delete': result=self.runtime.accounts.remove(account_id)
+                else: raise Missing('Route not found')
+            elif parsed.path=="/api/environments": result=self.store.add_environment(p.get('name'),p.get('ssh_host'),p.get('python','python3'))
             elif len(parts)==4 and parts[:2]==['api','environments']:
                 if parts[3]=='connect':
                     if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
@@ -113,10 +145,13 @@ class API:
                 else: raise Missing('Route not found')
             elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
             elif len(parts)==4 and parts[:2]==['api','projects'] and parts[3]=='agents': result=self.store.add_project_agent(parts[2],p)
-            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'))
+            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'),
+                account_id=p.get('account_id'),account_policy=p.get('account_policy','manual'),account_ids=p.get('account_ids'))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif len(parts)==4 and parts[:2]==["api","agents"] and parts[3]=='delete': return 200,self.runtime.delete_agent(parts[2])
-            elif parsed.path=="/api/sessions": result=self.store.add_session(p.get("agent_id"),p.get("title"))
+            elif parsed.path=="/api/sessions":
+                fields={k:p[k] for k in ('account_id','account_policy','account_ids') if k in p}
+                result=self.store.add_session(p.get("agent_id"),p.get("title"), **({'account_settings':fields} if fields else {}))
             elif parsed.path=="/api/messages":
                 if p.get("sender_id","human")!="human": raise Forbidden("Human endpoint cannot impersonate an agent")
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
@@ -130,6 +165,9 @@ class API:
             elif len(parts)==4 and parts[:2]==["api","sessions"]:
                 if parts[3]=='delete': return 200,self.runtime.delete_session(parts[2])
                 if parts[3]=='settings': return 200,self.store.update_session_settings(parts[2],p)
+                if parts[3]=='account':
+                    if set(p)-{'account_id','account_policy','account_ids'}: raise Invalid('Invalid account settings')
+                    return 200,self.store.switch_session_account(parts[2],p.get('account_id'),p.get('account_policy','manual'),p.get('account_ids'))
                 if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                 if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
                 elif parts[3]=="cancel": self.runtime.cancel(parts[2]); result={"ok":True}

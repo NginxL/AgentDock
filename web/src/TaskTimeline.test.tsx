@@ -430,3 +430,42 @@ it("keeps failure diagnostics visible when no final reply is returned", () => {
   expect(screen.getByText("CLI stopped")).toBeTruthy();
   expect(view.container.querySelector(".task-answer")).toBeNull();
 });
+
+it("offers account recovery for the current failure and removes the prompt after an explicit switch", () => {
+  const configure = vi.fn();
+  const failed = { ...run, status: "failed" };
+  const events = [
+    event(1, "account_action_required", {
+      account_id: "expired",
+      reason: "progress_recorded",
+    }),
+  ];
+  const view = render(
+    <TaskTimeline
+      {...props}
+      runs={[failed]}
+      events={events}
+      onConfigureAccount={configure}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "选择账号后继续" }));
+  expect(configure).toHaveBeenCalledOnce();
+  events.push(
+    event(2, "account_changed", {
+      run_id: undefined,
+      account_id: "new",
+      previous_account_id: "expired",
+    }),
+  );
+  view.rerender(
+    <TaskTimeline
+      {...props}
+      runs={[failed]}
+      events={events}
+      onConfigureAccount={configure}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "选择账号后继续" })).toBeNull();
+  expect(screen.getByText("已切换账号")).toBeTruthy();
+  expect(screen.getByText("等待选择账号")).toBeTruthy();
+});

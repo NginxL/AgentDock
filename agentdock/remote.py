@@ -151,10 +151,10 @@ class RemoteManager:
         if not environment['payload'].get('providers', {}).get(agent['provider'], {}).get('available'):
             raise Conflict('The selected native CLI was not found on this environment.')
 
-    def models(self, environment_id, provider):
+    def models(self, environment_id, provider, account=None):
         if not self.enabled or self.closed.is_set(): raise Forbidden('Remote execution is disabled.')
         self.check({'environment_id': environment_id, 'provider': provider})
-        key = (environment_id, provider)
+        key = (environment_id, provider, account['id'], account['generation']) if account else (environment_id, provider)
         with self._model_guard:
             lock = self._model_locks.setdefault(key, threading.Lock())
         # Cache only public model metadata, scoped to device and provider.
@@ -165,7 +165,11 @@ class RemoteManager:
                 generation = self._model_generations.get(environment_id, 0)
                 cached = self._model_cache.get(key)
                 if cached and time.monotonic() - cached[0] < 300: return cached[1]
-            value = self.rpc(environment_id, {'op': 'models', 'provider': provider})
+            request = {'op': 'models', 'provider': provider}
+            if account:
+                request.update(controller=self.store.controller_id,
+                               account={'id': account['id'], 'provider': account['provider'], 'generation': account['generation']})
+            value = self.rpc(environment_id, request)
             with self._model_guard:
                 if not self.closed.is_set() and generation == self._model_generations.get(environment_id, 0):
                     self._model_cache[key] = (time.monotonic(), value)
@@ -228,7 +232,9 @@ class RemoteManager:
                     if state['status'] not in ('running', 'starting') and cursor >= state.get('last_seq', 0):
                         if state['status'] == 'completed': return state['result']
                         if state['status'] == 'cancelled': raise ProviderCancelled()
-                        raise ProviderError(state.get('error') or 'The remote agent failed.')
+                        raise ProviderError(state.get('error') or 'The remote agent failed.',
+                                            code=state.get('error_code'), retry_after=state.get('retry_after'),
+                                            rejected=state.get('rejected') is True)
                     if not self.streaming and len(value['events']) < 100: stop.wait(.4)
                 except TransportError:
                     if subscription:

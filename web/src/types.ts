@@ -21,6 +21,63 @@ export type ProviderAvailability = Partial<
   >
 >;
 export type PermissionMode = "ask" | "full_access";
+export type AccountPolicy = "manual" | "auto" | "failover";
+export interface AccountSettings {
+  account_id?: string | null;
+  account_policy?: AccountPolicy;
+  account_ids?: string[];
+}
+export interface Account extends AccountSettings {
+  id: string;
+  label: string;
+  provider: "codex" | "claude";
+  environment_id: string;
+  status: "pending" | "ready" | "expired" | "cooldown" | "disabled" | "removed";
+  generation?: number;
+  priority?: number;
+  enabled?: boolean;
+  cooldown_until?: string | null;
+  error?: string | null;
+  identity?: {
+    email?: string | null;
+    plan?: string | null;
+  } | null;
+  usage?: {
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    total_tokens?: number | null;
+    updated_at?: number | string | null;
+  } | null;
+  quota?: {
+    windows: {
+      name?: string;
+      label?: string;
+      remaining_percent?: number | null;
+      reset_at?: string | null;
+      duration_minutes?: number;
+    }[];
+    source?: string;
+    status: string;
+    fetched_at?: string;
+  } | null;
+  created_at?: string;
+  updated_at?: string;
+}
+export interface AccountAttempt {
+  id: string;
+  run_id: string;
+  account_id?: string | null;
+  status: string;
+  number?: number;
+  generation?: number;
+  account_branch?: string | number;
+  progress?: boolean;
+  error_code?: string | null;
+  finished_at?: string | null;
+  reason?: string | null;
+  error?: string | null;
+  created_at: string;
+}
 export interface Environment {
   id: string;
   name: string;
@@ -39,7 +96,7 @@ export interface Project {
   name: string;
   path: string;
 }
-export interface Agent {
+export interface Agent extends AccountSettings {
   source_agent_id?: string | null;
   environment_id?: string;
   id: string;
@@ -53,7 +110,8 @@ export interface Agent {
   effort?: string | null;
   permission_mode?: PermissionMode;
 }
-export interface Session {
+export interface Session extends AccountSettings {
+  account_branch?: string | number | null;
   agent_defaults?: {
     model?: string | null;
     effort?: string | null;
@@ -88,7 +146,8 @@ export interface Message {
   result?: string | null;
   error?: string | null;
 }
-export interface Run {
+export interface Run extends AccountSettings {
+  account_branch?: string | number | null;
   result?: string | null;
   id: string;
   session_id: string;
@@ -178,6 +237,8 @@ export interface Subscription {
   currency: string;
 }
 export interface DockState {
+  accounts?: Account[];
+  account_attempts?: AccountAttempt[];
   environments?: Environment[];
   projects: Project[];
   agents: Agent[];

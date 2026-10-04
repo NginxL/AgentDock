@@ -23,6 +23,7 @@ import Memories from "./views/Memories";
 import { ProjectHeader, ProjectList } from "./views/Projects";
 import Usage from "./views/Usage";
 import Tokens from "./views/Tokens";
+import Accounts from "./views/Accounts";
 import { useMetrics } from "./metrics";
 import { clearModelCatalog, prewarmModels } from "./modelCatalog";
 
@@ -90,6 +91,12 @@ export default function App() {
   const modelConnections = JSON.stringify(
     (state?.agents ?? [])
       .filter((agent) => {
+        if (
+          agent.account_policy &&
+          agent.account_policy !== "manual" &&
+          !agent.account_id
+        )
+          return false;
         const environment = agent.environment_id ?? "local";
         return (
           environment === "local" ||
@@ -101,6 +108,9 @@ export default function App() {
       .map((agent) => ({
         provider: agent.provider,
         environment: agent.environment_id ?? "local",
+        account: agent.account_id,
+        generation: state?.accounts?.find((a) => a.id === agent.account_id)
+          ?.generation,
       })),
   );
   const discoveryEnabled = !!token && !demo && !!state?.runtime?.enabled;
@@ -362,7 +372,10 @@ export default function App() {
     try {
       const result = await request<unknown>(currentToken, path, data);
       if (currentToken !== tokenRef.current) return false;
-      if (/^\/api\/environments\/[^/]+\/(connect|remove)$/.test(path))
+      if (
+        /^\/api\/environments\/[^/]+\/(connect|remove)$/.test(path) ||
+        path.startsWith("/api/accounts")
+      )
         clearModelCatalog();
       try {
         const refreshed = await refresh();
@@ -581,6 +594,7 @@ export default function App() {
       en: "Projects",
       badge: state.proposals.filter((p) => p.status === "pending").length,
     },
+    { key: "accounts", icon: "shield", zh: "账号", en: "Accounts" },
     { key: "tokens", icon: "usage", zh: "Token 统计", en: "Token statistics" },
     { key: "usage", icon: "usage", zh: "额度与订阅", en: "Usage & billing" },
   ];
@@ -854,6 +868,18 @@ export default function App() {
               proposals={proposals}
               busy={!!busy || demo}
               mutate={mutate}
+            />
+          )}
+          {tab === "accounts" && (
+            <Accounts
+              state={state}
+              token={token}
+              busy={!!busy || demo}
+              mutate={mutate}
+              onChanged={() => {
+                void refresh().catch(() => {});
+              }}
+              t={t}
             />
           )}
           {tab === "tokens" && (

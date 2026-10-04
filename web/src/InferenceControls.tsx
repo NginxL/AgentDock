@@ -17,6 +17,7 @@ const effortLabels: Record<string, [string, string]> = {
 export default function InferenceControls({
   agent,
   session,
+  accountGeneration,
   token,
   busy,
   runtimeEnabled,
@@ -25,6 +26,7 @@ export default function InferenceControls({
   t,
 }: {
   agent: Agent;
+  accountGeneration?: number;
   session: Session;
   token: string;
   busy: boolean;
@@ -48,8 +50,14 @@ export default function InferenceControls({
     token,
     agent.provider,
     environment,
-    runtimeEnabled && !demo,
+    runtimeEnabled &&
+      !demo &&
+      (!session.account_policy ||
+        session.account_policy === "manual" ||
+        !!session.account_id),
     open,
+    session.account_id,
+    accountGeneration,
   );
   const models = demo
     ? [

@@ -39,7 +39,10 @@ def version(value):
     return value
 
 
-class Store:
+from .account_store import AccountStore
+
+
+class Store(AccountStore):
     def __init__(self, path):
         self._existing_db = str(path) != ":memory:" and Path(path).expanduser().exists()
         self.lock = threading.RLock()
@@ -85,6 +88,7 @@ class Store:
         self._migrate_session_workspaces()
         self._migrate_inference_settings()
         self._migrate_project_agents()
+        self._migrate_accounts()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -185,6 +189,7 @@ class Store:
             item['workspace'] = self._workspace(project_id, workspace, item['id'], item['environment_id'])
             self.db.execute('''INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode,source_agent_id)
                 VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode,:source_agent_id)''', item)
+            self.db.execute('UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?', (source['account_id'],source['account_policy'],json.dumps(source['account_ids']),item['id']))
             return item
 
     def _migrate_inference_settings(self):
@@ -275,7 +280,7 @@ class Store:
     def remove_environment(self, identifier):
         with self.transaction():
             self._one('environments',identifier)
-            if identifier=='local' or self.db.execute('SELECT 1 FROM agents WHERE environment_id=? UNION SELECT 1 FROM projects WHERE environment_id=? UNION SELECT 1 FROM sessions WHERE environment_id=?',(identifier,identifier,identifier)).fetchone():
+            if identifier=='local' or self.db.execute('SELECT 1 FROM agents WHERE environment_id=? UNION SELECT 1 FROM projects WHERE environment_id=? UNION SELECT 1 FROM sessions WHERE environment_id=? UNION SELECT 1 FROM accounts WHERE environment_id=?',(identifier,identifier,identifier,identifier)).fetchone():
                 raise Conflict('This environment is still in use')
             self.db.execute('DELETE FROM environments WHERE id=?',(identifier,))
             return {'ok':True}
@@ -326,7 +331,7 @@ class Store:
 
     @staticmethod
     def _decode(row):
-        for key in ("payload", "options", "request"):
+        for key in ("payload", "options", "request", "quota", "account_ids", "identity"):
             if key in row: row[key] = json.loads(row[key])
         if row.get('agent_defaults') is not None:
             row['agent_defaults'] = json.loads(row['agent_defaults'])
@@ -347,7 +352,7 @@ class Store:
             session = self._one('sessions', session_id)
             agent = self._one('agents', session['agent_id'])
             return {**agent, **(session['agent_defaults'] or {}),
-                    **{key: session[key] for key in ('environment_id', 'workspace', 'project_id')}}
+                    **{key: session[key] for key in ('environment_id', 'workspace', 'project_id', 'account_id', 'account_policy', 'account_ids')}}
 
     def get_session(self, identifier):
         with self.lock: return self._one("sessions", identifier)
@@ -414,7 +419,7 @@ class Store:
             self.db.execute("INSERT INTO projects VALUES(:id,:name,:path,:created_at,:environment_id)",item)
         return item
 
-    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask'):
+    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask', account_id=None, account_policy='manual', account_ids=None):
         if provider not in PROVIDERS: raise Invalid("Unsupported provider")
         model, effort = self._settings(model, effort, provider)
         permission_mode = self._permission_mode(permission_mode)
@@ -422,18 +427,21 @@ class Store:
         self.get_environment(environment_id)
         item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None)
         with self.transaction():
+            item.update(self._account_settings(provider, environment_id, account_id, account_policy, account_ids))
             item["workspace"] = self._workspace(project_id, workspace, item["id"],environment_id)
             self.db.execute("INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode) VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode)",item)
+            self.db.execute("UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?", (item["account_id"],item["account_policy"],json.dumps(item["account_ids"]),item["id"]))
         return item
 
     def update_agent(self, agent_id, changes):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id"}:
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id", "account_id", "account_policy", "account_ids"}:
             raise Invalid("Only agent settings can be updated")
         with self.transaction():
             agent = self._one("agents", agent_id)
             environment_id = text(changes.get('environment_id', agent['environment_id']), 'environment_id', 160)
             self._one('environments', environment_id)
             relocated = environment_id != agent['environment_id']
+            account_settings = self._account_settings(agent['provider'], environment_id, changes.get('account_id', None if relocated else agent['account_id']), changes.get('account_policy', 'manual' if relocated else agent['account_policy']), changes.get('account_ids', [] if relocated else agent['account_ids']))
             model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]), agent['provider'])
             permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
@@ -452,18 +460,29 @@ class Store:
                 self.db.execute('UPDATE sessions SET agent_defaults=? WHERE agent_id=? AND agent_defaults IS NULL',
                                 (json.dumps(defaults), agent_id))
             self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=?,permission_mode=?,environment_id=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, permission_mode, environment_id, agent_id))
+            self.db.execute("UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?", (account_settings["account_id"],account_settings["account_policy"],json.dumps(account_settings["account_ids"]),agent_id))
             return self._one("agents", agent_id)
 
-    def _add_session(self, agent_id, title):
+    def _add_session(self, agent_id, title, account_settings=None):
         agent = self._one("agents",agent_id)
+        if account_settings is not None:
+            if not isinstance(account_settings, dict) or set(account_settings) - {'account_id','account_policy','account_ids'}:
+                raise Invalid('Invalid session account settings')
+            agent = {**agent, **self._account_settings(agent['provider'], agent['environment_id'],
+                account_settings.get('account_id', agent['account_id']), account_settings.get('account_policy', agent['account_policy']),
+                account_settings.get('account_ids', agent['account_ids']))}
         item = dict(id=str(uuid.uuid4()),project_id=agent["project_id"],agent_id=agent_id,title=text(title,"title",160),status="idle",native_session_id=None,workspace=agent["workspace"],created_at=now(),updated_at=now(),environment_id=agent['environment_id'])
         if self._automatic_workspace(agent['workspace'], agent['id'], agent['environment_id']):
             item['workspace'] = self._session_workspace(item['id'], agent['environment_id'])
         self.db.execute("INSERT INTO sessions(id,project_id,agent_id,title,status,native_session_id,created_at,updated_at,workspace,environment_id) VALUES(:id,:project_id,:agent_id,:title,:status,:native_session_id,:created_at,:updated_at,:workspace,:environment_id)",item)
-        return item
+        generation = self._one('accounts', agent['account_id'])['generation'] if agent['account_id'] else 0
+        self.db.execute('UPDATE sessions SET account_id=?,account_policy=?,account_ids=?,account_generation=? WHERE id=?',
+                        (agent['account_id'], agent['account_policy'], json.dumps(agent['account_ids']), generation, item['id']))
+        self.db.execute('INSERT INTO session_account_branches VALUES(?,0,?,?,NULL,?)', (item['id'],agent['account_id'],generation,now()))
+        return self._one('sessions', item['id'])
 
-    def add_session(self, agent_id, title):
-        with self.transaction(): return self._add_session(agent_id, title)
+    def add_session(self, agent_id, title, account_settings=None):
+        with self.transaction(): return self._add_session(agent_id, title, account_settings)
 
     def session_directory(self, session_id):
         from .session_storage import session_directory
@@ -508,9 +527,10 @@ class Store:
 
     def _delete_session_records(self, session):
         session_id = session['id']
-        native = session.get('native_session_id')
+        natives = {row[0] for row in self.db.execute('SELECT native_session_id FROM session_account_branches WHERE session_id=? AND native_session_id IS NOT NULL',(session_id,))}
+        if session.get('native_session_id'): natives.add(session['native_session_id'])
         provider = self._one('agents',session['agent_id'])['provider']
-        if native:
+        for native in natives:
             identity = self.metric_identity(session['environment_id'], native)
             for table in ('token_records','token_spans'):
                 self.db.execute('DELETE FROM '+table+' WHERE provider=? AND native_id=?',(provider,identity))
@@ -558,9 +578,12 @@ class Store:
             if session["native_session_id"] not in (None, native_session_id):
                 raise Conflict("Native session is already bound")
             provider = self._one("agents", session["agent_id"])["provider"]
-            existing = self.db.execute("SELECT sessions.id FROM sessions JOIN agents ON sessions.agent_id=agents.id WHERE sessions.native_session_id=? AND agents.provider=? AND sessions.environment_id=? AND sessions.id<>?", (native_session_id, provider, session['environment_id'],session_id)).fetchone()
+            existing = self.db.execute("SELECT sessions.id FROM session_account_branches AS branch JOIN sessions ON branch.session_id=sessions.id JOIN agents ON sessions.agent_id=agents.id WHERE branch.native_session_id=? AND agents.provider=? AND sessions.environment_id=? AND (sessions.id<>? OR branch.branch<>?)", (native_session_id, provider, session['environment_id'],session_id,session['account_branch'])).fetchone()
             if existing: raise Conflict("Native session is already owned by another AgentDock session")
+            if run_id is not None and run['account_branch'] != session['account_branch']:
+                raise Conflict('Native session binding belongs to a different account branch')
             self.db.execute("UPDATE sessions SET native_session_id=?,updated_at=? WHERE id=?", (native_session_id, now(), session_id))
+            self.db.execute('UPDATE session_account_branches SET native_session_id=? WHERE session_id=? AND branch=?', (native_session_id,session_id,session['account_branch']))
             return self._one("sessions", session_id)
 
     def _enqueue_run(self, session_id, prompt, origin="human", parent_run_id=None, root_run_id=None, depth=None, delivery_id=None):
@@ -599,9 +622,12 @@ class Store:
         run.update(model=settings['model'], effort=settings['effort'])
         run['permission_mode'] = sender['permission_mode'] if origin == 'reply' else session_agent['permission_mode']
         self.db.execute("INSERT INTO runs(id,session_id,project_id,agent_id,prompt,status,error,created_at,updated_at,origin,parent_run_id,root_run_id,depth,delivery_id,task_run_id,model,effort,permission_mode) VALUES(:id,:session_id,:project_id,:agent_id,:prompt,:status,:error,:created_at,:updated_at,:origin,:parent_run_id,:root_run_id,:depth,:delivery_id,:task_run_id,:model,:effort,:permission_mode)",run)
+        self._freeze_run_account(session, run)
+        self.db.execute('UPDATE runs SET account_id=?,account_policy=?,account_ids=?,account_generation=?,account_branch=?,account_selection_pending=? WHERE id=?',
+                        (run['account_id'],run['account_policy'],json.dumps(run['account_ids']),run['account_generation'],run['account_branch'],run.get('account_selection_pending',0),run['id']))
         self._refresh_session(session_id, "queued")
         self._event(run["project_id"], session_id, "run_queued", {"run_id":identifier,"origin":origin,"parent_run_id":parent_run_id,"delivery_id":delivery_id})
-        return run
+        return self._one("runs", run["id"])
 
     def enqueue_run(self, session_id, prompt, *, origin="human", parent_run_id=None, root_run_id=None, depth=None, delivery_id=None):
         with self.transaction():
@@ -609,7 +635,11 @@ class Store:
 
     def _can_claim(self, run):
         if run["status"] != "queued": return False
+        if run.get('next_attempt_at') and datetime.fromisoformat(run['next_attempt_at']) > datetime.now(timezone.utc): return False
         if self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status='running'", (run['agent_id'],)).fetchone(): return False
+        # Managed credential refresh is serialized per account. Queue here instead
+        # of occupying a worker while waiting for a native credential lease.
+        if run.get('account_id') and self.db.execute("SELECT 1 FROM runs WHERE account_id=? AND status='running'", (run['account_id'],)).fetchone(): return False
         session=self._one('sessions',run['session_id'])
         chosen = Path(session['workspace'])
         active = self.db.execute("SELECT runs.agent_id,sessions.workspace AS path FROM runs JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running' AND sessions.environment_id=?",(session['environment_id'],)).fetchall()
@@ -620,7 +650,9 @@ class Store:
         self._refresh_session(run["session_id"], "running")
         if run["delivery_id"] and run["origin"] != "reply":
             self.db.execute("UPDATE messages SET status='running',acknowledged_at=?,updated_at=? WHERE id=?", (now(), now(), run["delivery_id"]))
-        self._event(run["project_id"], run["session_id"], "user_message", {"text":run["prompt"],"run_id":run["id"],"origin":run["origin"],"delivery_id":run["delivery_id"]})
+        already_shown = any(json.loads(row[0]).get('run_id') == run['id'] for row in self.db.execute("SELECT payload FROM events WHERE session_id=? AND kind='user_message'", (run['session_id'],)))
+        if not already_shown:
+            self._event(run["project_id"], run["session_id"], "user_message", {"text":run["prompt"],"run_id":run["id"],"origin":run["origin"],"delivery_id":run["delivery_id"]})
         self._event(run["project_id"], run["session_id"], "run_started", {"run_id":run["id"]})
         return self._one("runs", run["id"])
 
@@ -1003,7 +1035,7 @@ class Store:
     def usage_bindings(self, local_only=False):
         with self.lock:
             return {(r['provider'], self.metric_identity(r['environment_id'],r['native_session_id'])): r['agent_id'] for r in self.db.execute(
-                "SELECT agents.provider,sessions.native_session_id,sessions.agent_id,sessions.environment_id FROM sessions JOIN agents ON agents.id=sessions.agent_id WHERE native_session_id IS NOT NULL AND (?=0 OR sessions.environment_id='local')",(local_only,))}
+                "SELECT agents.provider,branch.native_session_id,sessions.agent_id,sessions.environment_id FROM session_account_branches AS branch JOIN sessions ON branch.session_id=sessions.id JOIN agents ON agents.id=sessions.agent_id WHERE branch.native_session_id IS NOT NULL AND (?=0 OR sessions.environment_id='local')",(local_only,))}
 
     def state(self):
         with self.lock:
@@ -1017,5 +1049,7 @@ class Store:
             result["subscriptions"]=self._all("SELECT * FROM subscriptions")
             for item in result['subscriptions']:
                 if ':' in item['provider']: item['environment_id'],item['provider']=item['provider'].split(':',1)
+            result['accounts']=self.accounts(include_removed=True)
+            result['account_attempts']=self._all('SELECT * FROM run_attempts ORDER BY created_at DESC LIMIT 300')
             result['environments']=self.environments()
             return result

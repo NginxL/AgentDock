@@ -10,7 +10,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 > **开发者预览版。** 默认关闭执行。自动检查覆盖原生及 ACP 协议和任务交接；Codex、Claude Code、Trae 已通过真实两轮对话。其余 ACP 服务、更多账号和长时间协作仍需验收，详见[服务兼容性](docs/PROVIDERS.zh-CN.md)。
 
-[支持的 Agent](docs/PROVIDERS.zh-CN.md) · [SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
+[订阅账号](docs/ACCOUNTS.zh-CN.md) · [支持的 Agent](docs/PROVIDERS.zh-CN.md) · [SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
 ## 工作台
 
@@ -22,7 +22,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 ![项目列表，虚构演示数据](docs/images/projects.zh-CN.png)
 
-**同一 Agent，多个项目：**在工作台配置 Agent 后，进入 **项目 → Agent → 添加 Agent**，选择已有 Agent，设置项目内名称和职责。例如同一 Codex 在 A 项目叫 `cr`，在 B 项目叫 `coding`。加入时复制设备、模型、思考强度及权限默认值；以后各自修改，互不联动。会话和项目记忆分别保存，同设备默认使用目标项目目录；跨设备需填写该项目在 Agent 设备上的目录。日常独立会话原样保留。项目 TPS 只汇总该项目成员。
+**同一 Agent，多个项目：**在工作台配置 Agent 后，进入 **项目 → Agent → 添加 Agent**，选择已有 Agent，设置项目内名称和职责。例如同一 Codex 在 A 项目叫 `cr`，在 B 项目叫 `coding`。加入时复制设备、账号策略、模型、思考强度及权限默认值；以后各自修改，互不联动。会话和项目记忆分别保存，同设备默认使用目标项目目录；跨设备需填写该项目在 Agent 设备上的目录。日常独立会话原样保留。项目 TPS 只汇总该项目成员。
 
 **对话：**侧栏集中展示各项目及日常会话，可搜索标题、Agent 或项目，并按项目或“日常对话”筛选。顶部机器人按钮可筛选一个或多个 Agent，时钟按钮仅显示最近 24 小时活跃的对话，图层按钮按 Agent 分组；再次点击可关闭筛选面板或取消对应模式。筛选条件可叠加，分组内按最近活动排序。同名 Agent、项目成员和日常 Agent 分别显示，筛选不会关闭正在阅读的会话或清空草稿。点选会话可查看实时进度、最终回复并继续发送消息；“新建对话”选择日常或具体项目及对应 Agent。
 
@@ -56,6 +56,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 | 能力 | 说明 |
 | --- | --- |
 | 本机与 SSH 连接 | 在添加 Agent 时选择本机 CLI、已有 SSH 连接或配置新连接；日常界面使用自定义名称，会话与额度按实际连接区分。 |
+| 订阅账号 | 管理本机或 SSH 设备上的多个 Codex、Claude Code 订阅；支持固定账号、首次自动选择及受控切换，分别查看额度、登录状态与实测 Token。 |
 | 独立 Agent | 无需项目即可创建、指定工作目录、聊天与续接上下文；模型和思考强度从所选环境发现。 |
 | TPS 与 Token | 总计及每个 Agent 的三分钟输出吞吐曲线；单独页面查看已配置 Agent 关联会话的累计 Token、输入、输出和缓存明细，按原生标识去重。 |
 | 自定义角色 | 独立于服务定义 Agent 名称和职责，支持创建后编辑或清空角色。 |
@@ -76,9 +77,9 @@ python3 scripts/install-macos.py
 
 应用安装到 `~/Applications/AgentDock.app`。双击打开即可连接本机工作台，无需复制访问令牌。顶部菜单栏显示 AgentDock 的叠层图标，点击可查看额度摘要或打开工作台。关闭主窗口会隐藏窗口，应用与正在运行的任务继续保留；选择“退出 AgentDock”或按 `⌘Q` 才会停止本地服务及正在执行的任务。历史与配置保存在 `~/.local/share/agentdock`。
 
-应用启用任务执行能力，但只有提交任务才会调用 Agent。每次点击“额度与订阅”时，只刷新已配置 Agent 使用的服务；未添加 Agent 时显示空状态，不发起额度查询。本地服务运行期间每 10 分钟也会更新一次，主窗口隐藏后仍会继续。菜单直接展示共用数据，无需单独刷新。菜单与工作台共用中英文设置，桌面版会记住语言选择。
+应用启用任务执行能力，但只有提交任务才会调用 Agent。每次点击“额度与订阅”时，只刷新已配置 Agent 使用的服务；未添加 Agent 时该页显示空状态，不发起设备登录额度查询；托管账号在账号页独立刷新。本地服务运行期间每 10 分钟也会更新一次，主窗口隐藏后仍会继续。菜单直接展示共用数据，无需单独刷新。菜单与工作台共用中英文设置，桌面版会记住语言选择。
 
-Claude 额度只读取 Claude Desktop 保存的本地快照，不访问钥匙串或登录凭据。界面显示源数据的“数据更新于”时间；重新读取文件不会刷新该时间。当前快照没有重置时间，因此显示未知。仅登录 Claude Code 不保证存在 Desktop 快照。Codex 通过本机 App Server 查询账户额度，认证由 Codex 自己处理。
+选择**沿用设备登录**时，Claude 额度只读取 Claude Desktop 保存的本地快照，不访问钥匙串或登录凭据。界面显示源数据的“数据更新于”时间；重新读取文件不会刷新该时间。当前快照没有重置时间，因此显示未知。仅登录 Claude Code 不保证存在 Desktop 快照。Codex 通过本机 App Server 查询账户额度，认证由 Codex 自己处理。
 
 从 AgentMeter 迁移订阅记录可运行 `python3 scripts/install-macos.py --import-agentmeter`。迁移会备份原配置、保留已有 AgentDock 记录，不修改提供方登录或删除旧应用。
 
@@ -111,7 +112,9 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 服务菜单包含 **Codex、Claude Code、Trae CLI、Pi、Cursor CLI、Antigravity、Grok Build、OpenCode、Gemini CLI、Qwen Code**，使用随应用打包的图标，并按所选设备检测可用性。缺少 CLI 或适配器的条目不可选；Pi 需要 `pi-acp` 和明确选择完全访问，Antigravity 需要 ACP 服务程序。[接入与兼容性](docs/PROVIDERS.zh-CN.md)说明认证、续聊、MCP 及用量边界。
 
-名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自会话仍按独立标识管理。同一连接可被多个 Agent 复用，共用账户额度的 Agent 会合并展示额度窗口。目前官方额度读取及实测 Token/TPS 覆盖 Codex、Claude；ACP 上下文占用不计入 Token 消耗。
+**多个订阅账号：**进入 **账号 → 添加账号**，选择服务和设备，由用户完成官方 CLI 登录。在 **添加 Agent／Agent 设置**、创建会话时或空闲会话的账号控件中选择账号。托管登录使用独立存储，不替换桌面版或终端登录。已知恢复时间可以等待；自动切换仅限明确的执行前拒绝，每次运行最多尝试 3 个不同账号。Claude 未报告额度时保持未知。详见[账号配置、策略与隔离](docs/ACCOUNTS.zh-CN.md)。
+
+名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自会话仍按独立标识管理。同一连接可被多个 Agent 复用；沿用设备登录的额度卡片合并展示其名称，托管订阅额度按账号展示。目前官方额度读取及实测 Token/TPS 覆盖 Codex、Claude；ACP 上下文占用不计入 Token 消耗。
 
 ![带品牌图标的服务选择菜单](docs/images/provider-picker.zh-CN.png)
 
@@ -186,7 +189,7 @@ TPS 使用真实输出 Token 增量及其采样区间，包含等待和工具耗
 
 如果服务的 `PATH` 中没有相应 CLI，请使用可执行文件的绝对路径。机器专属配置保存在 Git 忽略的 `config.local.json` 中。界面和智能体均不能指定执行命令。
 
-AgentDock 使用 Codex App Server、Claude CLI 的双向 JSON 流，并通过 ACP v1 连接其他已登记服务。执行认证沿用各 CLI 的配置；额度组件不读取 Claude 凭据，Codex 查询由本机 Codex 处理认证。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/PROVIDERS.zh-CN.md)。
+AgentDock 使用 Codex App Server、Claude CLI 的双向 JSON 流，并通过 ACP v1 连接其他已登记服务。执行认证使用所选托管订阅配置；选择“沿用设备登录”时继续使用各 CLI 原有配置。设备登录的额度组件不读取 Claude 凭据；托管账号调用原生 CLI 的账号操作。登录、模型选择、账号资格和费用由原生 CLI 及其配置的服务决定。展示额度不等于授予执行权限。详见[兼容性与验证](docs/PROVIDERS.zh-CN.md)。
 
 ## 协作流程
 
@@ -206,7 +209,7 @@ sequenceDiagram
     C-->>U: 处理结果并完成任务
 ```
 
-同一智能体的会话，以及使用相同或父子目录的任务，按顺序执行；独立工作目录可以并行。每条协作链最多包含 16 个执行任务，派工深度最多三层。取消任务会同时取消其后续派生任务。应用重启将未完成任务标记为中断，不自动重放。
+共用托管账号、同一智能体，以及使用相同或父子目录的任务，按顺序执行；不同账号和独立工作目录可以并行。每条协作链最多包含 16 个执行任务，派工深度最多三层。取消任务会同时取消其后续派生任务。应用重启将未完成任务标记为中断，不自动重放。
 
 ## 数据与边界
 
@@ -214,7 +217,7 @@ sequenceDiagram
 
 当前版本管理**由 AgentDock 创建的本机和 SSH 会话**，尚未接入已有桌面或终端会话及多用户访问。“需要确认”模式下，提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据保留在所选设备上，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
 
-远端 Token 统计来自 AgentDock 托管任务的用量事件，不扫描远端其他历史会话。额度与订阅按环境和提供方分开保存；远端 Codex 查询自己的 App Server，远端 Claude 额度当前显示未知，不使用本机快照代替。
+远端 Token 统计来自 AgentDock 托管任务的用量事件，不扫描远端其他历史会话。设备登录的额度与订阅记录按环境和提供方分开保存；托管订阅的额度与实测 Token 按账号展示。远端 Codex 查询自己的 App Server；Claude 订阅限额使用原生运行中的可用报告，未报告时保持未知，不使用其他设备的快照代替。
 
 从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 

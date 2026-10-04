@@ -22,24 +22,35 @@ class Catalog:
 
     def invalidate(self):
         for provider, lock in self.locks.items():
-            with lock: self.cache.pop(provider, None)
+            with lock:
+                for key in list(self.cache):
+                    if key == provider or isinstance(key, tuple) and key[0] == provider:
+                        self.cache.pop(key, None)
 
-    def read(self, provider):
+    def read(self, provider, account_id=None, generation=0, environment=None):
         if not self.config.get('execution_enabled'): raise Forbidden('Execution is disabled for review')
         if provider not in PROVIDERS: raise ValueError('Unsupported provider')
+        key = (provider, account_id, generation) if account_id else provider
         with self.locks[provider]:
             if self.stop.is_set(): raise Forbidden('Model discovery is closed')
-            stamp, value = self.cache.get(provider, (0, None))
+            stamp, value = self.cache.get(key, (0, None))
             if value and time.monotonic() - stamp < 300: return value
             command = commands(self.config.get('commands', {})).get(provider)
             if not isinstance(command, list) or not command: raise ValueError('Native CLI is not configured')
             if provider in ACP_PROVIDERS:
                 value = self._acp(provider, command)
-                self.cache[provider] = (time.monotonic(), value)
+                self.cache[key] = (time.monotonic(), value)
                 return value
             argv = command + (['--listen', 'stdio://'] if provider == 'codex' else
                 ['--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'])
-            pipe = _Pipe(argv, str(Path.home()), dict(os.environ), self.stop, 25)
+            env = dict(os.environ if environment is None else environment)
+            cwd = str(Path.home())
+            if account_id:
+                cwd = env['AGENTDOCK_ACCOUNT_HOME']
+                if provider == 'codex':
+                    argv += ['-c', 'cli_auth_credentials_store="file"', '-c', 'model_provider="openai"', '-c', 'forced_login_method="chatgpt"']
+                else: argv += ['--setting-sources', 'user']
+            pipe = _Pipe(argv, cwd, env, self.stop, 25)
             try:
                 if provider == 'codex':
                     adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
@@ -64,7 +75,8 @@ class Catalog:
                 # Whitelist metadata: initialize may also return private account information.
                 models = [m for m in models if isinstance(m['id'], str) and len(m['id']) <= 160 and isinstance(m['name'], str) and isinstance(m['efforts'], list) and all(isinstance(e, str) and len(e) <= 32 for e in m['efforts'])][:100]
                 value = {'provider': provider, 'models': models}
-                self.cache[provider] = (time.monotonic(), value)
+                if account_id: value['account_id'] = account_id
+                self.cache[key] = (time.monotonic(), value)
                 return value
             finally:
                 pipe.close()

@@ -18,6 +18,37 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it("isolates model results by subscription account and login generation", async () => {
+  const fetch = vi.fn(async (path: string) =>
+    response([{ id: path, name: path, efforts: [] }]),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const view = renderHook(
+    ({ account, generation }) =>
+      useModelCatalog(
+        "token",
+        "codex",
+        "local",
+        true,
+        undefined,
+        account,
+        generation,
+      ),
+    { initialProps: { account: "first", generation: 1 } },
+  );
+  await waitFor(() => expect(view.result.current.loading).toBe(false));
+  expect(view.result.current.models[0].id).toContain("account_id=first");
+  view.rerender({ account: "second", generation: 1 });
+  expect(view.result.current.models).toEqual([]);
+  await waitFor(() =>
+    expect(view.result.current.models[0].id).toContain("account_id=second"),
+  );
+  view.rerender({ account: "second", generation: 2 });
+  expect(view.result.current.models).toEqual([]);
+  await waitFor(() => expect(view.result.current.loading).toBe(false));
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
 it("shares one in-flight read across menus and conversations", async () => {
   let finish!: (value: ReturnType<typeof response>) => void;
   const fetch = vi.fn(

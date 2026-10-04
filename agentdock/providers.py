@@ -25,6 +25,52 @@ from .registry import PROVIDERS, ACP_PROVIDERS
 class ProviderError(Exception):
     """A safe, stable diagnostic; never contains raw provider stderr or errors."""
 
+    def __init__(self, message, *, code=None, retry_after=None, rejected=False):
+        super().__init__(message)
+        self.code = code
+        self.retry_after = retry_after
+        self.rejected = bool(rejected)
+
+
+def account_error(value, fallback):
+    """Classify structured CLI rejection codes, never model text or raw stderr.
+
+    A rejection is only a candidate for retry. The dispatcher independently
+    proves that no output, tool, approval or collaboration activity occurred.
+    """
+    code, retry_after = None, None
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        if depth > 4 or not isinstance(item, dict):
+            continue
+        marker = item.get('codexErrorInfo', item.get('error_code', item.get('code', item.get('type'))))
+        if isinstance(marker, dict):
+            pending.append((marker, depth + 1))
+            marker = next(iter(marker), '')
+        if isinstance(marker, str):
+            normalized = re.sub(r'[_-]', '', marker).lower()
+            if normalized in ('unauthorized', 'authenticationfailed', 'authenticationerror', 'autherror', 'invalidapikey'):
+                code = 'auth_expired'
+            elif normalized in ('usagelimitexceeded', 'quotaexceeded', 'insufficientquota'):
+                code = 'quota_exhausted'
+            elif normalized in ('ratelimit', 'ratelimited', 'ratelimiterror', 'ratelimitexceeded'):
+                code = 'rate_limited'
+        status = item.get('httpStatusCode', item.get('status_code'))
+        if status == 401: code = 'auth_expired'
+        elif status == 429: code = code or 'rate_limited'
+        delay = item.get('retryAfterSeconds', item.get('retry_after'))
+        if isinstance(delay, (int, float)) and not isinstance(delay, bool) and math.isfinite(delay) and delay >= 0:
+            retry_after = min(86400 * 7, max(1, delay))
+        for key in ('error', 'data', 'details', 'httpConnectionFailed', 'responseStreamConnectionFailed'):
+            child = item.get(key)
+            if isinstance(child, dict): pending.append((child, depth + 1))
+            elif key == 'error' and isinstance(child, str): pending.append(({'code': child}, depth + 1))
+    messages = {'auth_expired': 'This account needs to sign in again.',
+                'quota_exhausted': 'This account has reached its usage limit.',
+                'rate_limited': 'This account is temporarily rate limited.'}
+    return ProviderError(messages.get(code, fallback), code=code, retry_after=retry_after, rejected=bool(code))
+
 
 class ProviderCancelled(Exception):
     pass
@@ -67,9 +113,18 @@ class _Pipe:
         self.stdout_open = True
         self.check()
         try:
-            self.process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE,
+            native_env, descriptors = dict(env), {}
+            lease_fd = native_env.pop('AGENTDOCK_ACCOUNT_LOCK_FD', None)
+            if lease_fd is not None:
+                fd = int(lease_fd)
+                if fd < 3: raise ValueError('Invalid credential lease')
+                os.fstat(fd)
+                # The native process retains the account lock if the controller
+                # dies, so a restarted controller cannot overwrite a refresh.
+                descriptors['pass_fds'] = (fd,)
+            self.process = subprocess.Popen(command, cwd=cwd, env=native_env, stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            start_new_session=True, bufsize=0)
+                                            start_new_session=True, bufsize=0, **descriptors)
             for stream, name in ((self.process.stdout, "stdout"), (self.process.stderr, "stderr")):
                 os.set_blocking(stream.fileno(), False)
                 self.selector.register(stream, selectors.EVENT_READ, name)
@@ -251,7 +306,7 @@ class _Codex:
                 if message.get("id") != request_id:
                     raise ProviderError("Codex returned an unexpected response.")
                 if "error" in message:
-                    raise ProviderError("Codex rejected a protocol request. Check CLI login and compatibility.")
+                    raise account_error(message['error'], "Codex rejected a protocol request. Check CLI login and compatibility.")
                 if not isinstance(message.get("result"), dict):
                     raise ProviderError("Codex returned an invalid response.")
                 return message["result"]
@@ -355,7 +410,7 @@ class _Codex:
                 raise ProviderError("Codex completed a different turn.")
             self.finished = turn
         elif method == "error" and not params.get("willRetry", False):
-            raise ProviderError("Codex reported a run failure; private error details were omitted.")
+            raise account_error(params, "Codex reported a run failure; private error details were omitted.")
 
     def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_ready=None):
         self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
@@ -411,7 +466,7 @@ class _Codex:
         if status == "interrupted":
             raise ProviderCancelled()
         if status != "completed":
-            raise ProviderError("Codex stopped before completing the turn.")
+            raise account_error(self.finished, "Codex stopped before completing the turn.")
         # Some gateways omit phase. The last assistant item is the reply;
         # concatenating all items would also include earlier progress updates.
         candidates = [item for item in self.message_order
@@ -505,6 +560,19 @@ class _Claude:
             message = self.pipe.next()
             self.validate_session(message)
             kind = message.get("type")
+            if kind == 'assistant' and message.get('error'):
+                raise account_error(message, 'Claude could not complete this request.')
+            if kind == 'rate_limit_event':
+                info = message.get('rate_limit_info', {})
+                if isinstance(info, dict):
+                    self.cb.emit('account_rate_limit', {key: info[key] for key in
+                        ('status', 'resetsAt', 'rateLimitType', 'utilization') if key in info
+                        and isinstance(info[key], (str, int, float)) and not isinstance(info[key], bool)
+                        and (not isinstance(info[key], (int, float)) or math.isfinite(info[key]))})
+                    if info.get('status') == 'rejected':
+                        reset = info.get('resetsAt')
+                        delay = max(1, reset - time.time()) if isinstance(reset, (int, float)) and math.isfinite(reset) else None
+                        raise ProviderError('This account has reached its usage limit.', code='quota_exhausted', retry_after=delay, rejected=True)
             if kind == "control_request":
                 self.handle_permission(message)
             elif kind == 'system' and message.get('subtype') == 'init':
@@ -582,7 +650,7 @@ class _Claude:
                                      {"provider": "claude", "item": block})
             elif kind == "result":
                 if message.get("is_error") or message.get("subtype") != "success":
-                    raise ProviderError("Claude stopped before completing the turn. Check CLI login and limits.")
+                    raise account_error(message, "Claude stopped before completing the turn. Check CLI login and limits.")
                 if not self.bound:
                     raise ProviderError("Claude did not confirm the native session.")
                 last_message = next(reversed(self.messages.values()), {})
@@ -599,7 +667,8 @@ class _Claude:
 
 
 def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
-            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_home=None):
+            emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_home=None,
+            base_environment=None, managed_account=False):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -624,7 +693,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     if not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 < timeout <= 86400:
         raise ProviderError("The agent run timeout is invalid.")
     mcp, additions = _validate_mcp(mcp_config)
-    env = dict(os.environ)
+    env = dict(os.environ if base_environment is None else base_environment)
     for key in ('CODEX_APP_TOOLS_PIPE_PATH', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE'):
         env.pop(key, None)
     env.update(additions)
@@ -636,7 +705,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
             from .codex_home import prepare
             original_env = dict(env)
             try:
-                env, flags, legacy = prepare(os.path.join(session_home, 'codex'), env, native_id, cwd)
+                env, flags, legacy = prepare(os.path.join(session_home, 'codex'), env, native_id, cwd, managed=managed_account)
             except (OSError, ValueError):
                 raise ProviderError('Could not prepare isolated Codex session storage; no prompt was sent.') from None
             argv += flags
@@ -665,6 +734,10 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
                  "--include-partial-messages", "--permission-prompt-tool", "stdio",
                  "--permission-mode", "bypassPermissions" if permission_mode == "full_access" else "manual", "--strict-mcp-config",
                  "--mcp-config", json.dumps({"mcpServers": {"agentdock": {"type": "stdio", **mcp}}})]
+        if managed_account:
+            # Keep project apiKeyHelper/env settings from silently replacing the
+            # chosen subscription. Instructions and project files stay shared.
+            argv += ['--setting-sources', 'user']
         if model: argv += ["--model", model]
         if effort: argv += ["--effort", effort]
         argv += ["--resume=" + native_id] if native_session_id else ["--session-id", native_id]

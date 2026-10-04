@@ -91,7 +91,7 @@ def serve():
     def perform(identifier, request):
         try:
             if request.get('op') == 'probe': catalog.invalidate()
-            value = catalog.read(request['provider']) if request.get('op') == 'models' else rpc(request)
+            value = catalog.read(request['provider']) if request.get('op') == 'models' and not request.get('account') else rpc(request)
             send(identifier, value)
         except Exception: send(identifier, ok=False)
         finally: capacity.release()

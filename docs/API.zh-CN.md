@@ -21,11 +21,11 @@
 
 `GET /api/providers?environment_id=local` 需要管理员令牌，返回 `environment_id` 和服务标识到 `{name, available, reason, supports_ask}` 的映射。本机只检测可执行文件，SSH 只读取已连接设备的检测结果；不启动 CLI 或 SSH，不要求启用执行。`reason` 为 `not_installed`、`adapter_required`、`connect_required` 或 null。
 
-`GET /api/models/{provider}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟；只保留白名单字段，不返回账户信息。
+`GET /api/models/{provider}` 需要启用执行，执行本机客户端元信息握手，不发送提示词。返回 `models: [{id, name, efforts}]`，缓存五分钟，只保留白名单模型元信息。可选 `environment_id`（默认 `local`）和 `account_id` 指定同服务、同设备的托管账号；不传 `account_id` 时沿用设备登录。托管账号缓存还按账号标识与登录版本隔离。
 
 `GET /api/metrics` 只读本地统计，返回 `total`、`providers`、`agents`、`scan_status` 和 `as_of`。每组包括输入、输出、缓存读取、缓存写入、总 Token、会话数量、当前及平均 TPS、60 个三秒曲线点。此接口的 `as_of`、`updated_at` 使用 Unix 秒；`current_tps: null` 表示活跃期间缺少采样。数据源索引在启用执行后每十秒扫描变更；界面每三秒读取统计，不触发模型调用。
 
-所有统计只包含已配置 Agent 绑定的原生会话。没有 Agent 时，总量为零，提供方、Agent 和每日活跃集合为空。`GET /api/state` 和 `GET /api/quotas` 只返回已配置 Agent 使用的服务；菜单接口对尚无快照的服务返回 `status: "unknown"` 和空窗口。未配置服务的额度刷新请求会被拒绝。
+所有统计只包含已配置 Agent 绑定的原生会话。没有 Agent 时，总量为零，提供方、Agent 和每日活跃集合为空。`GET /api/state` 和 `GET /api/quotas` 中沿用设备登录的 `quotas` 集合只返回已配置 Agent 使用的服务；菜单接口对尚无快照的服务返回 `status: "unknown"` 和空窗口。未配置服务的额度刷新请求会被拒绝。
 
 `activity` 包含 `today`（服务端本地日期）、`days`（最近 365 天已记录日期的 `date` 与 `tokens`）、`updated_at`（最新源记录时间，无记录时为 null）及 `status`（`pending`、`scanning`、`ready`、`partial` 或 `disabled`）。无记录的日期不产生正用量。Codex 每日活跃首次从历史起点分块补全，独立于累计值及 TPS 的快速扫描；重启后继续索引进度，不请求提供方接口。
 
@@ -45,17 +45,17 @@ ACP 将公开思考、消息与工具事件转为同一事件流；最终工具�
 
 MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/tool` 访问正在执行的项目、Agent 和会话的工具，不能访问管理员 API。运行结束或取消时撤销令牌，令牌最长有效期为一小时。
 
-默认禁用执行。仅审阅模式允许管理项目、Agent、会话、记忆和订阅记录；启动任务、发送可执行消息、处理运行审批和刷新提供商额度会被拒绝。读取状态不会启动进程或额度探测。
+默认禁用执行。仅审阅模式允许管理项目、Agent、会话、记忆、订阅和账号元数据；账号原生登录／检查／刷新／删除、启动任务、发送可执行消息、处理运行审批和刷新提供商额度会被拒绝。读取状态不会启动进程或额度探测。
 
 ## 用户操作接口
 
 ### 运行环境路由
 
-`environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话在创建时记录 Agent 的环境。修改 Agent 的 `environment_id` 只影响新会话，已有会话保留原环境。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。本机与 SSH 模型列表均在控制端按环境／服务分别缓存五分钟；相同组合的并发 SSH 查询合并为一次，重新连接会使对应环境的缓存失效。读取失败不缓存。
+`environment_id` 默认为 `local`。`GET /api/state` 包含 `environments`；项目与 Agent 在创建时可指定环境，会话在创建时记录 Agent 的环境。修改 Agent 的 `environment_id` 只影响新会话，已有会话保留原环境。`GET /api/models/{provider}?environment_id=<id>` 查询所选环境，SSH 查询要求先完成连接检查。本机与 SSH 模型列表均在控制端按环境／服务分别缓存五分钟，选用托管账号时还按账号标识与登录版本隔离；相同组合的并发 SSH 查询合并为一次，重新连接会使对应环境的缓存失效。读取失败不缓存。
 
-界面为已配置且已连接的 Agent 提前读取模型元信息，最多同时预读两个组合，与会话和 Agent 设置共享一分钟的内存缓存；页面可见时每分钟检查缓存。重复打开菜单复用已有列表；缓存过期后在保留列表的同时刷新。工作台凭据、服务和运行环境分别隔离，断开工作台或重新连接环境后清理界面缓存。模型发现不提交 Agent 提示词。
+界面为已配置且已连接的 Agent 提前读取模型元信息，最多同时预读两个组合，与会话和 Agent 设置共享一分钟的内存缓存；页面可见时每分钟检查缓存。重复打开菜单复用已有列表；缓存过期后在保留列表的同时刷新。工作台凭据、服务、运行环境及托管账号登录版本分别隔离，断开工作台或重新连接环境后清理界面缓存。模型发现不提交 Agent 提示词。
 
-额度刷新与订阅写入接受 `environment_id`，按环境与提供方划分作用域。返回的 SSH 快照与订阅包含环境 ID；菜单快照包含兼容字段 `environment_name`，以及该连接下的自定义名称数组 `agent_names`。菜单使用这些名称展示，不附加设备标签；名称不作为路由标识。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
+沿用设备登录的额度刷新与人工账单记录写入接受 `environment_id`，按环境与提供方划分作用域。托管订阅账号使用下方独立账号接口。返回的 SSH 快照与订阅包含环境 ID；菜单快照包含兼容字段 `environment_name`，以及该连接下的自定义名称数组 `agent_names`。菜单使用这些名称展示，不附加设备标签；名称不作为路由标识。远端统计来自托管任务的用量事件，不扫描远端历史。`transport_status` 事件报告 `reconnecting` 或 `connected`，不代表任务结束。
 
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |
@@ -65,19 +65,60 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 显式远端工作目录必须是 POSIX 绝对路径，并在任务开始时存在。Agent 目录留空则在首次执行时创建私有目录；只有同环境项目才会自动继承项目路径。详见 [SSH 协议说明](SSH.zh-CN.md)。
 
+### 托管订阅账号
+
+使用流程见[账号配置与隔离](ACCOUNTS.zh-CN.md)。以下接口仅管理员可用，支持 `codex` 和 `claude`，每个账号绑定一个 `environment_id`。托管凭据保留在所选设备，不进入 SQLite 或 API 响应。`account_policy` 为 `manual` 且 `account_id` 为 null 时，继续沿用设备原有登录。
+
+| 方法与路径 | JSON 字段与返回结果 |
+| --- | --- |
+| `GET /api/accounts` | `{ "accounts": [...] }`，返回未删除的账号及实测 `usage`，不发起原生查询。 |
+| `POST /api/accounts` | `provider`、`label`（1～100 字符）；可选 `environment_id`（默认 `local`）、`priority`（−100～100 的整数，默认 0）。只创建 `pending` 元数据，不登录。 |
+| `POST /api/accounts/{id}` | `label`、`priority` 或 `enabled`（布尔值）。服务和设备不可修改；停用／启用前必须结束使用此账号的排队和执行任务。重新启用先设为 `pending`，启用执行时再检查原生登录。也可使用 `status: "disabled"`／`"ready"`，但不能与 `enabled` 同传；`ready` 只能请求重新启用停用账号，不能声明登录成功。 |
+| `POST /api/accounts/{id}/login` | 可选 `method`：`browser` 或 `device`。SSH Codex 默认且仅支持 `device`，其余默认 `browser`；Claude 仅支持 `browser`。返回公开登录任务。 |
+| `GET /api/accounts/{id}/login` | 读取公开登录任务，并确认已完成的原生授权。要求启用执行，不发起新登录。 |
+| `POST /api/accounts/{id}/input` | `code`：官方登录流程提供的确认码，不是密码或 API Token。 |
+| `POST /api/accounts/{id}/cancel` | 空对象；取消该账号的登录任务。仅关闭面板不会取消。 |
+| `POST /api/accounts/{id}/check` | 空对象；检查原生登录，返回白名单登录元信息。新登录或恢复登录成功后递增 `generation`。 |
+| `POST /api/accounts/{id}/refresh` | 空对象；刷新原生登录与额度元信息，不发送模型提示词，返回账号记录。 |
+| `POST /api/accounts/{id}/delete` | 空对象；有排队或执行任务使用此账号时拒绝。清理设备上的托管登录后保留 `removed` 历史标记；清理失败可重试。已有会话保留。 |
+
+所有带账号操作后缀的 POST 接口要求启用执行。元数据接口不接受凭据、任意 CLI 命令、额度读数或登录版本更新。公开登录任务只允许 `id`、`status`、`method`、`url`、`device_code`、`error_code`、`created_at`、`updated_at`；CLI 尚未提供的字段可以缺省。官方授权由用户完成；排队或执行中的任务已固定登录时，不允许替换凭据。
+
+| 账号字段 | 含义 |
+| --- | --- |
+| `id`、`label`、`provider`、`environment_id` | 工作台标识、自定义名称、固定的服务和设备。 |
+| `status`、`error` | `pending`、`ready`、`expired`、`cooldown`、`disabled` 或 `removed`；错误为脱敏公开代码，不保存原始 CLI 输出。 |
+| `generation`、`priority`、`last_used_at` | 已验证登录版本、选择优先级、最近选择／预留时间。 |
+| `identity` | 原生检查返回的可选 `email`、`plan`，只保存白名单字段。 |
+| `quota`、`cooldown_until` | 标准化快照与已知重试时间。`quota` 含 `status`、可选 `fetched_at`、`windows`；窗口可含 `name`、`used_percent`、`remaining_percent`、`duration_minutes`／`window_minutes`、`resets_at`／`reset_at`，未知值缺省。 |
+| `usage`、时间戳 | 此账号保留的原生会话分支所产生的 `input_tokens`、`output_tokens`、`total_tokens` 只读总和；`created_at`、`updated_at`。删除会话也会移除对应统计记录。 |
+
+Codex 从账号专属 App Server 读取额度；Claude 使用兼容 CLI 在正常任务中报告的额度事件，未报告时显示未知，旧记录刷新后没有新样本则标为过期。未知不等于不限量。这些读数与 `/api/quotas` 的设备快照、`/api/subscriptions` 人工记录的续费日期和费用分开。启用执行后，服务在后台检查待登录任务，并定期刷新可用／冷却账号。
+
+Agent 和会话可接受 `account_id`（可空）、`account_policy`（默认 `manual`，另有 `auto`、`failover`）以及 `account_ids`（有序、不重复的账号池，默认 `[]`，最多 100 项）。所有引用必须与服务／设备一致，已删除账号不可选。固定账号策略不能包含账号池；非空池必须包含所选默认账号。
+
+- `manual`：固定使用所选账号；null 表示沿用设备登录，不自动替换。
+- `auto`：首次自动选择，后续保持该账号。空池搜索同服务同设备账号，非空池保留传入顺序。
+- `failover`：优先当前健康账号，再按池顺序、优先级、已报告剩余额度及最近使用时间选择。原生拒绝只有在尚未观察到工作时才允许改用其他账号。
+
+会话在创建时复制 Agent 的账号设置，后续修改 Agent 不改变已有会话。运行记录固定策略、账号池和已选身份／登录版本；自动策略暂无可用身份时，可以等待已知恢复时间。账号被占用时等待，不消耗尝试次数。手动修改要求会话空闲；新账号进入新的 `account_branch` 并重置 `native_session_id`，保留旧消息并传递有界的近期历史。不允许传入任意原生标识，也不跨账号恢复原生会话。
+
+`GET /api/state` 包含全部 `accounts`（含已删除历史标记）及最近 300 条 `account_attempts`，后者按新到旧排序。尝试记录包含 `id`、`run_id`、`number`、`account_id`、`generation`、`account_branch`、`status`、`progress`、`error_code`、`created_at`、`finished_at`；状态为 `running`、`completed`、`rejected`、`failed`、`cancelled` 或 `interrupted`。仅运行时可更新，每轮最多尝试 3 个不同账号。自动切换要求结构化的执行前认证／额度拒绝，且无已观察到的文本、推理、工具、审批或协作动作；普通输出中的错误词不触发切换。已知恢复时间的等待保留 `queued` 和 `next_attempt_at`，仍可取消；重启后中断未完成任务，不自动重放。
+
 ### 工作台操作
 
 | 方法与路径 | JSON 字段与返回结果 |
 | --- | --- |
-| `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、待处理审批和运行模式。 |
+| `GET /api/state` | 返回项目、Agent、会话、`runs`、消息、记忆、提议、近期事件、缓存额度、订阅、`accounts`、`account_attempts`、待处理审批和运行模式。 |
 | `GET /api/quotas` | 通过 `quotas` 返回经过时效判断的 服务缓存快照。需要管理员令牌，不启动提供方查询，不返回项目或会话数据。 |
 | `GET /api/directories` | 查询参数 `environment_id`（默认 `local`）及 `path`（默认 `~`）。仅管理员可用，只读返回最多 200 个目录，包含 `path`、`parent`、`directories`、`truncated`，不读取文件内容。SSH 浏览要求启用执行并连接远端组件；路径在所选设备上解析。 |
 | `POST /api/projects` | `name`、`path`（已存在且可信的目录绝对路径）。返回项目。 |
 | `POST /api/projects/{id}/agents` | `source_agent_id`；可选 `name`、`role`、`workspace`。按目标项目创建独立成员，复制来源默认设置，不复制会话或历史。同设备默认用项目目录；跨设备必须明确填写目录。需要用户令牌，不启动 CLI。 |
-| `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`、`permission_mode`（默认 `ask`，或 `full_access`）。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
-| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`、`permission_mode`、`environment_id`。切换位置允许在任务执行期间进行，并保留旧会话的默认设置；未提供的模型、思考强度和目录重置为新位置默认值。`workspace` 可在尚无会话或同时切换位置时修改；`project_id` 仅在尚无会话且无来源引用时可修改；有关联来源的成员须在另一项目单独添加。其他模型及权限变更须无排队和运行任务。提供方不可更改。 |
+| `POST /api/agents` | `name`、`provider`；可选 `project_id`（null 为独立 Agent）、`role`、`workspace`、`model`、`effort`、`account_id`、`account_policy`、`account_ids`、`permission_mode`（默认 `ask`，或 `full_access`）。独立 Agent 的空目录自动创建，关联项目则沿用项目路径。 |
+| `POST /api/agents/{id}` | 更新 `name`、`role`、`model`、`effort`、`permission_mode`、`environment_id`、`account_id`、`account_policy`、`account_ids`。账号设置只影响新会话；切换设备须使用匹配的账号设置。切换位置允许在任务执行期间进行，并保留旧会话的默认设置；未提供的模型、思考强度和目录重置为新位置默认值。`workspace` 可在尚无会话或同时切换位置时修改；`project_id` 仅在尚无会话且无来源引用时可修改；有关联来源的成员须在另一项目单独添加。其他模型及权限变更须无排队和运行任务。提供方不可更改。 |
 | `POST /api/agents/{id}/delete` | 空对象；用户认证接口。清理此 Agent 的全部会话专属目录后删除 Agent 和会话记录。存在排队、执行中或未结束的协作任务时拒绝删除。共用项目、共享记忆及其他 Agent 保留。 |
-| `POST /api/sessions` | `agent_id`、`title`。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
+| `POST /api/sessions` | `agent_id`、`title`；可选上述账号字段，原子覆盖复制的 Agent 默认设置。创建空闲工作台会话，此时不会启动原生命令行客户端。 |
+| `POST /api/sessions/{id}/account` | `account_id`（可空）；可选 `account_policy`（默认 `manual`）、`account_ids`（默认 `[]`）。修改空闲会话的账号设置；有排队、运行或未结束的委派任务时拒绝。身份或登录版本改变时新建原生分支。 |
 | `POST /api/sessions/{id}/settings` | `{ "model": string或null, "effort": string或null }` 覆盖当前会话设置，或 `{ "inherit": true }` 恢复使用 Agent 默认值。仅影响后续提交的消息，不启动 CLI，不更改 Agent 或原生配置。 |
 | `POST /api/sessions/{id}/run` | `prompt`（最多 24,000 字符）。将新一轮任务加入执行队列，返回运行记录。 |
 | `POST /api/sessions/{id}/cancel` | 空对象。取消该会话尚未结束的逻辑任务，包括排队、执行中或等待委派结果的任务，以及它们现有的后代任务。返回 `{ "ok": true }`。 |
@@ -96,17 +137,17 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。
 
-名称和角色由用户定义，与 `provider` 独立。更新接口使用工作台管理员令牌，在仅审阅模式也可调用；智能体的执行令牌不能修改角色。每轮构建提示词时读取最新角色，已提交给原生 CLI 的提示词保持不变。更新不会重建会话或清除历史。`provider` 不可修改；已有会话的项目、目录、环境和原生标识固定。切换位置时，已有会话将模型、思考强度及权限默认值保存在 `agent_defaults`；会话单独设置的模型覆盖优先。`{ "inherit": true }` 恢复这些已保存的默认值；未因切换位置而独立的会话仍沿用当前 Agent 默认设置。
+名称和角色由用户定义，与 `provider` 独立。更新接口使用工作台管理员令牌，在仅审阅模式也可调用；智能体的执行令牌不能修改角色。每轮构建提示词时读取最新角色，已提交给原生 CLI 的提示词保持不变。更新不会重建会话或清除历史。`provider` 不可修改；已有会话的项目、目录和环境固定；只有切换账号分支或确认重新登录才改变原生标识。切换位置时，已有会话将模型、思考强度及权限默认值保存在 `agent_defaults`；会话单独设置的模型覆盖优先。`{ "inherit": true }` 恢复这些已保存的默认值；未因切换位置而独立的会话仍沿用当前 Agent 默认设置。
 
 ## 状态与任务记录
 
-`GET /api/state` 包含最近 **300 条运行记录**和 **300 条事件**，按时间顺序返回。其他集合暂不分页。此预览版没有单独的运行历史分页接口。会话事件接口支持游标分页，可将上次返回的最后一个 `seq` 作为下一次请求的 `after`。
+`GET /api/state` 包含最近 **300 条运行记录**和 **300 条事件**，按时间顺序返回。`account_attempts` 包含最近 300 次尝试，按新到旧排序。其他集合暂不分页。此预览版没有单独的运行历史分页接口。会话事件接口支持游标分页，可将上次返回的最后一个 `seq` 作为下一次请求的 `after`。
 
 | 记录 | 主要字段 |
 | --- | --- |
-| Agent | `id`、`project_id`、`source_agent_id`（可空来源引用）、`environment_id`、`name`、`provider`、`role`、`workspace`、`workspace_is_default`（状态响应中的派生字段）、`model`、`effort`、`permission_mode`。修改权限需要用户访问令牌，MCP 能力令牌不能编辑 Agent。 |
-| 会话 | `id`、`project_id`、`agent_id`、`title`、`status`、`native_session_id`、`environment_id`、`workspace`、`agent_defaults`、`model`、`effort`、`model_override`、`created_at`、`updated_at`。首次执行前原生标识为 null，公共 API 不允许指定或修改它。 |
-| 运行 | `id`、`session_id`、`project_id`、`agent_id`、`prompt`、`status`、`origin`、`parent_run_id`、`root_run_id`、`task_run_id`、`depth`、`delivery_id`、`model`、`effort`、`permission_mode`、`result`、`error`、时间戳。模型、推理等级和权限在提交时记录。 |
+| Agent | `id`、`project_id`、`source_agent_id`（可空来源引用）、`environment_id`、`name`、`provider`、`role`、`workspace`、`workspace_is_default`（状态响应中的派生字段）、`model`、`effort`、`permission_mode`、`account_id`、`account_policy`、`account_ids`。修改权限需要用户访问令牌，MCP 能力令牌不能编辑 Agent。 |
+| 会话 | `id`、`project_id`、`agent_id`、`title`、`status`、`native_session_id`、`environment_id`、`workspace`、`agent_defaults`、`model`、`effort`、`model_override`、`account_id`、`account_policy`、`account_ids`、`account_generation`、`account_branch`、`created_at`、`updated_at`。首次执行前或切换分支后原生标识为 null，公共 API 不允许直接指定它。 |
+| 运行 | `id`、`session_id`、`project_id`、`agent_id`、`prompt`、`status`、`origin`、`parent_run_id`、`root_run_id`、`task_run_id`、`depth`、`delivery_id`、`model`、`effort`、`permission_mode`、`result`、`error`、`account_id`、`account_policy`、`account_ids`、`account_generation`、`account_branch`、`account_selection_pending`、`next_attempt_at`、时间戳。模型、推理等级和权限在提交时记录。 |
 | 投递（`messages`） | `id`、`project_id`、`sender_id`、`recipient_id`、`sender_session_id`、`recipient_session_id`、`sender_run_id`、`run_id`、`reply_run_id`、`body`、`status`、`result`、`error`、`correlation_id`、`idempotency_key`、时间戳。 |
 | 审批 | `id`、`run_id`、`session_id`、`project_id`、`request`、`options`、`status`、`picked_option_id`、`created_at`。状态接口只返回待处理审批。 |
 
@@ -130,7 +171,7 @@ Agent 间委派必须等接收方的逻辑任务结算后，才向**确切的原
 
 完成、失败和取消的任务，只要原请求方仍有效，都可以安排结果处理轮次；失败和取消按真实状态回传。已停止的请求方不会被重新唤醒，中断的任务不会重放。每次继续处理都会恢复原生会话，并可在同一组上限内继续委派。
 
-共用工作目录的 Agent 顺序执行。发送方委派后应结束当前轮次，不应等待或轮询尚在等待同一工作目录的接收方。互不重叠的独立工作目录可以并行执行。
+共用工作目录或托管账号的 Agent 顺序执行。发送方委派后应结束当前轮次，不应等待或轮询尚在等待同一工作目录的接收方。使用不同托管账号且工作目录互不重叠时可以并行执行。
 
 `idempotency_key` 按项目与发送者划分作用域。使用相同键重试相同任务会返回原投递记录；改变接收者、正文、关联标识、发送方运行或会话，或显式指定不同目标会话，会返回冲突。它用于同一次发送运行中的重试去重，不用于合并无关任务。
 
@@ -156,11 +197,11 @@ Agent 间委派必须等接收方的逻辑任务结算后，才向**确切的原
 
 | 边界 | 当前行为 |
 | --- | --- |
-| 并发 | 最多 4 个原生进程同时执行。同一 Agent，以及路径相同或互为父子目录的工作区，不能并发执行。 |
+| 并发 | 最多 4 个原生进程同时执行。同一 Agent、同一托管账号，以及路径相同或互为父子目录的工作区，不能并发执行。 |
 | 协作 | 根任务深度为 0，委派深度最多为 3。每个根任务最多产生 16 次运行，包含根任务、委派任务和结果续接。新委派会预留结果回传所需容量，因此可能在实际运行次数未满 16 次时即被拒绝。 |
 | 超时 | 服务采用 15 分钟运行时限和 2 分钟审批时限；到期后停止任务，不授予权限。 |
 | 输出 | 原生输出最多 8 MiB，单条协议消息最多 512 KiB。运行事件和最终文本另有大小限制；保存的最终文本最多 64,000 字符，自动结果回传最多包含 12,000 字符。 |
-| 额度 | 启用执行并配置额度组件后，每 600 秒自动刷新；点击额度页也会触发。同一提供商的刷新间隔至少为 60 秒，探测超时为 35 秒。超过 15 分钟的快照标记为过期；超过重置时间后，剩余额度改为未知。 |
+| 设备登录额度 | 启用执行并配置额度组件后，每 600 秒自动刷新；点击额度页也会触发。同一提供商的刷新间隔至少为 60 秒，探测超时为 35 秒。超过 15 分钟的快照标记为过期；超过重置时间后，剩余额度改为未知。 |
 
 SQLite 采用增量迁移，保留已有项目、会话、历史与记忆。旧邮箱模型中没有可执行 `run_id` 的消息会变为 `legacy` 历史记录，永远不会自动派发。原生会话绑定在首次 0.2 执行时建立，不导入旧适配器会话。
 

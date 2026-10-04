@@ -10,7 +10,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 > **Developer preview.** Execution is off by default. Automated checks cover native and ACP protocols and task handoffs. Live two-turn conversations passed for Codex, Claude Code and Trae; other ACP services, additional accounts and long-running collaboration require acceptance testing. See [provider compatibility](docs/PROVIDERS.md).
 
-[Supported agents](docs/PROVIDERS.md) · [SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
+[Subscription accounts](docs/ACCOUNTS.md) · [Supported agents](docs/PROVIDERS.md) · [SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Workspace
 
@@ -22,7 +22,7 @@ Open **Projects** in the sidebar to create or select a project, then switch betw
 
 ![Project list, fictional demo data](docs/images/projects.en.png)
 
-**One agent, multiple projects:** configure an agent in Workspace, then open **Projects → Agents → Add agent**, select it and set its project name and role. The same Codex can be `cr` in project A and `coding` in project B. Device, model, effort and permission defaults are copied when added; later edits stay independent. Conversations and project memory remain separate. Same-device members use the target project directory; cross-device members require an explicit directory on the agent's device. Existing everyday conversations are preserved. Project TPS includes only that project's members.
+**One agent, multiple projects:** configure an agent in Workspace, then open **Projects → Agents → Add agent**, select it and set its project name and role. The same Codex can be `cr` in project A and `coding` in project B. Device, account policy, model, effort and permission defaults are copied when added; later edits stay independent. Conversations and project memory remain separate. Same-device members use the target project directory; cross-device members require an explicit directory on the agent's device. Existing everyday conversations are preserved. Project TPS includes only that project's members.
 
 **Conversations** brings project and everyday chats into one sidebar entry. Search by title, agent or project, and filter by project or **Everyday chats**. The robot button filters by one or more agents, the timer shows only conversations active in the last 24 hours, and the layers button groups by agent. Click again to close the filter panel or turn a mode off. Filters combine, and conversations in each group follow recent activity. Identically named agents, project members and everyday agents remain separate; filtering keeps the open conversation and its draft. Select a conversation to follow progress, read the final reply or send another message. **New conversation** selects an everyday or project agent.
 
@@ -56,6 +56,7 @@ Configuration and context are isolated; using the same CLI account still shares 
 | Capability | What it does |
 | --- | --- |
 | Local and SSH connections | Choose a local CLI, reuse an SSH connection or configure a new one while adding an agent. Everyday views use custom names; sessions and quotas remain scoped to their actual connection. |
+| Subscription accounts | Manage multiple Codex and Claude Code subscriptions on local or SSH devices. Choose a fixed account, automatic initial selection, or guarded failover; see per-account quota, login status and measured tokens. |
 | Independent agents | Create, choose a workspace, chat and resume without a project. Discover models and reasoning efforts from the selected environment. |
 | TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities independently of the provider, then edit or clear roles at any time. |
@@ -76,9 +77,9 @@ python3 scripts/install-macos.py
 
 The installer creates `~/Applications/AgentDock.app`. Open it to connect without copying an access token. Its stacked-layers icon in the menu bar opens usage summaries and the workbench. Closing the main window hides it while the app and active tasks keep running. Choose **Quit AgentDock** or press `⌘Q` to stop the local service and active tasks. History and configuration remain in `~/.local/share/agentdock`.
 
-The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes the providers of configured agents automatically. With no agents, usage pages stay empty and no quota probes run. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
+The app enables execution, but agents run only after a task is submitted. Opening **Usage & billing** refreshes the providers of configured agents automatically. With no agents, that page stays empty and performs no device-login quota probes. Managed account refreshes are handled separately on Accounts. The local service also refreshes every 10 minutes, including while the main window is hidden. The menu displays these shared readings without a separate refresh action. The menu and workbench share the Chinese/English setting, and the desktop app remembers your selection.
 
-Claude quota reads use only the snapshot saved by Claude Desktop, without Keychain or credential access. **Data updated** shows the source sample time; rereading the file does not advance it. The current format has no reset timestamps, so resets remain unknown. Signing into Claude Code alone does not guarantee a Desktop snapshot exists. Codex queries its local App Server, which handles its own authentication.
+For **Use device login**, Claude quota reads use only the snapshot saved by Claude Desktop, without Keychain or credential access. **Data updated** shows the source sample time; rereading the file does not advance it. The current format has no reset timestamps, so resets remain unknown. Signing into Claude Code alone does not guarantee a Desktop snapshot exists. Codex queries its local App Server, which handles its own authentication.
 
 To migrate AgentMeter billing records, run `python3 scripts/install-macos.py --import-agentmeter`. Migration backs up the original preferences, preserves existing AgentDock records, and does not change provider logins or remove the old app.
 
@@ -111,7 +112,9 @@ Choose **Workspace → Add agent**, select a provider and enter a name. Under **
 
 The provider menu includes **Codex, Claude Code, Trae CLI, Pi, Cursor CLI, Antigravity, Grok Build, OpenCode, Gemini CLI and Qwen Code**, with bundled icons and availability on the selected device. Missing CLIs or adapters appear disabled. Pi requires `pi-acp` and explicit full access; Antigravity requires its ACP server. [Compatibility and setup](docs/PROVIDERS.md) describes authentication, continuation, MCP and usage limits.
 
-Names remain user-defined, without automatic device labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection, and agents sharing its account quota appear together in one quota card. Official quota reads and measured token/TPS statistics currently cover Codex and Claude; ACP context occupancy is not counted as token consumption.
+**Multiple subscriptions:** open **Accounts → Add account**, choose a service and device, and complete the official CLI login yourself. Select that account in **Add agent / Agent settings**, when creating a conversation, or through an idle conversation’s account control. Managed logins use private account storage and do not replace your desktop or terminal login. Known resets can be awaited; automatic fallback is limited to definite pre-work rejections, with at most three distinct accounts per run. Claude quota stays unknown unless the CLI reports it. See [account setup, policies and isolation](docs/ACCOUNTS.md).
+
+Names remain user-defined, without automatic device labels. Two agents can share a provider and even a name; their conversations remain bound to distinct identifiers. Multiple agents can reuse a connection; the device-login quota card groups their names, while managed subscription readings are shown per account. Official quota reads and measured token/TPS statistics currently cover Codex and Claude; ACP context occupancy is not counted as token consumption.
 
 ![Provider selection with brand icons](docs/images/provider-picker.en.png)
 
@@ -186,7 +189,7 @@ TPS uses reported output-token increments over their measured intervals, includi
 
 Use absolute executable paths if the CLIs are not on the server's `PATH`. Keep machine-specific configuration in the ignored `config.local.json`. Provider commands cannot be supplied by the UI or an agent.
 
-AgentDock uses Codex App Server, the Claude CLI's bidirectional JSON stream, and ACP v1 for the other registered services. Task execution uses each CLI's configured authentication. The usage helper does not read Claude credentials; Codex handles authentication for its own quota query. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/PROVIDERS.md).
+AgentDock uses Codex App Server, the Claude CLI's bidirectional JSON stream, and ACP v1 for the other registered services. Tasks use the selected managed subscription profile, or the original CLI configuration with Use device login. The device-login usage helper does not read Claude credentials; managed accounts use native CLI account operations. Authentication, model selection, account eligibility, and charges remain with the native CLI and its configured provider. Reading a quota does not itself authorize execution. See [compatibility and validation](docs/PROVIDERS.md).
 
 ## How collaboration works
 
@@ -206,7 +209,7 @@ sequenceDiagram
     C-->>U: Process results and complete the task
 ```
 
-Sessions belonging to the same agent, or using equal/overlapping working directories, execute sequentially. Independent workspaces can run in parallel. A collaboration chain is bounded to 16 runs and three delegation levels. Cancelling a task also cancels its descendants. Application restart marks unfinished work interrupted and does not replay it automatically.
+Sessions sharing a managed account, belonging to the same agent, or using equal/overlapping working directories execute sequentially. Independent workspaces can run in parallel. A collaboration chain is bounded to 16 runs and three delegation levels. Cancelling a task also cancels its descendants. Application restart marks unfinished work interrupted and does not replay it automatically.
 
 ## Data and boundaries
 
@@ -214,7 +217,7 @@ State is stored in `~/.local/share/agentdock`; only one instance can own the dat
 
 This version manages **sessions created by AgentDock**, locally and over SSH. Attaching existing desktop/terminal conversations and multi-user access are not implemented. In Ask for approval mode, provider permission requests appear in the UI; the workbench itself is not an OS sandbox. Credentials stay on the selected device, and per-run MCP tokens expire and are revoked after execution.
 
-Remote token statistics use usage events from AgentDock-managed runs, without scanning unrelated remote history. Quotas and billing records are separated by environment and provider. Remote Codex queries its own App Server; remote Claude quota is currently unknown and never substituted with a local snapshot.
+Remote token statistics use usage events from AgentDock-managed runs, without scanning unrelated remote history. Device-login quotas and billing records are separated by environment and provider; managed subscription quotas and measured tokens are displayed per account. Remote Codex queries its own App Server. Claude subscription limits use native run observations when available and otherwise remain unknown, never substituted with another device’s snapshot.
 
 When upgrading from 0.1, replace ACP commands with the native commands above. Historical messages remain readable as legacy records and are never dispatched automatically. Sessions without a native binding start a new provider conversation; old stored text is not silently replayed as native history.
 

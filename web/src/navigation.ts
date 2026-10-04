@@ -5,7 +5,8 @@ export type Tab =
   | "projects"
   | "conversations"
   | "usage"
-  | "tokens";
+  | "tokens"
+  | "accounts";
 export type ProjectView = "agents" | "tasks" | "memory";
 type Route = {
   tab: Tab;
@@ -70,7 +71,10 @@ function readRoute(): Route | null {
   }
   return {
     ...home,
-    tab: path === "usage" || path === "tokens" ? path : "workspace",
+    tab:
+      path === "usage" || path === "tokens" || path === "accounts"
+        ? path
+        : "workspace",
   };
 }
 

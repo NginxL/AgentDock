@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 import uuid
+from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .providers import execute, ProviderError, ProviderCancelled
@@ -110,7 +111,21 @@ def rpc(request):
         return list_directories(request.get('path', '~'))
     if operation == 'models':
         from .catalog import Catalog
+        if request.get('account'):
+            manager, account = account_manager(request)
+            with manager.lease(account):
+                return Catalog({'execution_enabled': True, 'commands': commands()}).read(
+                    request['provider'], account_id=account['id'], generation=account.get('generation', 0),
+                    environment=manager.environment(account))
         return Catalog({'execution_enabled': True, 'commands': commands()}).read(request['provider'])
+    if operation == 'account':
+        manager, account = account_manager(request)
+        action = request.get('action')
+        if action not in ('start', 'status', 'cancel', 'submit', 'check', 'refresh', 'remove'):
+            raise ValueError('Invalid account operation')
+        if action == 'start': return manager.start(account, request.get('method', 'browser'))
+        if action == 'submit': return manager.submit(account, request.get('code'))
+        return getattr(manager, action)(account)
     if operation == 'quota': return quota(request['provider'])
     if operation == 'delete_session':
         parent = run_path(request['controller'], request['session_id']).parent
@@ -123,10 +138,10 @@ def rpc(request):
             state = read(item/'state.json', {})
             if state.get('status') in ('starting','running') and time.time()-state.get('updated_at',0) < LEASE_SECONDS:
                 raise ValueError('Remote session is still running')
-        if request.get('provider') == 'codex' and request.get('native_session_id'):
+        if not request.get('managed_account') and request.get('provider') == 'codex' and request.get('native_session_id'):
             from .codex_home import retire_legacy
             retire_legacy(commands()['codex'], dict(os.environ), request['native_session_id'])
-        elif request.get('provider') == 'claude' and request.get('native_session_id'):
+        elif not request.get('managed_account') and request.get('provider') == 'claude' and request.get('native_session_id'):
             from .session_storage import retire_legacy_claude
             retire_legacy_claude(dict(os.environ), request['native_session_id'])
         remove_session_directory(parent/'sessions', request['session_id'])
@@ -183,6 +198,17 @@ def rpc(request):
         (path / 'cancel').touch(mode=0o600)
         return {'ok': True}
     raise ValueError('Unknown operation')
+
+
+def account_manager(request):
+    from .accounts import AccountManager
+    account = request['account']
+    if not isinstance(account, dict) or account.get('provider') not in ('codex', 'claude'):
+        raise ValueError('Invalid account profile')
+    if request.get('provider', account['provider']) != account['provider']:
+        raise ValueError('Account service mismatch')
+    parent = run_path(request['controller'], account['id']).parent
+    return AccountManager(parent / 'accounts', commands()), account
 
 
 def work(path):
@@ -281,16 +307,29 @@ def work(path):
             'PYTHONPATH': str(Path(__file__).resolve().parent.parent),
             'AGENTDOCK_URL': 'http://127.0.0.1:' + str(server.server_address[1]),
             'AGENTDOCK_CAPABILITY': token}}
-        result = execute(spec['provider'], command, cwd, spec['prompt'], spec.get('native_session_id'), mcp, stop,
-            emit, lambda native_id: control('remote_bind', {'native_id': native_id}),
-            lambda request, options: control('remote_approval', {'request': request, 'options': options}),
-            timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'),
-            permission_mode=spec.get('permission_mode', 'ask'), session_home=str(home))
+        branch = spec.get('account_branch', 0)
+        if not isinstance(branch, int) or isinstance(branch, bool) or not 0 <= branch <= 1000000:
+            raise ValueError('Invalid account branch')
+        if branch: home = home / 'branches' / str(branch)
+        managed = bool(spec.get('account'))
+        lease = nullcontext(None)
+        if managed:
+            manager, account = account_manager({'controller': path.parent.name,
+                'account': spec['account'], 'provider': spec['provider']})
+            lease = manager.credential_session(account, str(home), stop=stop)
+        with lease as account_env:
+            result = execute(spec['provider'], command, cwd, spec['prompt'], spec.get('native_session_id'), mcp, stop,
+                emit, lambda native_id: control('remote_bind', {'native_id': native_id}),
+                lambda request, options: control('remote_approval', {'request': request, 'options': options}),
+                timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'),
+                permission_mode=spec.get('permission_mode', 'ask'), session_home=str(home),
+                **({'base_environment': account_env, 'managed_account': True} if managed else {}))
         state = {'status': 'completed', 'result': result}
     except ProviderCancelled:
         state = {'status': 'cancelled'}
     except ProviderError as error:
-        state = {'status': 'failed', 'error': str(error)[:500]}
+        state = {'status': 'failed', 'error': str(error)[:500], 'error_code': error.code,
+                 'retry_after': error.retry_after, 'rejected': error.rejected}
     except Exception:
         pass
     finally:

@@ -21,11 +21,11 @@ Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is
 
 `GET /api/providers?environment_id=local` requires the admin token and returns `environment_id` and a provider-keyed map of `{name, available, reason, supports_ask}`. Local discovery checks executables; SSH discovery reads that connection’s saved probe. It starts neither a CLI nor SSH and does not require execution enabled. `reason` is `not_installed`, `adapter_required`, `connect_required` or null.
 
-`GET /api/models/{provider}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted metadata is returned; account information is discarded.
+`GET /api/models/{provider}` requires execution to be enabled. It performs a native metadata handshake without sending a prompt. Returns `models: [{id, name, efforts}]`, cached for five minutes. Only allowlisted model metadata is returned. Optional `environment_id` (default `local`) and `account_id` select a managed account on the matching service/device; omitting `account_id` uses the device login. Managed caches also include account identity and login generation.
 
 `GET /api/metrics` reads local counters and returns `total`, `providers`, `agents`, `scan_status` and `as_of`. Groups contain input, output, cache read/write, total tokens, session counts, current/average TPS and 60 three-second chart points. Here `as_of` and `updated_at` use Unix seconds; `current_tps: null` means an active run has no valid sample. With execution enabled, changed source files are indexed every ten seconds; the UI reads metrics every three seconds without invoking models.
 
-All metric groups include only native sessions bound to registered agents. With no agents, totals are zero and provider, agent and daily activity collections are empty. `GET /api/state` and `GET /api/quotas` expose only configured providers; missing snapshots have `status: "unknown"` and no windows in the menu response. Quota refresh rejects unconfigured providers.
+All metric groups include only native sessions bound to registered agents. With no agents, totals are zero and provider, agent and daily activity collections are empty. The device-login `quotas` collections in `GET /api/state` and `GET /api/quotas` expose only configured providers; missing snapshots have `status: "unknown"` and no windows in the menu response. Quota refresh rejects unconfigured providers.
 
 `activity` contains `today` (the server’s local calendar date), `days` (`date` and `tokens` per recorded day over the last 365 days), `updated_at` (latest source timestamp, or null) and `status` (`pending`, `scanning`, `ready`, `partial` or `disabled`). Days without recorded usage have no positive count. Initial Codex activity backfill reads bounded chunks from the start of history independently of the fast totals/TPS scan; progress survives restarts. No provider request is made.
 
@@ -45,17 +45,17 @@ Administrator requests require `Authorization: Bearer <local admin token>`. `Hos
 
 MCP requests use a separate per-run capability. That credential grants access only to `/mcp/tool` for the executing project's agent and session. It cannot access administrator APIs. The capability is revoked when a run ends or is cancelled, and expires after at most one hour.
 
-Execution is disabled by default. In review mode, project, agent, session, memory, and subscription records can be managed; starting tasks, sending executable messages, resolving runtime approvals, and refreshing provider quotas are rejected. Reading state never starts a process or quota probe.
+Execution is disabled by default. In review mode, project, agent, session, memory, subscription, and account metadata records can be managed; native account login/check/refresh/delete operations, starting tasks, sending executable messages, resolving runtime approvals, and refreshing provider quotas are rejected. Reading state never starts a process or quota probe.
 
 ## Human routes
 
 ### Environment routing
 
-`environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions capture their agent's environment at creation. Updating an agent's `environment_id` changes the destination of new conversations only; existing sessions keep their environment. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Local and SSH model catalogs are cached in the controller for five minutes per environment/provider. Concurrent SSH lookups for the same pair share one request; reconnecting invalidates that environment's cache. Failed lookups are not cached.
+`environment_id` defaults to `local`. `GET /api/state` includes `environments`. Projects and agents accept an environment on creation; sessions capture their agent's environment at creation. Updating an agent's `environment_id` changes the destination of new conversations only; existing sessions keep their environment. `GET /api/models/{provider}?environment_id=<id>` queries the selected environment; SSH reads require a successful connection check. Local and SSH model catalogs are cached in the controller for five minutes per environment/provider, additionally separated by managed account and login generation when selected. Concurrent SSH lookups for the same pair share one request; reconnecting invalidates that environment's cache. Failed lookups are not cached.
 
-The interface preloads metadata for configured, connected agents with at most two concurrent warmups. Conversations and agent settings share a one-minute memory cache, checked every minute while the page is visible. Reopening a menu reuses the list; expired entries remain visible during refresh. Workbench credentials, providers and environments have separate cache scopes. Disconnecting or reconnecting clears the interface cache. Discovery never submits an agent prompt.
+The interface preloads metadata for configured, connected agents with at most two concurrent warmups. Conversations and agent settings share a one-minute memory cache, checked every minute while the page is visible. Reopening a menu reuses the list; expired entries remain visible during refresh. Workbench credentials, providers, environments and managed account generations have separate cache scopes. Disconnecting or reconnecting clears the interface cache. Discovery never submits an agent prompt.
 
-Quota refresh and subscription writes accept `environment_id` and are scoped to that environment/provider pair. Returned SSH snapshots and subscriptions include the environment ID. Menu snapshots retain `environment_name` for compatibility and include `agent_names`, the custom names associated with that connection. The menu displays these names without device labels; names are not routing identifiers. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
+Device-login quota refresh and manual billing-record writes accept `environment_id` and are scoped to that environment/provider pair. Managed subscription accounts use the separate account endpoints below. Returned SSH snapshots and subscriptions include the environment ID. Menu snapshots retain `environment_name` for compatibility and include `agent_names`, the custom names associated with that connection. The menu displays these names without device labels; names are not routing identifiers. Remote metrics use managed usage events, not remote history scans. `transport_status` events report `reconnecting` or `connected` without completing the run.
 
 | Method / route | JSON fields / result |
 | --- | --- |
@@ -65,21 +65,62 @@ Quota refresh and subscription writes accept `environment_id` and are scoped to 
 
 Remote explicit workspaces must be absolute POSIX paths and exist when a task starts. A blank agent workspace uses a private directory created on first execution. A project path is inherited only within the same environment. See [SSH contract](SSH.md).
 
+### Managed subscription accounts
+
+See [account setup and isolation](ACCOUNTS.md) for the user flow. These administrator-only routes support `codex` and `claude`, bound to one `environment_id`. Managed credentials stay on the selected device and never enter SQLite or API responses. The original device login remains the default when `account_policy` is `manual` and `account_id` is null.
+
+| Method / route | JSON fields / result |
+| --- | --- |
+| `GET /api/accounts` | `{ "accounts": [...] }`; saved non-removed accounts with measured `usage`. No native query. |
+| `POST /api/accounts` | `provider`, `label` (1–100 characters); optional `environment_id` (`local`), `priority` (integer −100 to 100, default 0). Creates `pending` metadata without signing in. |
+| `POST /api/accounts/{id}` | `label`, `priority`, or `enabled` (boolean). Provider/device are immutable. Disabling or enabling rejects assigned queued/running tasks. Re-enabling sets `pending` and checks native login when execution is enabled. `status: "disabled"`/`"ready"` is an alternative to `enabled`, not combinable with it; `ready` only requests re-enabling a disabled account, never attests login. |
+| `POST /api/accounts/{id}/login` | Optional `method`: `browser` or `device`. Default is `device` for SSH Codex, otherwise `browser`. SSH Codex requires `device`; Claude supports `browser`. Returns a public login job. |
+| `GET /api/accounts/{id}/login` | Read the public login job and reconcile successful native authorization. Requires execution enabled; does not start a new login. |
+| `POST /api/accounts/{id}/input` | `code`: confirmation code supplied by the official login flow, not a password/API token. |
+| `POST /api/accounts/{id}/cancel` | Empty object; cancel this account's login job. Closing its UI panel is not cancellation. |
+| `POST /api/accounts/{id}/check` | Empty object; native login check, returning allowlisted login metadata. Successful new/recovered login increments `generation`. |
+| `POST /api/accounts/{id}/refresh` | Empty object; refresh native login/quota metadata without a model prompt, returning the account record. |
+| `POST /api/accounts/{id}/delete` | Empty object; reject assigned queued/running tasks, clean the managed login on its device, then retain a `removed` tombstone for history. Cleanup failure leaves the record retryable. Existing conversations are retained. |
+
+All account suffix POST routes require execution enabled. The metadata routes cannot accept credentials, arbitrary CLI commands, quota readings, or generation updates. Login job responses allow only `id`, `status`, `method`, `url`, `device_code`, `error_code`, `created_at` and `updated_at`; fields can be absent before the CLI supplies them. Official authorization is completed by the user. A login cannot replace credentials assigned to queued/running work.
+
+| Account field | Meaning |
+| --- | --- |
+| `id`, `label`, `provider`, `environment_id` | Workbench identity, user label and fixed service/device. |
+| `status`, `error` | `pending`, `ready`, `expired`, `cooldown`, `disabled` or `removed`; `error` is a sanitized public code, never raw native output. |
+| `generation`, `priority`, `last_used_at` | Validated login generation; selection priority; latest selection/reservation time. |
+| `identity` | Optional allowlisted `email` and `plan` from the native login check. |
+| `quota`, `cooldown_until` | Normalized snapshot and known retry deadline. `quota` contains `status`, optional `fetched_at`, and `windows`; windows may contain `name`, `used_percent`, `remaining_percent`, `duration_minutes`/`window_minutes`, `resets_at`/`reset_at`. Unknown values are omitted. |
+| `usage`, timestamps | Read-only sums of `input_tokens`, `output_tokens`, `total_tokens` across this account's retained native conversation branches; `created_at`, `updated_at`. Deleting a conversation removes its counted records. |
+
+Codex obtains quota through its account's App Server. Claude uses compatible native run observations; without them, quota is unknown, and refreshing an old observation without a new sample marks it stale. Unknown does not mean unlimited. These readings are separate from `/api/quotas` device snapshots and `/api/subscriptions` manually entered renewal/cost records. With execution enabled, pending logins are checked in the background and ready/cooling accounts are periodically refreshed.
+
+`account_id` (nullable), `account_policy` (`manual` by default, `auto`, or `failover`) and `account_ids` (ordered, unique pool, default `[]`, at most 100) are accepted on agents and sessions. All referenced accounts must match the service/device; removed accounts are rejected. A manual policy has no pool. A selected default must belong to a nonempty pool.
+
+- `manual`: use the selected identity, or the existing device login for null; no replacement.
+- `auto`: choose initially, then remain on that identity. An empty pool searches matching accounts; a nonempty pool preserves its order.
+- `failover`: prefer the healthy current identity, then choose by pool order, priority, reported remaining quota and least recent use. Native rejection permits another account only before any observed work.
+
+Sessions copy agent account settings at creation; later agent edits do not rebind them. Runs freeze the policy/pool and chosen identity/generation. If automatic selection has no available identity, it can remain pending until a known reset. Busy accounts wait without spending an attempt. Manual changes require an idle conversation and reset `native_session_id` into a new `account_branch`; old messages remain, with bounded recent history handed to the new branch. An arbitrary native ID cannot be supplied or resumed across accounts.
+
+`GET /api/state` includes all `accounts` (including removed tombstones) and the latest 300 `account_attempts`, newest first. Attempts contain `id`, `run_id`, `number`, `account_id`, `generation`, `account_branch`, `status`, `progress`, `error_code`, `created_at`, `finished_at`. Status is `running`, `completed`, `rejected`, `failed`, `cancelled` or `interrupted`. Runtime-only mutations allow at most three distinct identities for one run. Fallback requires a structured pre-work authentication/quota rejection, with no observed text, reasoning, tool, approval or collaboration activity; plain error-like output never qualifies. Known account waits retain `queued` with `next_attempt_at`; cancellation still applies. Restart interrupts unfinished work and never replays it.
+
 ### Workbench operations
 
 | Method / route | JSON fields / result |
 | --- | --- |
-| `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, pending approvals, and runtime mode. |
+| `GET /api/state` | Projects, agents, sessions, `runs`, messages, memories, proposals, recent events, cached quotas, subscriptions, `accounts`, `account_attempts`, pending approvals, and runtime mode. |
 | `GET /api/quotas` | Cached provider snapshots in `quotas`, with freshness applied. Requires the administrator token; never starts a provider probe or returns project/conversation data. |
 | `GET /api/directories` | Query `environment_id` (default `local`) and `path` (default `~`). Administrator-only, read-only listing of up to 200 directories; returns `path`, `parent`, `directories` and `truncated`, never file contents. SSH browsing requires execution enabled and a connected runner. Resolves paths on the selected host. |
 | `POST /api/projects` | `name`, `path` (existing absolute trusted directory). Returns a project. |
 | `POST /api/projects/{id}/agents` | `source_agent_id`; optional `name`, `role`, `workspace`. Creates an independent project member using source defaults, without copying conversations or history. Uses the project directory on the same device; a cross-device directory must be explicit. Requires human authentication; starts no CLI. |
-| `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
-| `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`, `permission_mode`, `environment_id`. Changing location is allowed during active tasks and freezes existing session defaults. Omitted model, effort and workspace reset to the new location’s defaults. `workspace` may change before any conversation exists or together with location; `project_id` may change only before any conversation exists and when the agent has no source link. Linked members must be added separately to another project. Other model/permission changes require no queued or running tasks. Provider is immutable. |
+| `POST /api/agents` | `name`, `provider`; optional `project_id` (null for an independent agent), `role`, `workspace`, `model`, `effort`, `account_id`, `account_policy`, `account_ids`, `permission_mode` (`ask`, default; or `full_access`). Blank independent workspaces are created privately; project agents use the project path. |
+| `POST /api/agents/{id}` | Update `name`, `role`, `model`, `effort`, `permission_mode`, `environment_id`, `account_id`, `account_policy`, `account_ids`. Account changes affect future conversations only; changing device requires matching account settings. Changing location is allowed during active tasks and freezes existing session defaults. Omitted model, effort and workspace reset to the new location’s defaults. `workspace` may change before any conversation exists or together with location; `project_id` may change only before any conversation exists and when the agent has no source link. Linked members must be added separately to another project. Other model/permission changes require no queued or running tasks. Provider is immutable. |
 | `POST /api/agents/{id}/delete` | Empty object; human authentication required. Deletes the agent and all its sessions through private-directory cleanup. Rejects queued, running or unresolved linked tasks. Shared projects, memory and other agents are kept. |
-| `POST /api/sessions` | `agent_id`, `title`. Creates an idle workbench session; no native CLI starts yet. |
+| `POST /api/sessions` | `agent_id`, `title`; optional account settings above override copied agent defaults atomically. Creates an idle workbench session; no native CLI starts yet. |
 | `POST /api/sessions/{id}/run` | `prompt` (up to 24,000 characters). Enqueues a turn and returns its run record. |
 | `POST /api/sessions/{id}/cancel` | Empty object. Cancels this session's unfinished logical tasks, including queued/active runs, tasks waiting for delegated results, and their existing descendants. Returns `{ "ok": true }`. |
+| `POST /api/sessions/{id}/account` | `account_id` (nullable); optional `account_policy` (default `manual`), `account_ids` (default `[]`). Change idle conversation account settings; rejects queued, active or unresolved delegated work. A different identity/generation creates a fresh native branch. |
 | `POST /api/sessions/{id}/settings` | Required `model` and `effort` (each nullable), or `{ "inherit": true }` to restore agent defaults. Human authentication required. Affects only future messages in this conversation; submitted tasks keep their settings. |
 | `POST /api/sessions/{id}/delete` | Empty object; requires human authentication. Rejects active or linked unfinished tasks. Removes private directories, runs and events; remote conversations with no runs or native binding need no connection. Other remote conversations automatically prepare the current cleanup runtime and require successful cleanup before local records are removed. SSH cleanup failure returns `409` and keeps records for retry. Shared project directories and native logins are kept. |
 | `POST /api/runs/{id}/cancel` | Empty object. Cancels the logical task containing this run, including its existing queued/active descendants. Returns `{ "ok": true }`. |
@@ -96,17 +137,17 @@ Remote explicit workspaces must be absolute POSIX paths and exist when a task st
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.
 
-Names and roles are user-defined and independent of `provider`. Updates require the workbench administrator token and are allowed in review mode; a run capability cannot change roles. Each turn reads the latest role when building its prompt; prompts already submitted to a native CLI are unchanged. Updating does not recreate sessions or clear history. Provider is immutable. Existing conversations retain their project, workspace, environment and native identity. On a location change, each existing conversation retains its model, effort and permission defaults in `agent_defaults`; explicit conversation model overrides take precedence. `{ "inherit": true }` restores those frozen defaults, or current agent defaults for conversations that have not been detached by a location change.
+Names and roles are user-defined and independent of `provider`. Updates require the workbench administrator token and are allowed in review mode; a run capability cannot change roles. Each turn reads the latest role when building its prompt; prompts already submitted to a native CLI are unchanged. Updating does not recreate sessions or clear history. Provider is immutable. Existing conversations retain their project, workspace and environment; their native identity changes only through an account branch change or validated re-login. On a location change, each existing conversation retains its model, effort and permission defaults in `agent_defaults`; explicit conversation model overrides take precedence. `{ "inherit": true }` restores those frozen defaults, or current agent defaults for conversations that have not been detached by a location change.
 
 ## State and task records
 
-`GET /api/state` includes the most recent **300 runs** and **300 events**, in chronological order. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
+`GET /api/state` includes the most recent **300 runs** and **300 events**, in chronological order. `account_attempts` includes the latest 300 attempts, newest first. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
 
 | Record | Relevant fields |
 | --- | --- |
-| Agent | `id`, `project_id`, `source_agent_id` (nullable provenance), `environment_id`, `name`, `provider`, `role`, `workspace`, `workspace_is_default` (derived in state responses), `model`, `effort`, `permission_mode`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
-| Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `environment_id`, `workspace`, `agent_defaults`, `model`, `effort`, `model_override`, `created_at`, `updated_at`. Native identity is null before first execution and cannot be supplied or changed through the public API. |
-| Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `model`, `effort`, `permission_mode`, `result`, `error`, timestamps. Model, effort and permissions are captured at submission. |
+| Agent | `id`, `project_id`, `source_agent_id` (nullable provenance), `environment_id`, `name`, `provider`, `role`, `workspace`, `workspace_is_default` (derived in state responses), `model`, `effort`, `permission_mode`, `account_id`, `account_policy`, `account_ids`. Permission changes require the human access token; MCP capabilities cannot edit agents. |
+| Session | `id`, `project_id`, `agent_id`, `title`, `status`, `native_session_id`, `environment_id`, `workspace`, `agent_defaults`, `model`, `effort`, `model_override`, `account_id`, `account_policy`, `account_ids`, `account_generation`, `account_branch`, `created_at`, `updated_at`. Native identity is null before first execution or after a branch change and cannot be supplied directly through the public API. |
+| Run | `id`, `session_id`, `project_id`, `agent_id`, `prompt`, `status`, `origin`, `parent_run_id`, `root_run_id`, `task_run_id`, `depth`, `delivery_id`, `model`, `effort`, `permission_mode`, `result`, `error`, `account_id`, `account_policy`, `account_ids`, `account_generation`, `account_branch`, `account_selection_pending`, `next_attempt_at`, timestamps. Model, effort and permissions are captured at submission. |
 | Delivery (`messages`) | `id`, `project_id`, `sender_id`, `recipient_id`, `sender_session_id`, `recipient_session_id`, `sender_run_id`, `run_id`, `reply_run_id`, `body`, `status`, `result`, `error`, `correlation_id`, `idempotency_key`, timestamps. |
 | Approval | `id`, `run_id`, `session_id`, `project_id`, `request`, `options`, `status`, `picked_option_id`, `created_at`. State returns pending approvals only. |
 
@@ -130,7 +171,7 @@ For agent-to-agent delegation, the recipient's logical assignment must settle be
 
 Completed, failed, and cancelled assignments can schedule a result turn while the requester remains active. Failures and cancellations are returned with their actual status. Stopped requesters receive no new continuation, and interrupted work is not replayed. The native provider session is resumed for each continuation; it may delegate additional work within the same limits.
 
-Agents sharing a workspace run sequentially. After delegating, the sender should finish its current turn; it should not wait or poll for a recipient that is waiting for the same workspace. Independent, non-overlapping workspaces can run concurrently.
+Agents sharing a workspace or managed account run sequentially. After delegating, the sender should finish its current turn; it should not wait or poll for a recipient that is waiting for the same workspace. Separate managed accounts and non-overlapping workspaces can run concurrently.
 
 `idempotency_key` is scoped to project and sender. Repeating the same key and assignment returns the same delivery; changing the recipient, body, correlation, sender run/session, or explicitly selected target session returns a conflict. This deduplicates retries within the same sending run, not unrelated tasks.
 
@@ -156,11 +197,11 @@ Each native process executes one foreground turn and exits afterward. Claude's c
 
 | Boundary | Current behavior |
 | --- | --- |
-| Concurrency | At most 4 active native processes. The same agent and identical or parent/child workspace paths cannot execute concurrently. |
+| Concurrency | At most 4 active native processes. The same agent, the same managed account and identical or parent/child workspace paths cannot execute concurrently. |
 | Collaboration | Root depth is 0; delegation depth is at most 3. Each root task admits at most 16 runs, including the root, delegated tasks, and result continuations. New delegations reserve capacity for their replies and may therefore be rejected before 16 runs exist. |
 | Timeouts | The service uses a 15-minute run deadline and a 2-minute approval deadline. Expiry stops the run without granting permission. |
 | Output | Native output is capped at 8 MiB, with a 512 KiB protocol-line limit. Runtime events and final text have additional bounds; stored final text is capped at 64,000 characters, and automatic result handoffs include at most 12,000 characters. |
-| Quotas | The service refreshes every 600 seconds when execution and a helper are enabled. Selecting Usage & billing also triggers refresh. A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
+| Device-login quotas | The service refreshes every 600 seconds when execution and a helper are enabled. Selecting Usage & billing also triggers refresh. A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
 
 SQLite migration is additive: projects, sessions, history, and memory remain available. Messages from the earlier mailbox model without an executable `run_id` become `legacy` audit records and are never dispatched. Native bindings are created on the first 0.2 execution; older adapter sessions are not imported.
 

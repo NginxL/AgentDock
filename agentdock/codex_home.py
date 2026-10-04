@@ -46,7 +46,7 @@ def _owned_rollout(home, native_id, cwd):
     return None
 
 
-def prepare(home, environment, native_id=None, cwd=None):
+def prepare(home, environment, native_id=None, cwd=None, managed=False):
     """Snapshot settings, reuse file credentials, and import an owned legacy rollout.
 
     Settings are copies so native trust/cache writes cannot alter the desktop's
@@ -66,6 +66,10 @@ def prepare(home, environment, native_id=None, cwd=None):
             elif target.exists(): target.unlink()
         # These native resources retain their configured identities and login state.
         for name in ('auth.json', '.credentials.json', 'skills', 'rules', 'plugins'):
+            # The account credential lease owns copying and refreshing these
+            # private files. A symlink can be replaced by an atomic CLI refresh.
+            if managed and name in ('auth.json', '.credentials.json'):
+                continue
             original, target = source / name, home / name
             if target.is_symlink():
                 if target.resolve() == original.resolve(): continue
@@ -80,6 +84,11 @@ def prepare(home, environment, native_id=None, cwd=None):
     env = dict(environment, CODEX_HOME=str(home), CODEX_SQLITE_HOME=str(home))
     # Config-file sqlite_home takes precedence over CODEX_SQLITE_HOME.
     flags = ['-c', 'sqlite_home=' + json.dumps(str(home)), '-c', 'log_dir=' + json.dumps(str(home / 'log'))]
+    if managed:
+        # An explicitly selected subscription must not silently use a project
+        # gateway, API key or the operating system's default credential entry.
+        flags += ['-c', 'model_provider="openai"', '-c', 'forced_login_method="chatgpt"',
+                  '-c', 'cli_auth_credentials_store="file"']
     return env, flags, legacy
 
 
