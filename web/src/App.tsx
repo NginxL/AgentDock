@@ -8,6 +8,7 @@ import {
 import { ApiError, listOf, request } from "./api";
 import type {
   DockState,
+  Account,
   Environment,
   Language,
   Mutate,
@@ -26,8 +27,24 @@ import Tokens from "./views/Tokens";
 import Accounts from "./views/Accounts";
 import { useMetrics } from "./metrics";
 import { clearModelCatalog, prewarmModels } from "./modelCatalog";
+import { quotaRefreshTargets, usageTargets } from "./usageTargets";
 
 import { useNavigation, type Tab } from "./navigation";
+
+function newerAccount(candidate: Account, current: Account) {
+  if (!candidate.updated_at || !current.updated_at) return false;
+  const next = Date.parse(candidate.updated_at),
+    previous = Date.parse(current.updated_at);
+  if (!Number.isFinite(next) || !Number.isFinite(previous)) return false;
+  if (next !== previous) return next > previous;
+  // Account metadata uses microseconds; Date.parse alone would lose ordering
+  // between a quota write and a disable operation in the same millisecond.
+  const fraction = (value: string) =>
+    (value.match(/\.(\d+)(?:Z|[+-]\d{2}:\d{2})$/)?.[1] ?? "")
+      .padEnd(9, "0")
+      .slice(3, 9);
+  return fraction(candidate.updated_at) > fraction(current.updated_at);
+}
 
 declare global {
   interface Window {
@@ -54,6 +71,7 @@ export default function App() {
   const mutationInFlight = useRef(false);
   const stateEpoch = useRef(0);
   const quotaEpoch = useRef(0);
+  const accountQuotaEpochs = useRef(new Map<string, number>());
   const [entryToken, setEntryToken] = useState("");
   const [state, setState] = useState<DockState | null>(() =>
     demo ? demoState("zh") : null,
@@ -195,7 +213,32 @@ export default function App() {
     setState((current) =>
       currentQuotaEpoch === quotaEpoch.current
         ? next
-        : { ...next, quotas: current?.quotas ?? next.quotas },
+        : {
+            ...next,
+            quotas: current?.quotas ?? next.quotas,
+            accounts: next.accounts?.map((account) => {
+              const latest = current?.accounts?.find(
+                (a) => a.id === account.id,
+              );
+              if (
+                !latest ||
+                latest.generation !== account.generation ||
+                !newerAccount(latest, account) ||
+                (accountQuotaEpochs.current.get(account.id) ?? 0) <=
+                  currentQuotaEpoch
+              )
+                return account;
+              return {
+                ...account,
+                updated_at: latest.updated_at,
+                quota: latest.quota,
+                identity: latest.identity,
+                status: latest.status,
+                cooldown_until: latest.cooldown_until,
+                error: latest.error,
+              };
+            }),
+          },
     );
     return true;
   }, []);
@@ -211,18 +254,19 @@ export default function App() {
     };
   }, [token, canRefreshQuota]);
 
-  const quotaProviders = [
-    ...new Set(
-      state?.agents.map(
-        (a) => `${a.environment_id ?? "local"}:${a.provider}`,
-      ) ?? [],
-    ),
-  ]
-    .sort()
-    .reverse()
-    .join(",");
+  const quotaTargets = JSON.stringify(
+    quotaRefreshTargets(
+      usageTargets(
+        state?.agents ?? [],
+        state?.sessions ?? [],
+        state?.accounts ?? [],
+      ),
+    ).sort((a, b) => b.key.localeCompare(a.key)),
+  );
   const refreshQuotas = useCallback(async () => {
-    if (!canRefreshQuota || !quotaProviders || quotaRequest.current) return;
+    const targets: ReturnType<typeof quotaRefreshTargets> =
+      JSON.parse(quotaTargets);
+    if (!canRefreshQuota || !targets.length || quotaRequest.current) return;
     const credential = tokenRef.current;
     const controller = new AbortController();
     quotaRequest.current = controller;
@@ -231,41 +275,87 @@ export default function App() {
     quotaEpoch.current += 1;
     try {
       const results = await Promise.allSettled(
-        quotaProviders.split(",").map(async (connection) => {
-          const [environment_id, provider] = connection.split(":");
-          const snapshot = await request<Quota>(
-            credential,
-            "/api/quotas/refresh",
-            environment_id === "local"
-              ? { provider }
-              : { provider, environment_id },
-            controller.signal,
-          );
-          if (
-            snapshot.provider !== provider ||
-            (snapshot.environment_id ?? "local") !== environment_id ||
-            !Array.isArray(snapshot.windows)
-          )
-            throw new Error("Invalid quota snapshot");
-          if (controller.signal.aborted || tokenRef.current !== credential)
-            return;
-          // Preserve newer quota values without discarding unrelated workspace edits.
-          quotaEpoch.current += 1;
-          setState(
-            (current) =>
-              current && {
-                ...current,
-                quotas: [
-                  ...listOf(current.quotas).filter(
-                    (q) =>
-                      q.provider !== provider ||
-                      (q.environment_id ?? "local") !== environment_id,
-                  ),
-                  snapshot,
-                ],
-              },
-          );
-        }),
+        targets.map(
+          async ({
+            environment: environment_id,
+            provider,
+            accountID,
+            generation,
+          }) => {
+            if (accountID) {
+              const epoch = stateEpoch.current;
+              const snapshot = await request<Account>(
+                credential,
+                `/api/accounts/${encodeURIComponent(accountID)}/refresh`,
+                {},
+                controller.signal,
+              );
+              if (
+                snapshot.id !== accountID ||
+                snapshot.provider !== provider ||
+                snapshot.environment_id !== environment_id
+              )
+                throw new Error("Invalid account quota snapshot");
+              if (
+                controller.signal.aborted ||
+                tokenRef.current !== credential ||
+                epoch !== stateEpoch.current
+              )
+                return;
+              quotaEpoch.current += 1;
+              accountQuotaEpochs.current.set(accountID, quotaEpoch.current);
+              setState(
+                (current) =>
+                  current && {
+                    ...current,
+                    accounts: current.accounts?.map((account) =>
+                      account.id === accountID &&
+                      account.generation === generation &&
+                      account.status !== "removed" &&
+                      !newerAccount(account, snapshot) &&
+                      (account.status === snapshot.status ||
+                        newerAccount(snapshot, account))
+                        ? { ...account, ...snapshot }
+                        : account,
+                    ),
+                  },
+              );
+              return;
+            }
+            const snapshot = await request<Quota>(
+              credential,
+              "/api/quotas/refresh",
+              environment_id === "local"
+                ? { provider }
+                : { provider, environment_id },
+              controller.signal,
+            );
+            if (
+              snapshot.provider !== provider ||
+              (snapshot.environment_id ?? "local") !== environment_id ||
+              !Array.isArray(snapshot.windows)
+            )
+              throw new Error("Invalid quota snapshot");
+            if (controller.signal.aborted || tokenRef.current !== credential)
+              return;
+            // Preserve newer quota values without discarding unrelated workspace edits.
+            quotaEpoch.current += 1;
+            setState(
+              (current) =>
+                current && {
+                  ...current,
+                  quotas: [
+                    ...listOf(current.quotas).filter(
+                      (q) =>
+                        q.provider !== provider ||
+                        (q.environment_id ?? "local") !== environment_id,
+                    ),
+                    snapshot,
+                  ],
+                },
+            );
+          },
+        ),
       );
       if (!controller.signal.aborted && tokenRef.current === credential)
         setQuotaRefreshFailed(
@@ -277,7 +367,7 @@ export default function App() {
         setQuotaRefreshing(false);
       }
     }
-  }, [canRefreshQuota, token, quotaProviders]);
+  }, [canRefreshQuota, token, quotaTargets]);
 
   useEffect(() => {
     if (tab === "usage") void refreshQuotas();
@@ -898,6 +988,9 @@ export default function App() {
               quotas={listOf(state.quotas)}
               subscriptions={listOf(state.subscriptions)}
               agents={state.agents}
+              sessions={state.sessions}
+              accounts={state.accounts ?? []}
+              environments={state.environments ?? []}
               onAddAgent={() => {
                 setProjectForm(false);
                 setAgentEnvironment("local");

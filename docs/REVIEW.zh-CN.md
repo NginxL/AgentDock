@@ -35,7 +35,7 @@ AgentDock 0.3 由 React 界面、Python 标准库服务和 SQLite 存储组成�
 
 官方协议资料：[Codex 应用服务](https://learn.chatgpt.com/docs/app-server)、[Claude Code 命令行](https://code.claude.com/docs/en/cli-reference)、[Anthropic 控制协议实现](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py)。
 
-本机 Codex 0.154.0 与 Claude Code 2.1.283 已验证独立存储中的两轮纯文本续聊、原生会话 ID 保持、模型标识回传、原客户端目录无新增测试会话，以及配置文件哈希不变。Claude 凭据存储覆盖默认 macOS 登录入口；Codex 覆盖文件凭据登录，只有钥匙串凭据的配置仍待验证。
+本机 Codex 0.154.0 与 Claude Code 2.1.283 已验证独立存储中的两轮纯文本续聊、原生会话 ID 保持、模型标识回传、原客户端目录无新增测试会话，以及配置文件哈希不变。Claude 凭据存储覆盖默认 macOS 登录入口；Codex 覆盖文件凭据登录；钥匙串专用登录与 `CODEX_HOME` 绑定，无法直接复用到隔离会话，需使用独立 AgentDock 账号。未对真实钥匙串账号执行迁移或授权验证。
 
 ## 隔离验证
 

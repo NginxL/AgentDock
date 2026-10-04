@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import uuid
 
 from agentdock.providers import ProviderError, ProviderCancelled, account_error
@@ -58,6 +58,59 @@ class AccountRuntimeTests(unittest.TestCase):
             with patch(target) as retire:
                 runtime.delete_session(session['id'])
                 retire.assert_not_called()
+
+    def test_claude_limit_without_reset_expires_after_bounded_cooldown_and_refresh(self):
+        account = self.account(provider='claude')
+        session = self.session(account, provider='claude')
+        runtime = self.runtime()
+        observed = datetime.now(timezone.utc)
+        runtime._account_limit(account['id'], {'status': 'rejected', 'rateLimitType': 'five_hour'}, account['generation'])
+        runtime._account_failure(account['id'], ProviderError('Fixture', code='quota_exhausted', rejected=True), account['generation'])
+        limited = self.store.get_account(account['id'])
+        reset = datetime.fromisoformat(limited['quota']['windows'][0]['reset_at'])
+        self.assertGreater(reset, observed)
+        self.assertLess(reset, observed + timedelta(seconds=65))
+        self.assertFalse(self.store._account_available(limited))
+        runtime.accounts.manager.refresh = Mock(return_value={'logged_in': True, 'windows': [], 'error_code': 'quota_unavailable'})
+        runtime.accounts.refresh(account['id'])
+        with patch('agentdock.account_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = observed + timedelta(seconds=70)
+            self.assertTrue(self.store._account_available(self.store.get_account(account['id'])))
+            self.assertEqual(self.store.enqueue_run(session['id'], 'Try after recovery')['status'], 'queued')
+
+    def test_legacy_claude_limit_without_reset_can_recover_without_new_login(self):
+        account = self.account(provider='claude')
+        old = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
+        self.store.set_account_quota(account['id'], {'status': 'stale', 'fetched_at': old,
+            'windows': [{'name': 'session', 'remaining_percent': 0}]})
+        self.store.set_account_status(account['id'], 'cooldown', cooldown_until=old)
+        runtime = self.runtime()
+        runtime.accounts.manager.refresh = Mock(return_value={'logged_in': True, 'windows': [], 'error_code': 'quota_unavailable'})
+        runtime.accounts.refresh(account['id'])
+        restored = self.store.get_account(account['id'])
+        self.assertEqual(restored['generation'], account['generation'])
+        self.assertTrue(self.store._account_available(restored))
+
+    def test_legacy_unknown_limit_schedules_a_bounded_retry(self):
+        account = self.account(provider='claude')
+        observed = datetime.now(timezone.utc)
+        self.store.set_account_quota(account['id'], {'fetched_at': observed.isoformat(),
+            'windows': [{'name': 'session', 'remaining_percent': 0}]})
+        session = self.session(policy='auto', provider='claude')
+        run = self.store.begin_run(session['id'], 'Wait for recovery')
+        retry = self.store.next_account_retry(run['id'])
+        self.assertEqual(datetime.fromisoformat(retry), observed + timedelta(seconds=60))
+
+    def test_native_future_quota_reset_is_not_shortened_to_unknown_limit_cooldown(self):
+        account = self.account(provider='claude')
+        runtime = self.runtime()
+        reset = time.time() + 3600
+        runtime._account_limit(account['id'], {'status': 'rejected', 'resetsAt': reset}, account['generation'])
+        limited = self.store.get_account(account['id'])
+        self.assertAlmostEqual(datetime.fromisoformat(limited['quota']['windows'][0]['reset_at']).timestamp(), reset, places=5)
+        with patch('agentdock.account_store.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime.now(timezone.utc) + timedelta(seconds=120)
+            self.assertFalse(self.store._account_available(limited))
 
     def session(self, account=None, policy='manual', pool=None, provider='codex', environment='local'):
         agent = self.store.add_agent(None, 'Worker', provider, environment_id=environment,

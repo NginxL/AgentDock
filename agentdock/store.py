@@ -524,6 +524,15 @@ class Store(AccountStore):
             raise Conflict('Stop active tasks before deleting a session')
         if self.cancellable_tasks(session_id) or self.db.execute("SELECT 1 FROM messages WHERE (sender_session_id=? OR recipient_session_id=?) AND status IN ('queued','running','waiting')", (session_id,session_id)).fetchone():
             raise Conflict('Wait for linked tasks before deleting a session')
+        # Returned results remain ancestors of the requesting task's later turns.
+        # Keep the whole collaboration chain until it has settled, including the
+        # gap between a child finishing and its result being queued for return.
+        roots = {row[0] for row in self.db.execute('SELECT DISTINCT root_run_id FROM runs WHERE session_id=?', (session_id,))}
+        related = self.db.execute('''SELECT DISTINCT related.session_id FROM runs AS owned
+            JOIN runs AS related ON related.root_run_id=owned.root_run_id
+            WHERE owned.session_id=?''', (session_id,)).fetchall()
+        if any(task['root_run_id'] in roots for row in related for task in self.cancellable_tasks(row[0])):
+            raise Conflict('Wait for linked tasks before deleting a session')
 
     def _delete_session_records(self, session):
         session_id = session['id']
@@ -554,8 +563,7 @@ class Store(AccountStore):
             # Check every session before touching files; retain all records if
             # cleanup fails. File removal is idempotent so the user can retry.
             for session in sessions:
-                if self.cancellable_tasks(session['id']):
-                    raise Conflict('Wait for linked tasks before deleting an agent')
+                self._check_session_deletion(session['id'])
             for session in sessions:
                 runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session['id'],))]
                 cleanup(session, runs)

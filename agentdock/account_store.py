@@ -3,7 +3,7 @@ import json
 import math
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 class AccountStore:
@@ -74,6 +74,14 @@ class AccountStore:
 
     def get_account(self, account_id):
         with self.lock: return self._one('accounts', account_id)
+
+    def session_accounts(self, session_id):
+        """Include retired branches and removed account metadata during cleanup."""
+        with self.lock:
+            self._one('sessions', session_id)
+            return self._all('''SELECT DISTINCT accounts.* FROM accounts
+                JOIN session_account_branches AS branch ON branch.account_id=accounts.id
+                WHERE branch.session_id=? ORDER BY accounts.id''', (session_id,))
 
     def add_account(self, provider, label, environment_id='local', priority=0):
         from .store import Invalid, text
@@ -235,10 +243,20 @@ class AccountStore:
         if account_policy == 'manual' and account_ids: raise Invalid('Manual accounts do not use a pool')
         return dict(account_id=account_id, account_policy=account_policy, account_ids=list(account_ids))
 
+    @staticmethod
+    def _account_window_reset(account, window):
+        reset = window.get('resets_at', window.get('reset_at'))
+        value = window.get('remaining_percent', 100 - window.get('used_percent', 0))
+        if not reset and value <= 0 and account['quota'].get('fetched_at'):
+            # Older observations could persist a rejected limit with no native
+            # reset. Use a bounded cooldown for both admission and queued retry.
+            reset = (datetime.fromisoformat(account['quota']['fetched_at']) + timedelta(seconds=60)).isoformat()
+        return reset
+
     def _account_remaining(self, account):
         remaining = []
         for window in account['quota'].get('windows', []):
-            reset = window.get('resets_at', window.get('reset_at'))
+            reset = self._account_window_reset(account, window)
             if reset and datetime.fromisoformat(reset) <= datetime.now(timezone.utc): continue
             if 'remaining_percent' in window: remaining.append(window['remaining_percent'])
             elif 'used_percent' in window: remaining.append(100 - window['used_percent'])
@@ -418,7 +436,7 @@ class AccountStore:
                 unknown = False
                 for window in account['quota'].get('windows', []):
                     if window.get('remaining_percent', 100 - window.get('used_percent', 0)) <= 0:
-                        reset = window.get('resets_at', window.get('reset_at'))
+                        reset = self._account_window_reset(account, window)
                         if reset: deadlines.append(reset)
                         else: unknown = True
                 if deadlines and not unknown:

@@ -1,7 +1,9 @@
 """Real framed pipes, detached fake native workers, and durable replay; no network/model."""
 import json
 import os
+import signal
 import shutil
+import subprocess
 from pathlib import Path
 import sys
 import threading
@@ -11,9 +13,10 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from agentdock.remote import BOOTSTRAP, RemoteManager
-from agentdock.ssh_transport import Channel
+from agentdock.ssh_transport import Channel, TransportError
 from agentdock.providers import ProviderCancelled
 from agentdock.ssh_bridge import EventReader
+from agentdock.accounts import AccountManager
 import test_remote as fixtures
 
 
@@ -138,6 +141,58 @@ class StreamTransportTests(unittest.TestCase):
         with log.open('a') as out: out.write('}\n{"seq":3}\n')
         self.assertEqual([e['seq'] for e in reader.poll()['events']], [2,3])
         self.assertEqual(reader.poll()['events'], [])
+
+    def test_disconnect_stops_all_transient_native_readers_and_releases_account_locks(self):
+        self.connect('descendant')
+        controller = self.fixture.store.controller_id
+        accounts = self.fixture.home/'.local/share/agentdock/ssh/controllers'/controller/'accounts'
+        cases = [('models', 'codex'), ('models', 'claude'), ('check', 'codex'),
+                 ('check', 'claude'), ('refresh', 'codex'), ('refresh', 'claude'),
+                 ('remove', 'claude'), ('quota', 'codex'), ('delete_session', 'codex')]
+        for operation, provider in cases:
+            with self.subTest(operation=operation, provider=provider):
+                account = {'id': str(uuid.uuid4()), 'provider': provider, 'generation': 1}
+                managed = operation not in ('quota', 'delete_session')
+                directory = accounts/account['id']/provider if managed else self.fixture.home
+                for name in ('fake-pid', 'fake-child-pid'): (directory/name).unlink(missing_ok=True)
+                request = {'op': operation if operation in ('models', 'quota', 'delete_session') else 'account',
+                           'provider': provider, 'controller': controller}
+                if managed: request['account'] = account
+                if request['op'] == 'account': request['action'] = operation
+                if operation == 'delete_session':
+                    native = str(uuid.uuid4())
+                    request.update(session_id=str(uuid.uuid4()), run_ids=[], native_session_id=native)
+                    folder = self.fixture.home/'.codex/sessions'
+                    folder.mkdir(parents=True)
+                    (folder/(native+'.jsonl')).write_text(json.dumps({'type': 'session_meta',
+                        'payload': {'id': native, 'originator': 'agentdock'}})+'\n')
+                pid = None
+                try:
+                    with ThreadPoolExecutor(max_workers=1) as pool:
+                        future = pool.submit(self.manager.rpc, self.environment, request)
+                        deadline = time.monotonic() + 5
+                        while not (directory/'fake-child-pid').exists() and time.monotonic() < deadline:
+                            time.sleep(.02)
+                        self.assertTrue((directory/'fake-child-pid').exists())
+                        pid = int((directory/'fake-pid').read_text())
+                        child = int((directory/'fake-child-pid').read_text())
+                        self.channels[-1].close()
+                        with self.assertRaises(TransportError): future.result(timeout=5)
+                    with self.assertRaises(ProcessLookupError): os.kill(pid, 0)
+                    # A reparented descendant may await PID 1's zombie reaper,
+                    # but no executable child may survive the closed bridge.
+                    state = subprocess.run(['ps', '-o', 'stat=', '-p', str(child)],
+                                           capture_output=True, text=True).stdout.strip()
+                    self.assertTrue(not state or state.startswith('Z'), state)
+                    if managed:
+                        # The native process inherits this lease: its death is
+                        # required before later turns/deletion can use it.
+                        with AccountManager(accounts).lease(account, timeout=0): pass
+                finally:
+                    # Keep a regression failure from leaking its fixture CLI.
+                    if pid is not None:
+                        try: os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError: pass
 
 
 if __name__ == '__main__': unittest.main()

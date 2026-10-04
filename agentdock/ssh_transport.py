@@ -159,11 +159,13 @@ class Channel:
             self.closed.set()
             selector.close()
             self.process.stdin.close()
-            try: self.process.wait(timeout=1)
+            # EOF asks the remote bridge to stop transient readers and release
+            # inherited account locks before terminating the SSH process.
+            try: self.process.wait(timeout=3)
             except subprocess.TimeoutExpired: pass
             stop_group(self.process)
             for stream in (self.process.stdin, self.process.stdout, self.process.stderr): stream.close()
 
     def close(self):
         self.closed.set()
-        if threading.current_thread() is not self.thread: self.thread.join(3)
+        if threading.current_thread() is not self.thread: self.thread.join(5)

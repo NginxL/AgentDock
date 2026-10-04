@@ -70,7 +70,7 @@ def probe():
             'protocol': 1, 'runtime': 'ssh', 'lease_seconds': LEASE_SECONDS}
 
 
-def quota(provider):
+def quota(provider, stop=None):
     # Linux Claude Code has no documented quota snapshot. Do not read its credentials.
     if provider != 'codex':
         return {'provider': provider, 'error_code': 'unavailable'}
@@ -78,7 +78,8 @@ def quota(provider):
     from .providers import _Pipe, _Codex, _Callbacks
     command = commands().get(provider)
     if not command: return {'provider': provider, 'error_code': 'not_installed'}
-    pipe = _Pipe(command + ['--listen', 'stdio://'], str(Path.home()), dict(os.environ), threading.Event(), 25)
+    pipe = _Pipe(command + ['--listen', 'stdio://'], str(Path.home()), dict(os.environ),
+                 stop if stop is not None else threading.Event(), 25)
     try:
         adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
         adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
@@ -103,7 +104,8 @@ def quota(provider):
         pipe.close()
 
 
-def rpc(request):
+def rpc(request, *, stop=None, catalog=None):
+    if stop is not None and stop.is_set(): raise ProviderCancelled()
     operation = request.get('op')
     if operation == 'probe': return probe()
     if operation == 'directories':
@@ -111,24 +113,30 @@ def rpc(request):
         return list_directories(request.get('path', '~'))
     if operation == 'models':
         from .catalog import Catalog
+        catalog = catalog if catalog is not None else Catalog({'execution_enabled': True, 'commands': commands()}, stop=stop)
         if request.get('account'):
-            manager, account = account_manager(request)
+            manager, account = account_manager(request, stop=stop)
             with manager.lease(account):
-                return Catalog({'execution_enabled': True, 'commands': commands()}).read(
+                return catalog.read(
                     request['provider'], account_id=account['id'], generation=account.get('generation', 0),
                     environment=manager.environment(account))
-        return Catalog({'execution_enabled': True, 'commands': commands()}).read(request['provider'])
+        return catalog.read(request['provider'])
     if operation == 'account':
-        manager, account = account_manager(request)
+        manager, account = account_manager(request, stop=stop)
         action = request.get('action')
         if action not in ('start', 'status', 'cancel', 'submit', 'check', 'refresh', 'remove'):
             raise ValueError('Invalid account operation')
         if action == 'start': return manager.start(account, request.get('method', 'browser'))
         if action == 'submit': return manager.submit(account, request.get('code'))
         return getattr(manager, action)(account)
-    if operation == 'quota': return quota(request['provider'])
+    if operation == 'quota': return quota(request['provider'], stop=stop)
     if operation == 'delete_session':
+        from .accounts import AccountManager
         parent = run_path(request['controller'], request['session_id']).parent
+        accounts = request.get('accounts', [])
+        if not isinstance(accounts, list) or any(not isinstance(account, dict)
+                or account.get('provider') != request.get('provider') for account in accounts):
+            raise ValueError('Invalid session accounts')
         run_paths = [run_path(request['controller'], identifier) for identifier in request['run_ids']]
         for item in run_paths:
             saved = read(item/'request.json', {}).get('spec', {})
@@ -138,15 +146,16 @@ def rpc(request):
             state = read(item/'state.json', {})
             if state.get('status') in ('starting','running') and time.time()-state.get('updated_at',0) < LEASE_SECONDS:
                 raise ValueError('Remote session is still running')
-        if not request.get('managed_account') and request.get('provider') == 'codex' and request.get('native_session_id'):
-            from .codex_home import retire_legacy
-            retire_legacy(commands()['codex'], dict(os.environ), request['native_session_id'])
-        elif not request.get('managed_account') and request.get('provider') == 'claude' and request.get('native_session_id'):
-            from .session_storage import retire_legacy_claude
-            retire_legacy_claude(dict(os.environ), request['native_session_id'])
-        remove_session_directory(parent/'sessions', request['session_id'])
-        for item in run_paths:
-            if item.exists(): shutil.rmtree(item)
+        with AccountManager(parent/'accounts', stop=stop).session_cleanup(accounts):
+            if not request.get('managed_account') and request.get('provider') == 'codex' and request.get('native_session_id'):
+                from .codex_home import retire_legacy
+                retire_legacy(commands()['codex'], dict(os.environ), request['native_session_id'], stop=stop)
+            elif not request.get('managed_account') and request.get('provider') == 'claude' and request.get('native_session_id'):
+                from .session_storage import retire_legacy_claude
+                retire_legacy_claude(dict(os.environ), request['native_session_id'])
+            remove_session_directory(parent/'sessions', request['session_id'])
+            for item in run_paths:
+                if item.exists(): shutil.rmtree(item)
         return {'ok': True}
     path = run_path(request['controller'], request['run_id'])
     if operation == 'start':
@@ -200,7 +209,7 @@ def rpc(request):
     raise ValueError('Unknown operation')
 
 
-def account_manager(request):
+def account_manager(request, *, stop=None):
     from .accounts import AccountManager
     account = request['account']
     if not isinstance(account, dict) or account.get('provider') not in ('codex', 'claude'):
@@ -210,7 +219,7 @@ def account_manager(request):
     if 'generation' in account and (type(account['generation']) is not int or not 0 <= account['generation'] < 2**63):
         raise ValueError('Invalid account login generation')
     parent = run_path(request['controller'], account['id']).parent
-    return AccountManager(parent / 'accounts', commands()), account
+    return AccountManager(parent / 'accounts', commands(), stop=stop), account
 
 
 def work(path):

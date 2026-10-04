@@ -35,7 +35,7 @@ The native process ends after a foreground turn, but the native conversation per
 
 Official protocol material: [Codex app-server](https://learn.chatgpt.com/docs/app-server), [Claude Code CLI](https://code.claude.com/docs/en/cli-reference), and [Anthropic's control-protocol implementation](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/query.py).
 
-Local Codex 0.154.0 and Claude Code 2.1.283 passed two-turn text continuation in private storage, native identity continuity, reported-model metadata, absence of test conversations in original client directories, and unchanged configuration hashes. Claude credential reuse covers the default macOS login store. Codex verification covers file credentials; keychain-only configurations remain unverified.
+Local Codex 0.154.0 and Claude Code 2.1.283 passed two-turn text continuation in private storage, native identity continuity, reported-model metadata, absence of test conversations in original client directories, and unchanged configuration hashes. Claude credential reuse covers the default macOS login store. Codex verification covers file credentials. Keyring-only login is bound to CODEX_HOME and cannot be reused directly in an isolated session; use a separate AgentDock account. Real keyring migration and authorization have not been tested.
 
 ## Isolated verification
 

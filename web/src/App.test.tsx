@@ -1049,6 +1049,160 @@ describe("usage semantics and transport", () => {
     );
     expect(screen.queryByText("未知")).toBeNull();
   });
+  it("refreshes managed accounts and explicit device-login sessions through their own quota endpoints", async () => {
+    const accounts = ["personal", "work"].map((id) => ({
+      id,
+      label: id === "personal" ? "Personal" : "Work",
+      provider: "codex",
+      environment_id: "local",
+      status: "ready",
+      generation: 1,
+    }));
+    const fixture = {
+      ...state,
+      runtime: { ...state.runtime, enabled: true },
+      accounts,
+      agents: [
+        {
+          ...state.agents[0],
+          account_id: "personal",
+          account_policy: "manual",
+        },
+      ],
+      sessions: [
+        { ...state.sessions[0], account_id: "work", account_policy: "manual" },
+        {
+          ...state.sessions[0],
+          id: "device-session",
+          title: "Device chat",
+          account_id: null,
+          account_policy: "manual",
+        },
+      ],
+    };
+    fetchMock.mockImplementation(async (path: string) => {
+      const account = accounts.find(
+        (a) => path === `/api/accounts/${a.id}/refresh`,
+      );
+      if (account)
+        return response({
+          ...account,
+          quota: {
+            status: "ok",
+            windows: [
+              {
+                name: "weekly",
+                remaining_percent: account.id === "personal" ? 12 : 34,
+              },
+            ],
+          },
+        });
+      if (path === "/api/quotas/refresh")
+        return response({
+          provider: "codex",
+          status: "ok",
+          source: "cli",
+          windows: [{ label: "Weekly", remaining_percent: 99 }],
+        });
+      return response(fixture);
+    });
+    render(<App />);
+    await connect();
+    fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+    expect(await screen.findByText(/34%/)).toBeTruthy();
+    expect(await screen.findByText(/12%/)).toBeTruthy();
+    expect(await screen.findByText(/99%/)).toBeTruthy();
+    const refreshes = fetchMock.mock.calls.filter(([path]) =>
+      String(path).endsWith("/refresh"),
+    );
+    expect(refreshes.map(([path]) => path).sort()).toEqual([
+      "/api/accounts/personal/refresh",
+      "/api/accounts/work/refresh",
+      "/api/quotas/refresh",
+    ]);
+    expect(
+      JSON.parse(
+        String(
+          refreshes.find(([path]) => path === "/api/quotas/refresh")![1].body,
+        ),
+      ),
+    ).toEqual({ provider: "codex" });
+  });
+  it.each(["quota-first", "state-first"])(
+    "keeps a newer disabled account when overlapping quota and state responses arrive %s",
+    async (order) => {
+      const account = {
+        id: "personal",
+        label: "Personal",
+        provider: "codex",
+        environment_id: "local",
+        status: "ready",
+        generation: 1,
+        updated_at: "2026-10-04T10:00:00Z",
+      };
+      const fixture = {
+        ...state,
+        runtime: { ...state.runtime, enabled: true },
+        accounts: [account],
+        agents: [
+          {
+            ...state.agents[0],
+            account_id: account.id,
+            account_policy: "manual",
+          },
+        ],
+        sessions: [],
+      };
+      const quotaResponse = deferred<Response>();
+      const stateResponse = deferred<Response>();
+      let refreshState = false;
+      fetchMock.mockImplementation(async (path: string) => {
+        if (path === "/api/accounts/personal/refresh")
+          return quotaResponse.promise;
+        if (path === "/api/state" && refreshState) return stateResponse.promise;
+        return response(fixture);
+      });
+      render(<App />);
+      await connect();
+      fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
+      fireEvent.click(screen.getByRole("button", { name: "协作工作台" }));
+      refreshState = true;
+      fireEvent.click(screen.getByRole("button", { name: "刷新工作台状态" }));
+      const resolveQuota = () =>
+        quotaResponse.resolve(
+          response({
+            ...account,
+            updated_at: "2026-10-04T10:00:01.000001+00:00",
+            quota: {
+              status: "ok",
+              windows: [{ name: "weekly", remaining_percent: 34 }],
+            },
+          }),
+        );
+      const resolveState = () =>
+        stateResponse.resolve(
+          response({
+            ...fixture,
+            accounts: [
+              {
+                ...account,
+                status: "disabled",
+                updated_at: "2026-10-04T10:00:01.000002+00:00",
+              },
+            ],
+          }),
+        );
+      await act(async () => {
+        (order === "quota-first" ? resolveQuota : resolveState)();
+      });
+      await act(async () => {
+        (order === "quota-first" ? resolveState : resolveQuota)();
+      });
+      fireEvent.click(screen.getByRole("button", { name: "账号" }));
+      expect(screen.getByText("已停用")).toBeTruthy();
+      expect(screen.queryByText("可用")).toBeNull();
+    },
+  );
   it("clamps valid percentages and rejects invalid values", () => {
     expect(remainingPercent(undefined)).toBeNull();
     expect(remainingPercent(Number.NaN)).toBeNull();

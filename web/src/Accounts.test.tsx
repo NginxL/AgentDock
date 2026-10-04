@@ -302,6 +302,54 @@ it("changes only the current session and keeps a removed account explicit instea
     }),
   );
 });
+it("opens account settings outside the clipped conversation, traps focus, and restores the trigger", () => {
+  const agent: Agent = {
+    id: "agent",
+    name: "Codex",
+    provider: "codex",
+    role: "",
+    project_id: null,
+  };
+  const session: Session = {
+    id: "session",
+    agent_id: agent.id,
+    title: "One",
+    project_id: null,
+    status: "idle",
+    created_at: "2026-01-01",
+    updated_at: "2026-01-01",
+    account_id: null,
+  };
+  const mutate = vi.fn<Mutate>(async () => true);
+  const { container } = render(
+    <div style={{ height: 200, overflow: "hidden" }}>
+      <SessionAccountControls
+        accounts={[account]}
+        agent={agent}
+        session={session}
+        busy={false}
+        demo={false}
+        mutate={mutate}
+        t={t}
+      />
+    </div>,
+  );
+  const trigger = screen.getByRole("button", { name: "沿用设备登录" });
+  fireEvent.click(trigger);
+  const dialog = screen.getByRole("dialog", { name: "会话账号" });
+  expect(container.contains(dialog)).toBe(false);
+  expect(document.activeElement).toBe(dialog);
+  const save = screen.getByRole("button", { name: "保存账号设置" });
+  save.focus();
+  fireEvent.keyDown(save, { key: "Tab" });
+  expect(document.activeElement).toBe(
+    screen.getByRole("button", { name: "关闭账号设置" }),
+  );
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  expect(mutate).not.toHaveBeenCalled();
+});
 it("shows account switch and wait events without printing raw payloads", () => {
   render(
     <AccountAttempts

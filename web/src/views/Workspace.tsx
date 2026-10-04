@@ -905,9 +905,9 @@ export default function Workspace({
                           "available",
                           "success",
                           "exhausted",
-                        ].includes(quota.status)
+                        ].includes(quota.status ?? "")
                           ? remainingPercent(
-                              quota.windows[0]?.remaining_percent,
+                              quota.windows?.[0]?.remaining_percent,
                             )
                           : null;
                       return (

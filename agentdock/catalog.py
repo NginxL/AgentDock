@@ -10,10 +10,10 @@ from .registry import PROVIDERS, ACP_PROVIDERS, commands
 
 
 class Catalog:
-    def __init__(self, config):
+    def __init__(self, config, *, stop=None):
         self.config, self.cache = config, {}
         self.locks = {provider: threading.Lock() for provider in PROVIDERS}
-        self.stop = threading.Event()
+        self.stop = stop if stop is not None else threading.Event()
 
     def close(self):
         self.stop.set()

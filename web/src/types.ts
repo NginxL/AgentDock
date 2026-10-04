@@ -49,7 +49,7 @@ export interface Account extends AccountSettings {
     updated_at?: number | string | null;
   } | null;
   quota?: {
-    windows: {
+    windows?: {
       name?: string;
       label?: string;
       remaining_percent?: number | null;
@@ -57,7 +57,7 @@ export interface Account extends AccountSettings {
       duration_minutes?: number;
     }[];
     source?: string;
-    status: string;
+    status?: string;
     fetched_at?: string;
   } | null;
   created_at?: string;

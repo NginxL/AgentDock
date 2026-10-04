@@ -2,6 +2,9 @@ import { useState } from "react";
 import { remainingPercent } from "../api";
 import type {
   Agent,
+  Account,
+  Session,
+  Environment,
   Language,
   Mutate,
   Provider,
@@ -11,6 +14,9 @@ import type {
 } from "../types";
 import { DateText, Empty, Icon, PageTitle } from "../ui";
 import ProviderIcon from "../ProviderIcon";
+import { providerNames } from "../ProviderIcon";
+import { usageTargets } from "../usageTargets";
+import { accountStatus } from "../AccountSelection";
 
 export default function Usage({
   t,
@@ -18,6 +24,9 @@ export default function Usage({
   quotas,
   subscriptions,
   agents,
+  sessions = [],
+  accounts = [],
+  environments = [],
   onAddAgent,
   refreshing,
   refreshFailed,
@@ -29,6 +38,9 @@ export default function Usage({
   quotas: Quota[];
   subscriptions: Subscription[];
   agents: Agent[];
+  sessions?: Session[];
+  accounts?: Account[];
+  environments?: Environment[];
   onAddAgent: () => void;
   refreshing: boolean;
   refreshFailed: boolean;
@@ -43,6 +55,7 @@ export default function Usage({
   const [renewal, setRenewal] = useState("");
   const [cost, setCost] = useState("");
   const [currency, setCurrency] = useState("USD");
+  const targets = usageTargets(agents, sessions, accounts);
   function edit(provider: Provider, environment: string) {
     if (editing?.provider === provider && editing.environment === environment) {
       setEditing(null);
@@ -89,51 +102,79 @@ export default function Usage({
         </p>
       )}
       <div className="usage-grid">
-        {[
-          ...new Map(
-            agents.map((agent) => [
-              `${agent.environment_id ?? "local"}:${agent.provider}`,
-              agent,
-            ]),
-          ).values(),
-        ].map((agent) => {
-          const provider = agent.provider;
-          const environment = agent.environment_id ?? "local";
-          const agentNames = agents
-            .filter(
-              (a) =>
-                a.provider === provider &&
-                (a.environment_id ?? "local") === environment,
-            )
-            .map((a) => a.name)
-            .join(" · ");
-          const quota = quotas.find(
-            (q) =>
-              q.provider === provider &&
-              (q.environment_id ?? "local") === environment,
-          );
-          const billing = subscriptions.find(
-            (s) =>
-              s.provider === provider &&
-              (s.environment_id ?? "local") === environment,
-          );
+        {targets.map((target) => {
+          const { provider, environment, account, managed } = target;
+          const agentNames = target.agentNames.join(" · ");
+          const quota: Quota | undefined = managed
+            ? account?.quota
+              ? {
+                  provider,
+                  source: "managed-account",
+                  status: account.quota.status ?? "unknown",
+                  fetched_at: account.quota.fetched_at,
+                  plan: account.identity?.plan,
+                  windows: (account.quota.windows ?? []).map((window) => ({
+                    ...window,
+                    label:
+                      window.label ??
+                      {
+                        primary: t("当前周期", "Current window"),
+                        secondary: t("额外周期", "Additional window"),
+                        session: t("会话额度", "Session limit"),
+                        weekly: t("每周额度", "Weekly limit"),
+                      }[window.name ?? ""] ??
+                      window.name ??
+                      t("额度", "Quota"),
+                  })),
+                }
+              : undefined
+            : quotas.find(
+                (q) =>
+                  q.provider === provider &&
+                  (q.environment_id ?? "local") === environment,
+              );
+          const billing = !managed
+            ? subscriptions.find(
+                (s) =>
+                  s.provider === provider &&
+                  (s.environment_id ?? "local") === environment,
+              )
+            : undefined;
           const available =
             quota?.status === "ok" ||
+            quota?.status === "ready" ||
             quota?.status === "available" ||
-            quota?.status === "success";
+            quota?.status === "success" ||
+            quota?.status === "exhausted";
           return (
-            <section
-              className="panel quota-card"
-              key={`${environment}:${provider}`}
-            >
+            <section className="panel quota-card" key={target.key}>
               <header>
                 <div className="provider-symbol" aria-hidden="true">
                   <ProviderIcon provider={provider} />
                 </div>
                 <div>
-                  <h2>{agentNames}</h2>
+                  <h2>
+                    {managed
+                      ? (account?.label ??
+                        (target.accountID
+                          ? t("账号不可用", "Account unavailable")
+                          : t("等待选择账号", "No account selected")))
+                      : agentNames}
+                  </h2>
+                  <small className="quota-identity">
+                    {providerNames[provider]} ·{" "}
+                    {environment === "local"
+                      ? t("本机", "This Mac")
+                      : (environments.find((e) => e.id === environment)?.name ??
+                        t("远端设备", "Remote device"))}{" "}
+                    ·{" "}
+                    {managed
+                      ? t("订阅账号", "Subscription account")
+                      : t("设备登录", "Device login")}
+                  </small>
                   <span>
                     {quota?.plan ||
+                      (managed && account?.identity?.plan) ||
                       billing?.plan ||
                       t("方案未知", "Plan unknown")}
                   </span>
@@ -148,6 +189,18 @@ export default function Usage({
                         : t("未知 / 不可用", "Unknown / unavailable")}
                 </span>
               </header>
+              {managed && (
+                <p className="quota-binding">
+                  {agentNames}
+                  {account ? ` · ${accountStatus(account, t)}` : ""}
+                </p>
+              )}
+              {!!target.sessionNames.length && (
+                <p className="quota-binding">
+                  {t("会话", "Conversations")}:{" "}
+                  {target.sessionNames.join(" · ")}
+                </p>
+              )}
               <div className="quota-windows">
                 {quota?.windows?.length ? (
                   quota.windows.map((window, index) => (
@@ -172,49 +225,59 @@ export default function Usage({
               </div>
               <div className="quota-source">
                 <span>
-                  {quota?.source === "demo"
-                    ? t("演示数据", "Demo data")
-                    : quota?.source === "claude-desktop-snapshot"
-                      ? t("Claude 本地快照", "Claude local snapshot")
-                      : provider === "codex"
-                        ? "Codex"
-                        : t("上次保存的数据", "Previously saved data")}{" "}
+                  {managed
+                    ? t("账号额度", "Account quota")
+                    : quota?.source === "demo"
+                      ? t("演示数据", "Demo data")
+                      : quota?.source === "claude-desktop-snapshot"
+                        ? t("Claude 本地快照", "Claude local snapshot")
+                        : provider === "codex"
+                          ? "Codex"
+                          : t("上次保存的数据", "Previously saved data")}{" "}
                   · {t("数据更新于", "Data updated")}{" "}
                   <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
               </div>
-              <div className="billing-info">
-                <div className="record-heading">
-                  <h3>{t("手动订阅记录", "Manual billing record")}</h3>
-                  <button
-                    className="text-button"
-                    aria-expanded={
-                      editing?.provider === provider &&
-                      editing.environment === environment
-                    }
-                    aria-controls="billing-form"
-                    onClick={() => edit(provider, environment)}
-                  >
-                    {t("编辑", "Edit")}
-                  </button>
+              {managed ? (
+                <div className="billing-info">
+                  <a href="#/accounts" className="text-button">
+                    {t("管理账号", "Manage account")} ↗
+                  </a>
                 </div>
-                <dl>
-                  <div>
-                    <dt>{t("下次续费", "Next renewal")}</dt>
-                    <dd>
-                      {billing?.renewal_date || t("未登记", "Not recorded")}
-                    </dd>
+              ) : (
+                <div className="billing-info">
+                  <div className="record-heading">
+                    <h3>{t("手动订阅记录", "Manual billing record")}</h3>
+                    <button
+                      className="text-button"
+                      aria-expanded={
+                        editing?.provider === provider &&
+                        editing.environment === environment
+                      }
+                      aria-controls="billing-form"
+                      onClick={() => edit(provider, environment)}
+                    >
+                      {t("编辑", "Edit")}
+                    </button>
                   </div>
-                  <div>
-                    <dt>{t("每月费用", "Monthly cost")}</dt>
-                    <dd>
-                      {billing?.monthly_cost == null
-                        ? t("未登记", "Not recorded")
-                        : `${billing.currency} ${Number(billing.monthly_cost).toFixed(2)}`}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
+                  <dl>
+                    <div>
+                      <dt>{t("下次续费", "Next renewal")}</dt>
+                      <dd>
+                        {billing?.renewal_date || t("未登记", "Not recorded")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t("每月费用", "Monthly cost")}</dt>
+                      <dd>
+                        {billing?.monthly_cost == null
+                          ? t("未登记", "Not recorded")
+                          : `${billing.currency} ${Number(billing.monthly_cost).toFixed(2)}`}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              )}
             </section>
           );
         })}
@@ -224,14 +287,14 @@ export default function Usage({
           <div className="panel-heading">
             <h2>
               {t("编辑订阅记录", "Edit billing record")} ·{" "}
-              {agents
-                .filter(
-                  (a) =>
-                    a.provider === editing.provider &&
-                    (a.environment_id ?? "local") === editing.environment,
+              {targets
+                .find(
+                  (target) =>
+                    !target.managed &&
+                    target.provider === editing.provider &&
+                    target.environment === editing.environment,
                 )
-                .map((a) => a.name)
-                .join(" · ")}
+                ?.agentNames.join(" · ")}
             </h2>
             <button
               className="icon-button"

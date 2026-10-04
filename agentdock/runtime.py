@@ -101,6 +101,7 @@ class Runtime:
     def _cleanup_session(self, session, runs):
         from .session_storage import remove_session_directory
         session_id = session['id']
+        accounts = self.store.session_accounts(session_id)
         if session['environment_id'] != 'local':
             runs = list(dict.fromkeys(runs + [attempt['id'] for identifier in runs
                 for attempt in self.store.account_attempts(identifier)]))
@@ -112,20 +113,24 @@ class Runtime:
                     result = self.remote.rpc(session['environment_id'], {'op':'delete_session', 'controller':self.store.controller_id,
                         'session_id':session_id,'run_ids':runs,'provider':self.store.get_agent(session['agent_id'])['provider'],
                         'native_session_id':session.get('native_session_id'),
-                        'managed_account':bool(session.get('account_id'))}, install=True)
+                        'managed_account':bool(session.get('account_id')),
+                        'accounts': [{key: account[key] for key in ('id', 'provider')} for account in accounts]}, install=True)
                     # App upgrades change the runtime digest. Prepare the private
                     # cleanup code without requiring a CLI probe or model call.
                     if not isinstance(result, dict) or result.get('ok') is not True:
                         raise ProviderError('Remote cleanup was not acknowledged')
                 except (ProviderError, OSError):
                     raise Conflict('Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.') from None
-        elif not session.get('account_id') and session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='codex':
-            from .codex_home import retire_legacy
-            retire_legacy(self._command('codex'), dict(os.environ), session['native_session_id'])
-        elif not session.get('account_id') and session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='claude':
-            from .session_storage import retire_legacy_claude
-            retire_legacy_claude(dict(os.environ), session['native_session_id'])
-        remove_session_directory(self.store.workspaces.parent / 'sessions', session_id)
+            remove_session_directory(self.store.workspaces.parent / 'sessions', session_id)
+        else:
+            with self.accounts.manager.session_cleanup(accounts):
+                if not session.get('account_id') and session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='codex':
+                    from .codex_home import retire_legacy
+                    retire_legacy(self._command('codex'), dict(os.environ), session['native_session_id'])
+                elif not session.get('account_id') and session.get('native_session_id') and self.store.get_agent(session['agent_id'])['provider']=='claude':
+                    from .session_storage import retire_legacy_claude
+                    retire_legacy_claude(dict(os.environ), session['native_session_id'])
+                remove_session_directory(self.store.workspaces.parent / 'sessions', session_id)
 
     def delete_session(self, session_id):
         with self._lock:
@@ -285,11 +290,17 @@ class Runtime:
             utilization = payload.get('utilization')
             if payload.get('status') == 'rejected': utilization = 1
             if isinstance(utilization, (int, float)) and not isinstance(utilization, bool) and 0 <= utilization <= 1:
+                observed = time.time()
+                valid_reset = isinstance(reset, (int, float)) and not isinstance(reset, bool) and observed-86400 < reset < observed+604800
+                # Some Claude versions omit resetsAt on a rejected limit. Keep
+                # that observation bounded so a future probe can use the account.
+                if utilization == 1 and not valid_reset:
+                    reset, valid_reset = observed + 60, True
                 account = self.store.get_account(account_id)
                 name = {'five_hour': 'session', 'seven_day': 'weekly'}.get(payload.get('rateLimitType'), 'primary')
                 windows = [w for w in account['quota'].get('windows', []) if w.get('name') != name]
                 window = {'name': name, 'remaining_percent': 100*(1-utilization)}
-                if isinstance(reset, (int, float)) and not isinstance(reset, bool) and time.time()-86400 < reset < time.time()+604800:
+                if valid_reset:
                     window['reset_at'] = datetime.fromtimestamp(reset, timezone.utc).isoformat()
                 self.store.set_account_quota(account_id, {'windows': (windows+[window])[-10:],
                     'status': 'ok', 'fetched_at': datetime.now(timezone.utc).isoformat()})

@@ -92,12 +92,12 @@ def prepare(home, environment, native_id=None, cwd=None, managed=False):
     return env, flags, legacy
 
 
-def retire_legacy(command, environment, native_id):
+def retire_legacy(command, environment, native_id, *, stop=None):
     """Remove only an AgentDock-owned legacy transcript from the shared CLI store."""
     source = Path(environment.get('CODEX_HOME') or Path.home()/'.codex').expanduser().resolve()
     if not _owned_rollout(source, native_id, None): return
     from .providers import _Pipe, _Codex, _Callbacks
-    pipe = _Pipe(list(command) + ['--listen', 'stdio://'], str(Path.home()), environment, threading.Event(), 25)
+    pipe = _Pipe(list(command) + ['--listen', 'stdio://'], str(Path.home()), environment, stop if stop is not None else threading.Event(), 25)
     try:
         adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
         adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})

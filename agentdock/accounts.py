@@ -128,7 +128,7 @@ def _login_hints(text):
 
 
 class AccountManager:
-    def __init__(self, root, commands_config=None):
+    def __init__(self, root, commands_config=None, *, stop=None):
         path = Path(root).expanduser().absolute()
         if path.is_symlink(): raise AccountError('Account storage must not be a symbolic link.')
         # System home and temporary-directory aliases may be symlinks. Resolve
@@ -137,6 +137,7 @@ class AccountManager:
         self.root = path.parent.resolve() / path.name
         self.commands_config = commands_config or {}
         self._leases = threading.local()
+        self.stop = stop if stop is not None else threading.Event()
 
     def _profile(self, account):
         if not isinstance(account, dict) or account.get('provider') not in _CREDENTIALS:
@@ -197,7 +198,7 @@ class AccountManager:
     @contextmanager
     def lease(self, account, stop=None, timeout=60, recover=True):
         profile, home = self._profile(account)
-        stop = stop or threading.Event()
+        stop = stop if stop is not None else self.stop
         lockpath = home / '.credential.lock'
         if lockpath.is_symlink(): raise AccountError('Invalid account lock.')
         fd = os.open(lockpath, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
@@ -286,6 +287,37 @@ class AccountManager:
             _write(journal, pending)
         for name in names: (target / name).unlink(missing_ok=True)
         journal.unlink()
+
+    @contextmanager
+    def session_cleanup(self, accounts):
+        """Recover refreshed credentials before any conversation files disappear.
+
+        All branch leases stay held through removal. A native process surviving
+        a controller crash still owns its inherited lease and blocks cleanup.
+        """
+        if not isinstance(accounts, list): raise AccountError('Invalid session accounts.')
+        profiles = {}
+        for account in accounts:
+            if not isinstance(account, dict) or account.get('provider') not in _CREDENTIALS:
+                raise AccountError('Invalid session account.')
+            identifier = _identity(account.get('id'))
+            if identifier in profiles and profiles[identifier]['provider'] != account['provider']:
+                raise AccountError('The account provider cannot be changed.')
+            profiles[identifier] = account
+        with ExitStack() as stack:
+            existing = []
+            for identifier, account in sorted(profiles.items()):
+                path = self.root / identifier
+                if path.is_symlink(): raise AccountError('Account storage must not contain symbolic links.')
+                # Removed or never-prepared accounts have nothing to recover.
+                # Do not recreate their native storage during session deletion.
+                if not path.exists(): continue
+                stack.enter_context(self.lease(account, timeout=0, recover=False))
+                existing.append(account)
+            for account in existing:
+                profile, home = self._profile(account)
+                self._recover(profile, home)
+            yield
 
     @contextmanager
     def credential_session(self, account, session_home, base_env=None, stop=None):
@@ -394,7 +426,7 @@ class AccountManager:
         from .providers import _Pipe, _Codex, _Callbacks, ProviderError
         environment = self.environment(account)
         pipe = _Pipe(self._command(account), environment['AGENTDOCK_ACCOUNT_HOME'], environment,
-                     threading.Event(), 25)
+                     self.stop, 25)
         try:
             adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
             adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
@@ -412,7 +444,7 @@ class AccountManager:
                     'email': _safe_label(value.get('email')) if valid else None,
                     'plan': _safe_label(value.get('planType')) if valid else None}
         environment = self.environment(account)
-        raw = _bounded_command(self._command(account), environment, environment['AGENTDOCK_ACCOUNT_HOME'])
+        raw = _bounded_command(self._command(account), environment, environment['AGENTDOCK_ACCOUNT_HOME'], stop=self.stop)
         try: value = json.loads(raw)
         except ValueError: raise AccountError('Native account status is unavailable. Check the CLI version.') from None
         if not isinstance(value, dict): raise AccountError('Native account status is unavailable.')
@@ -463,7 +495,7 @@ class AccountManager:
                 # delete/overwrite a default CLI's login ourselves.
                 environment = self.environment(account)
                 command = self._command(account)[:-3] + ['auth', 'logout']
-                _bounded_command(command, environment, environment['AGENTDOCK_ACCOUNT_HOME'], require_success=True)
+                _bounded_command(command, environment, environment['AGENTDOCK_ACCOUNT_HOME'], require_success=True, stop=self.stop)
             shutil.rmtree(home)
 
 
@@ -477,8 +509,10 @@ def _number(value, minimum, maximum):
     return value if type(value) in (int, float) and math.isfinite(value) and minimum <= value <= maximum else None
 
 
-def _bounded_command(command, environment, cwd, require_success=False):
+def _bounded_command(command, environment, cwd, require_success=False, *, stop=None):
     from .processes import stop_group
+    stop = stop if stop is not None else threading.Event()
+    if stop.is_set(): raise AccountError('Account operation cancelled.')
     environment = dict(environment)
     inherited = environment.pop('AGENTDOCK_ACCOUNT_LOCK_FD', None)
     descriptors = (int(inherited),) if inherited is not None else ()
@@ -492,16 +526,17 @@ def _bounded_command(command, environment, cwd, require_success=False):
         with selectors.DefaultSelector() as selector:
             selector.register(process.stdout, selectors.EVENT_READ)
             while True:
+                if stop.is_set(): raise AccountError('Account operation cancelled.')
                 if time.monotonic() >= deadline: raise AccountError('Native account status timed out.')
                 if not selector.select(.1): continue
                 data = os.read(process.stdout.fileno(), 8192)
                 if not data: break
                 output.extend(data)
                 if len(output) > 65536: raise AccountError('Native account status exceeded its size limit.')
-        try:
-            code = process.wait(timeout=max(.01, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            raise AccountError('Native account command timed out.') from None
+        while process.poll() is None:
+            if stop.wait(.05): raise AccountError('Account operation cancelled.')
+            if time.monotonic() >= deadline: raise AccountError('Native account command timed out.')
+        code = process.returncode
         if require_success and code != 0: raise AccountError('Native account logout failed. The account was retained.')
         return output.decode('utf-8', errors='replace')
     finally:

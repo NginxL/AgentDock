@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   Account,
   AccountSettings,
@@ -206,6 +207,8 @@ export function SessionAccountControls({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<AccountSettings>(accountSettings(session));
   const [saving, setSaving] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null);
   const previousRequest = useRef(openRequest);
   useEffect(() => {
     if (previousRequest.current === openRequest) return;
@@ -213,6 +216,11 @@ export function SessionAccountControls({
     setDraft(accountSettings(session));
     setOpen(true);
   }, [openRequest, session]);
+  useEffect(() => {
+    if (!open) return;
+    panel.current?.focus();
+    return () => trigger.current?.focus();
+  }, [open]);
   if (!supportsAccounts(agent.provider)) return null;
   const selected = accounts.find(
     (account) => account.id === session.account_id,
@@ -229,6 +237,7 @@ export function SessionAccountControls({
   return (
     <div className="session-account-controls">
       <button
+        ref={trigger}
         type="button"
         className="text-button"
         aria-expanded={open}
@@ -241,75 +250,110 @@ export function SessionAccountControls({
         {title}
         <span aria-hidden="true">⌄</span>
       </button>
-      {open && (
-        <section
-          className="session-account-panel"
-          aria-label={t("会话账号", "Conversation account")}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              setOpen(false);
-            }
-          }}
-        >
-          <div className="panel-heading">
-            <strong>{t("会话账号", "Conversation account")}</strong>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={t("关闭账号设置", "Close account settings")}
-              onClick={() => setOpen(false)}
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <AccountSelection
-            accounts={accounts}
-            provider={agent.provider}
-            environment={
-              session.environment_id ?? agent.environment_id ?? "local"
-            }
-            value={draft}
-            onChange={setDraft}
-            disabled={busy || saving || demo}
-            t={t}
-          />
-          <p className="form-hint">
-            {busy
-              ? t(
-                  "任务结束后可更换账号。",
-                  "Change accounts after the current task finishes.",
-                )
-              : t(
-                  "切换后将用新账号继续；已有回复保留，其他会话不受影响。",
-                  "Continue with the new account. Existing replies stay here; other conversations keep their accounts.",
-                )}
-          </p>
-          <button
-            type="button"
-            className="primary"
-            disabled={busy || saving || demo}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                if (
-                  await mutate(
-                    `/api/sessions/${encodeURIComponent(session.id)}/account`,
-                    accountSettings(draft),
-                  )
-                )
-                  setOpen(false);
-              } finally {
-                setSaving(false);
-              }
+      {open &&
+        createPortal(
+          <div
+            className="session-account-overlay"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) setOpen(false);
             }}
           >
-            {saving
-              ? t("保存中…", "Saving…")
-              : t("保存账号设置", "Save account settings")}
-          </button>
-        </section>
-      )}
+            <section
+              ref={panel}
+              tabIndex={-1}
+              className="session-account-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("会话账号", "Conversation account")}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.stopPropagation();
+                  setOpen(false);
+                } else if (event.key === "Tab") {
+                  const controls = Array.from(
+                    event.currentTarget.querySelectorAll<HTMLElement>(
+                      "button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href]",
+                    ),
+                  );
+                  const first = controls[0],
+                    last = controls.at(-1);
+                  if (
+                    event.shiftKey &&
+                    (document.activeElement === first ||
+                      document.activeElement === event.currentTarget)
+                  ) {
+                    event.preventDefault();
+                    last?.focus();
+                  } else if (
+                    !event.shiftKey &&
+                    document.activeElement === last
+                  ) {
+                    event.preventDefault();
+                    first?.focus();
+                  }
+                }
+              }}
+            >
+              <div className="panel-heading">
+                <strong>{t("会话账号", "Conversation account")}</strong>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={t("关闭账号设置", "Close account settings")}
+                  onClick={() => setOpen(false)}
+                >
+                  <Icon name="close" />
+                </button>
+              </div>
+              <AccountSelection
+                accounts={accounts}
+                provider={agent.provider}
+                environment={
+                  session.environment_id ?? agent.environment_id ?? "local"
+                }
+                value={draft}
+                onChange={setDraft}
+                disabled={busy || saving || demo}
+                t={t}
+              />
+              <p className="form-hint">
+                {busy
+                  ? t(
+                      "任务结束后可更换账号。",
+                      "Change accounts after the current task finishes.",
+                    )
+                  : t(
+                      "切换后将用新账号继续；已有回复保留，其他会话不受影响。",
+                      "Continue with the new account. Existing replies stay here; other conversations keep their accounts.",
+                    )}
+              </p>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || saving || demo}
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    if (
+                      await mutate(
+                        `/api/sessions/${encodeURIComponent(session.id)}/account`,
+                        accountSettings(draft),
+                      )
+                    )
+                      setOpen(false);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving
+                  ? t("保存中…", "Saving…")
+                  : t("保存账号设置", "Save account settings")}
+              </button>
+            </section>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

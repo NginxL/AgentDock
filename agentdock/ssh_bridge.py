@@ -48,9 +48,9 @@ class EventReader:
 
 def serve():
     stop, guard = threading.Event(), threading.Lock()
-    outgoing, watchers = queue.Queue(64), {}
+    outgoing, watchers, workers = queue.Queue(64), {}, set()
     capacity = threading.BoundedSemaphore(8)
-    catalog = Catalog({'execution_enabled': True, 'commands': commands()})
+    catalog = Catalog({'execution_enabled': True, 'commands': commands()}, stop=stop)
     for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
 
@@ -91,10 +91,12 @@ def serve():
     def perform(identifier, request):
         try:
             if request.get('op') == 'probe': catalog.invalidate()
-            value = catalog.read(request['provider']) if request.get('op') == 'models' and not request.get('account') else rpc(request)
+            value = rpc(request, stop=stop, catalog=catalog)
             send(identifier, value)
         except Exception: send(identifier, ok=False)
-        finally: capacity.release()
+        finally:
+            capacity.release()
+            with guard: workers.discard(threading.current_thread())
 
     def reader():
         try:
@@ -121,7 +123,14 @@ def serve():
                     try: send(identifier, rpc(request))
                     except Exception: send(identifier, ok=False)
                 elif capacity.acquire(blocking=False):
-                    threading.Thread(target=perform, args=(identifier, request), daemon=True).start()
+                    # Register before starting so shutdown cannot miss a CLI
+                    # spawned concurrently with the input stream closing.
+                    with guard:
+                        if stop.is_set():
+                            capacity.release(); return
+                        worker = threading.Thread(target=perform, args=(identifier, request), daemon=True)
+                        workers.add(worker)
+                        worker.start()
                 else: send(identifier, ok=False)
         except Exception: pass
         finally: stop.set()
@@ -135,6 +144,9 @@ def serve():
         stop.set()
         with guard:
             for cancelled in watchers.values(): cancelled.set()
-        # Finish metadata readers' finally blocks so their detached CLI groups
-        # cannot survive a normal channel close. Durable run workers use leases.
+            pending = list(workers)
+        # All transient RPCs share cancellation and finish their process/lease
+        # cleanup before this bridge exits. Durable run/login workers own their
+        # separate leases and timeouts and intentionally survive reconnects.
         catalog.close()
+        for worker in pending: worker.join()
