@@ -196,6 +196,7 @@ it("edits, disables and explicitly deletes an account while preserving a missing
     ],
   });
   expect(screen.getByText("未知")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "删除账号" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "设置" }));
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "Personal 2" },
@@ -212,6 +213,14 @@ it("edits, disables and explicitly deletes an account while preserving a missing
   expect(mutate).toHaveBeenCalledWith("/api/accounts/personal", {
     enabled: false,
   });
+  fireEvent.click(screen.getByRole("button", { name: "设置" }));
+  expect(screen.queryByLabelText("名称")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "删除账号" }));
+  fireEvent.click(screen.getByRole("button", { name: "删除账号" }));
+  expect(screen.queryByRole("button", { name: "确认删除账号" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "删除账号" }));
+  fireEvent.click(screen.getByRole("button", { name: "关闭删除确认" }));
+  expect(screen.queryByRole("button", { name: "确认删除账号" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "删除账号" }));
   expect(mutate).not.toHaveBeenCalledWith("/api/accounts/personal/delete", {});
   fireEvent.click(screen.getByRole("button", { name: "确认删除账号" }));

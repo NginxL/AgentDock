@@ -207,6 +207,8 @@ def account_manager(request):
         raise ValueError('Invalid account profile')
     if request.get('provider', account['provider']) != account['provider']:
         raise ValueError('Account service mismatch')
+    if 'generation' in account and (type(account['generation']) is not int or not 0 <= account['generation'] < 2**63):
+        raise ValueError('Invalid account login generation')
     parent = run_path(request['controller'], account['id']).parent
     return AccountManager(parent / 'accounts', commands()), account
 

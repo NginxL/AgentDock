@@ -372,6 +372,31 @@ except AccountError: print('busy')
         self.manager.remove(self.claude)
         self.assertFalse(own.parent.exists())
 
+    def test_never_prepared_claude_account_can_be_removed_without_cli(self):
+        # A UI poll may have created AgentDock metadata, but no native command
+        # has been prepared and the provider home has never existed.
+        self.assertEqual(self.manager.status(self.claude), {'status': 'idle'})
+        with patch.object(self.manager, '_command', side_effect=AccountError('CLI unavailable')) as command:
+            self.manager.remove(dict(self.claude, generation=0))
+            command.assert_not_called()
+        self.assertFalse((self.manager.root/self.claude['id']).exists())
+
+    def test_claude_native_home_without_file_still_requires_keychain_logout(self):
+        native = Path(self.manager.environment(self.claude, {})['CLAUDE_CONFIG_DIR'])
+        self.assertFalse((native/'.credentials.json').exists())
+        with patch.object(self.manager, '_command', side_effect=AccountError('CLI unavailable')) as command:
+            with self.assertRaisesRegex(AccountError, 'CLI unavailable'):
+                self.manager.remove(dict(self.claude, generation=0))
+            command.assert_called_once()
+        self.assertTrue(native.parent.exists())
+
+    def test_claude_previous_login_generation_requires_logout_when_home_is_missing(self):
+        with patch.object(self.manager, '_command', side_effect=AccountError('CLI unavailable')) as command:
+            with self.assertRaisesRegex(AccountError, 'CLI unavailable'):
+                self.manager.remove(dict(self.claude, generation=1))
+            command.assert_called_once()
+        self.assertTrue((self.manager.root/self.claude['id']).exists())
+
     def test_failed_native_logout_retains_account_and_safe_error(self):
         own=Path(self.manager.environment(self.claude,{})['CLAUDE_CONFIG_DIR'])
         self.manager.commands_config['claude']=[sys.executable,'-c','import sys; print("secret-token"); sys.exit(1)']

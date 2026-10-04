@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from agentdock.account_service import AccountService, account_usage
 from agentdock.accounts import AccountError
@@ -131,11 +131,29 @@ class AccountServiceTests(unittest.TestCase):
         self.service.start_login(remote['id'])
         args, kwargs = self.runtime.remote.rpc.call_args
         self.assertEqual(args[0],device['id'])
-        self.assertEqual(args[1]['account'], {'id':remote['id'],'provider':'claude'})
+        self.assertEqual(args[1]['account'], {'id':remote['id'],'provider':'claude','generation':0})
         self.assertEqual(args[1]['controller'],self.store.controller_id)
         self.assertTrue(kwargs['install'])
         self.service.manager.start.assert_not_called()
         self.assertNotIn('credentials',json.dumps(args))
+
+    def test_remote_never_prepared_claude_account_can_be_removed_without_cli(self):
+        from agentdock import ssh_worker
+        device = self.store.add_environment('Remote', 'fixture-box')
+        account = self.store.add_account('claude', 'Unused account', device['id'])
+        self.runtime.remote.rpc.side_effect = lambda _, request, **kwargs: ssh_worker.rpc(request)
+        with patch.object(ssh_worker, 'ROOT', Path(self.temp.name)/'remote'), \
+             patch.object(ssh_worker, 'commands', return_value={}), \
+             patch('agentdock.accounts.AccountManager._command', side_effect=AssertionError('No native invocation expected')):
+            self.assertEqual(self.service.remove(account['id']), {'ok': True})
+        self.assertEqual(self.store.get_account(account['id'])['status'], 'removed')
+
+    def test_remote_account_generation_is_validated_before_native_operations(self):
+        from agentdock import ssh_worker
+        for generation in (False, -1, '0', 2**63):
+            with self.subTest(generation=generation), self.assertRaisesRegex(ValueError, 'generation'):
+                ssh_worker.account_manager({'controller': self.store.controller_id, 'account': {
+                    'id': self.account['id'], 'provider': 'claude', 'generation': generation}})
 
     def test_http_models_cannot_mix_device_and_account_and_review_mode_never_authenticates(self):
         status,_ = self.call('GET','/api/models/claude?account_id='+self.account['id'])

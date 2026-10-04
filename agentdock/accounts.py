@@ -451,8 +451,13 @@ class AccountManager:
         with self.lease(account, timeout=0, recover=False):
             if self.status(account).get('status') not in _TERMINAL | {'idle'}:
                 raise AccountError('Cancel the active login before removing this account.')
+            # Every native command first creates its provider home. Only our
+            # own untouched metadata proves native storage was never prepared;
+            # missing credential files alone cannot rule out a Keychain login.
+            untouched = type(account.get('generation')) is int and account['generation'] == 0 and all(
+                path.name in ('profile.json', '.credential.lock') for path in home.iterdir())
             self._recover(profile, home, discard=True)
-            if account['provider'] == 'claude':
+            if account['provider'] == 'claude' and not untouched:
                 # Native logout owns the account-scoped Keychain item on macOS
                 # and the credential file elsewhere. Never call security(1) or
                 # delete/overwrite a default CLI's login ourselves.

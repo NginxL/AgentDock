@@ -438,7 +438,62 @@ function AccountCard({
         >
           {t("设置", "Settings")}
         </button>
+        <button
+          type="button"
+          className="text-button danger-text"
+          disabled={busy || active}
+          aria-expanded={deleting}
+          onClick={() => setDeleting(!deleting)}
+        >
+          {t("删除账号", "Delete account")}
+        </button>
       </div>
+      {deleting && (
+        <section
+          className="account-delete"
+          aria-label={t("删除账号确认", "Confirm account removal")}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setDeleting(false);
+          }}
+        >
+          <div className="panel-heading">
+            <strong>
+              {t(`删除「${account.label}」？`, `Delete “${account.label}”?`)}
+            </strong>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={t("关闭删除确认", "Close delete confirmation")}
+              onClick={() => setDeleting(false)}
+            >
+              <Icon name="close" />
+            </button>
+          </div>
+          <p>
+            {t(
+              "删除此账号保存的登录凭据。已有会话和回复保留；使用此账号的会话需要重新选择账号。",
+              "Delete this saved sign-in. Existing conversations and replies remain; conversations using it will need another account.",
+            )}
+          </p>
+          <div className="button-row">
+            <button
+              type="button"
+              className="secondary danger"
+              disabled={busy || active}
+              onClick={() => void mutate(`${path}/delete`, {})}
+            >
+              {t("确认删除账号", "Confirm account deletion")}
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setDeleting(false)}
+            >
+              {t("取消", "Cancel")}
+            </button>
+          </div>
+        </section>
+      )}
       {login && (
         <AccountLogin
           key={loginVersion}
@@ -507,43 +562,7 @@ function AccountCard({
                 ? t("启用账号", "Enable account")
                 : t("停用账号", "Disable account")}
             </button>
-            <button
-              type="button"
-              className="text-button danger"
-              disabled={busy || active}
-              aria-expanded={deleting}
-              onClick={() => setDeleting(!deleting)}
-            >
-              {t("删除账号", "Delete account")}
-            </button>
           </div>
-          {deleting && (
-            <div className="account-delete">
-              <p>
-                {t(
-                  "删除此账号保存的登录凭据。已有会话和回复保留；使用此账号的会话需要重新选择账号。",
-                  "Delete this saved sign-in. Existing conversations and replies remain; conversations using it will need another account.",
-                )}
-              </p>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="secondary danger"
-                  disabled={busy || active}
-                  onClick={() => void mutate(`${path}/delete`, {})}
-                >
-                  {t("确认删除账号", "Confirm account deletion")}
-                </button>
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => setDeleting(false)}
-                >
-                  {t("取消", "Cancel")}
-                </button>
-              </div>
-            </div>
-          )}
         </form>
       )}
     </article>

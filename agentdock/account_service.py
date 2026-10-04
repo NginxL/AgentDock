@@ -42,7 +42,7 @@ class AccountService:
         if account['environment_id'] != 'local':
             return self.runtime.remote.rpc(account['environment_id'], {
                 'op': 'account', 'controller': self.store.controller_id,
-                'account': {'id': account['id'], 'provider': account['provider']},
+                'account': {'id': account['id'], 'provider': account['provider'], 'generation': account['generation']},
                 'action': operation, **arguments}, install=True)
         method = getattr(self.manager, operation)
         return method(account, **arguments)
