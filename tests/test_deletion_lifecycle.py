@@ -1,5 +1,6 @@
 """Slow external cleanup cannot block the workbench or admit new work."""
 
+import sys
 import tempfile
 import threading
 import unittest
@@ -7,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
-from agentdock.store import Conflict, Missing, Store
 from agentdock.runtime import Runtime
+from agentdock.store import Conflict, Missing, Store
 
 
 class DeletionLifecycleTests(unittest.TestCase):
@@ -87,7 +88,19 @@ class DeletionLifecycleTests(unittest.TestCase):
         self.assertEqual(self.store.get_session(self.other["id"])["title"], "Unrelated")
 
     def test_external_cleanup_does_not_hold_the_runtime_dispatch_lock(self):
-        runtime = Runtime(self.store, {"execution_enabled": True})
+        runtime = Runtime(
+            self.store,
+            {
+                "execution_enabled": True,
+                "commands": {
+                    "codex": [
+                        sys.executable,
+                        "-c",
+                        "raise AssertionError('The queued fixture must not execute')",
+                    ]
+                },
+            },
+        )
         entered, release = threading.Event(), threading.Event()
 
         def cleanup(*_):
