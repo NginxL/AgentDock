@@ -1,4 +1,5 @@
 """Process-group cleanup shared by native sessions and bounded quota probes."""
+
 import os
 import signal
 import subprocess
@@ -20,7 +21,7 @@ def stop_group(process):
                     raise
                 break
             try:
-                process.wait(timeout=.2)
+                process.wait(timeout=0.2)
             except subprocess.TimeoutExpired:
                 pass
         try:

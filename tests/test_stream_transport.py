@@ -1,23 +1,25 @@
 """Real framed pipes, detached fake native workers, and durable replay; no network/model."""
+
 import json
 import os
-import signal
 import shutil
+import signal
 import subprocess
-from pathlib import Path
 import sys
 import threading
 import time
 import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
-from agentdock.remote import BOOTSTRAP, RemoteManager
-from agentdock.ssh_transport import Channel, TransportError
-from agentdock.providers import ProviderCancelled
-from agentdock.ssh_bridge import EventReader
-from agentdock.accounts import AccountManager
 import test_remote as fixtures
+
+from agentdock.accounts import AccountManager
+from agentdock.providers import ProviderCancelled
+from agentdock.remote import BOOTSTRAP, RemoteManager
+from agentdock.ssh_bridge import EventReader
+from agentdock.ssh_transport import Channel, TransportError
 
 
 class StreamTransportTests(unittest.TestCase):
@@ -26,16 +28,30 @@ class StreamTransportTests(unittest.TestCase):
         self.fixture.setUp()
         self.fixture.manager.close()
         self.channels = []
+
         def factory(argv, payload):
             f = self.fixture
-            channel = Channel([sys.executable, '-u', '-c', BOOTSTRAP], payload,
-                env={**os.environ, 'HOME': str(f.home), 'PATH': str(f.home/'.local/bin') + os.pathsep + os.environ['PATH'],
-                     'FIXTURE_SCENARIO': f.scenario}, cwd=f.home)
+            channel = Channel(
+                [sys.executable, "-u", "-c", BOOTSTRAP],
+                payload,
+                env={
+                    **os.environ,
+                    "HOME": str(f.home),
+                    "PATH": str(f.home / ".local/bin")
+                    + os.pathsep
+                    + os.environ["PATH"],
+                    "FIXTURE_SCENARIO": f.scenario,
+                },
+                cwd=f.home,
+            )
             self.channels.append(channel)
             return channel
-        self.fixture.manager = RemoteManager(self.fixture.store, True, channel_factory=factory)
+
+        self.fixture.manager = RemoteManager(
+            self.fixture.store, True, channel_factory=factory
+        )
         self.manager = self.fixture.manager
-        self.environment = self.fixture.environment['id']
+        self.environment = self.fixture.environment["id"]
 
     def tearDown(self):
         self.fixture.tearDown()
@@ -43,30 +59,58 @@ class StreamTransportTests(unittest.TestCase):
             self.assertFalse(channel.thread.is_alive())
             self.assertIsNotNone(channel.process.poll())
 
-    def connect(self, scenario='progress'):
+    def connect(self, scenario="progress"):
         self.fixture.scenario = scenario
         self.manager.connect(self.environment)
 
     def test_concurrent_turns_and_directory_reads_share_one_channel(self):
         self.connect()
-        sessions = [self.fixture.make_agent(p)[1] for p in ('codex', 'claude')]
+        sessions = [self.fixture.make_agent(p)[1] for p in ("codex", "claude")]
         with ThreadPoolExecutor(max_workers=3) as pool:
             turns = [pool.submit(self.fixture.run_turn, s) for s in sessions]
-            directory = pool.submit(self.manager.rpc, self.environment, {'op':'directories', 'path':'~'})
-            self.assertEqual(directory.result(timeout=5)['path'], str(self.fixture.home.resolve()))
-            self.assertEqual([turn.result(timeout=8)[0] for turn in turns], ['hello world', 'hello world'])
+            directory = pool.submit(
+                self.manager.rpc, self.environment, {"op": "directories", "path": "~"}
+            )
+            self.assertEqual(
+                directory.result(timeout=5)["path"], str(self.fixture.home.resolve())
+            )
+            self.assertEqual(
+                [turn.result(timeout=8)[0] for turn in turns],
+                ["hello world", "hello world"],
+            )
         self.assertEqual(len(self.channels), 1)
 
     def test_cleanup_after_upgrade_bootstraps_a_fresh_channel(self):
         # Mirror an app restart: no live channel and only an older remote bundle.
-        shutil.rmtree(self.fixture.home/'.local/share/agentdock/ssh/runtimes'/self.manager.digest)
-        controller=self.fixture.store.controller_id
-        session=str(uuid.uuid4())
-        path=self.fixture.home/'.local/share/agentdock/ssh/controllers'/controller/'sessions'/session
+        shutil.rmtree(
+            self.fixture.home
+            / ".local/share/agentdock/ssh/runtimes"
+            / self.manager.digest
+        )
+        controller = self.fixture.store.controller_id
+        session = str(uuid.uuid4())
+        path = (
+            self.fixture.home
+            / ".local/share/agentdock/ssh/controllers"
+            / controller
+            / "sessions"
+            / session
+        )
         path.mkdir(parents=True)
-        (path/'history').write_text('owned fixture')
-        self.assertEqual(self.manager.rpc(self.environment, {'op':'delete_session',
-            'controller':controller, 'session_id':session, 'run_ids':[]}, install=True), {'ok':True})
+        (path / "history").write_text("owned fixture")
+        self.assertEqual(
+            self.manager.rpc(
+                self.environment,
+                {
+                    "op": "delete_session",
+                    "controller": controller,
+                    "session_id": session,
+                    "run_ids": [],
+                },
+                install=True,
+            ),
+            {"ok": True},
+        )
         self.assertFalse(path.exists())
         self.assertEqual(len(self.channels), 1)
 
@@ -74,125 +118,245 @@ class StreamTransportTests(unittest.TestCase):
         self.connect()
         _, session = self.fixture.make_agent()
         events, dropped = [], False
+
         def emit(kind, payload):
             nonlocal dropped
             events.append((kind, payload))
-            if kind == 'reasoning_chunk' and not dropped:
+            if kind == "reasoning_chunk" and not dropped:
                 dropped = True
                 self.channels[0].close()
-        result = self.manager.run(self.environment, str(uuid.uuid4()),
-            {'provider':'codex', 'cwd':session['workspace'], 'session_id':session['id'], 'prompt':'fixture', 'timeout':12},
-            threading.Event(), emit, lambda *a:None, lambda *a:None, lambda *a:None)
-        self.assertEqual(result, 'hello world')
+
+        result = self.manager.run(
+            self.environment,
+            str(uuid.uuid4()),
+            {
+                "provider": "codex",
+                "cwd": session["workspace"],
+                "session_id": session["id"],
+                "prompt": "fixture",
+                "timeout": 12,
+            },
+            threading.Event(),
+            emit,
+            lambda *a: None,
+            lambda *a: None,
+            lambda *a: None,
+        )
+        self.assertEqual(result, "hello world")
         self.assertTrue(dropped)
-        self.assertEqual(''.join(p['text'] for k, p in events if k == 'reasoning_chunk'), 'Inspect private-token')
-        contract = Path(session['workspace'].replace('~', str(self.fixture.home), 1))/'fake-contract.jsonl'
-        self.assertEqual(sum(json.loads(line).get('method') == 'turn/start' for line in contract.read_text().splitlines()), 1)
-        self.assertIn(('transport_status', {'status':'connected'}), events)
-        self.assertEqual(self.fixture.store.get_environment(self.environment)['status'], 'connected')
+        self.assertEqual(
+            "".join(p["text"] for k, p in events if k == "reasoning_chunk"),
+            "Inspect private-token",
+        )
+        contract = (
+            Path(session["workspace"].replace("~", str(self.fixture.home), 1))
+            / "fake-contract.jsonl"
+        )
+        self.assertEqual(
+            sum(
+                json.loads(line).get("method") == "turn/start"
+                for line in contract.read_text().splitlines()
+            ),
+            1,
+        )
+        self.assertIn(("transport_status", {"status": "connected"}), events)
+        self.assertEqual(
+            self.fixture.store.get_environment(self.environment)["status"], "connected"
+        )
 
     def test_permissions_can_return_while_other_requests_are_active(self):
-        self.connect('permission')
-        sessions = [self.fixture.make_agent(p)[1] for p in ('codex', 'claude')]
+        self.connect("permission")
+        sessions = [self.fixture.make_agent(p)[1] for p in ("codex", "claude")]
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(self.fixture.run_turn, sessions))
-        self.assertEqual([result[0] for result in results], ['hello world', 'hello world'])
+        self.assertEqual(
+            [result[0] for result in results], ["hello world", "hello world"]
+        )
         self.assertEqual(len(self.channels), 1)
 
-    def test_cancel_is_not_blocked_by_slow_models_and_does_not_close_other_subscription(self):
-        self.connect('hang')
+    def test_cancel_is_not_blocked_by_slow_models_and_does_not_close_other_subscription(
+        self,
+    ):
+        self.connect("hang")
         identities = []
         for _ in range(2):
             _, session = self.fixture.make_agent()
-            identity = {'controller':self.fixture.store.controller_id, 'run_id':str(uuid.uuid4())}
-            self.manager.rpc(self.environment, {**identity, 'op':'start', 'spec':{
-                'provider':'codex','cwd':session['workspace'],'session_id':session['id'],'prompt':'fixture','timeout':8}})
+            identity = {
+                "controller": self.fixture.store.controller_id,
+                "run_id": str(uuid.uuid4()),
+            }
+            self.manager.rpc(
+                self.environment,
+                {
+                    **identity,
+                    "op": "start",
+                    "spec": {
+                        "provider": "codex",
+                        "cwd": session["workspace"],
+                        "session_id": session["id"],
+                        "prompt": "fixture",
+                        "timeout": 8,
+                    },
+                },
+            )
             identities.append(identity)
-        watch = self.manager._watch(self.environment, {**identities[1], 'after':0}, threading.Event())
+        watch = self.manager._watch(
+            self.environment, {**identities[1], "after": 0}, threading.Event()
+        )
         with ThreadPoolExecutor(max_workers=1) as pool:
             cancelled = threading.Event()
-            model = pool.submit(self.manager.rpc, self.environment, {'op':'models','provider':'codex'}, stop=cancelled)
+            model = pool.submit(
+                self.manager.rpc,
+                self.environment,
+                {"op": "models", "provider": "codex"},
+                stop=cancelled,
+            )
             try:
-                time.sleep(.1)
+                time.sleep(0.1)
                 start = time.monotonic()
-                self.manager.rpc(self.environment, {**identities[0], 'op':'cancel'})
-                self.assertLess(time.monotonic() - start, .8)
+                self.manager.rpc(self.environment, {**identities[0], "op": "cancel"})
+                self.assertLess(time.monotonic() - start, 0.8)
                 self.assertFalse(self.channels[0].closed.is_set())
                 value = watch.next(timeout=1)
-                self.assertIn(value['state']['status'], ('starting','running'))
+                self.assertIn(value["state"]["status"], ("starting", "running"))
             finally:
                 cancelled.set()
-                with self.assertRaises(ProviderCancelled): model.result(timeout=2)
+                with self.assertRaises(ProviderCancelled):
+                    model.result(timeout=2)
                 watch.close()
-                for identity in identities: self.manager.rpc(self.environment, {**identity, 'op':'cancel'})
-                time.sleep(.8)
-        pid = int((self.fixture.home/'fake-pid').read_text())
+                for identity in identities:
+                    self.manager.rpc(self.environment, {**identity, "op": "cancel"})
+                time.sleep(0.8)
+        pid = int((self.fixture.home / "fake-pid").read_text())
         self.manager.close()
-        with self.assertRaises(ProcessLookupError): os.kill(pid, 0)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(pid, 0)
 
-    def test_incremental_reader_waits_for_complete_records_and_honors_resume_cursor(self):
-        path = self.fixture.home/'records'; path.mkdir()
-        (path/'state.json').write_text(json.dumps({'status':'running', 'updated_at':time.time()}))
-        log = path/'events.jsonl'
+    def test_incremental_reader_waits_for_complete_records_and_honors_resume_cursor(
+        self,
+    ):
+        path = self.fixture.home / "records"
+        path.mkdir()
+        (path / "state.json").write_text(
+            json.dumps({"status": "running", "updated_at": time.time()})
+        )
+        log = path / "events.jsonl"
         log.write_text('{"seq":1}\n{"seq":2')
         reader = EventReader(path, 1)
-        self.assertEqual(reader.poll()['events'], [])
+        self.assertEqual(reader.poll()["events"], [])
         self.assertEqual(reader.offset, len(b'{"seq":1}\n'))
-        with log.open('a') as out: out.write('}\n{"seq":3}\n')
-        self.assertEqual([e['seq'] for e in reader.poll()['events']], [2,3])
-        self.assertEqual(reader.poll()['events'], [])
+        with log.open("a") as out:
+            out.write('}\n{"seq":3}\n')
+        self.assertEqual([e["seq"] for e in reader.poll()["events"]], [2, 3])
+        self.assertEqual(reader.poll()["events"], [])
 
-    def test_disconnect_stops_all_transient_native_readers_and_releases_account_locks(self):
-        self.connect('descendant')
+    def test_disconnect_stops_all_transient_native_readers_and_releases_account_locks(
+        self,
+    ):
+        self.connect("descendant")
         controller = self.fixture.store.controller_id
-        accounts = self.fixture.home/'.local/share/agentdock/ssh/controllers'/controller/'accounts'
-        cases = [('models', 'codex'), ('models', 'claude'), ('check', 'codex'),
-                 ('check', 'claude'), ('refresh', 'codex'), ('refresh', 'claude'),
-                 ('remove', 'claude'), ('quota', 'codex'), ('delete_session', 'codex')]
+        accounts = (
+            self.fixture.home
+            / ".local/share/agentdock/ssh/controllers"
+            / controller
+            / "accounts"
+        )
+        cases = [
+            ("models", "codex"),
+            ("models", "claude"),
+            ("check", "codex"),
+            ("check", "claude"),
+            ("refresh", "codex"),
+            ("refresh", "claude"),
+            ("remove", "claude"),
+            ("quota", "codex"),
+            ("delete_session", "codex"),
+        ]
         for operation, provider in cases:
             with self.subTest(operation=operation, provider=provider):
-                account = {'id': str(uuid.uuid4()), 'provider': provider, 'generation': 1}
-                managed = operation not in ('quota', 'delete_session')
-                directory = accounts/account['id']/provider if managed else self.fixture.home
-                for name in ('fake-pid', 'fake-child-pid'): (directory/name).unlink(missing_ok=True)
-                request = {'op': operation if operation in ('models', 'quota', 'delete_session') else 'account',
-                           'provider': provider, 'controller': controller}
-                if managed: request['account'] = account
-                if request['op'] == 'account': request['action'] = operation
-                if operation == 'delete_session':
+                account = {
+                    "id": str(uuid.uuid4()),
+                    "provider": provider,
+                    "generation": 1,
+                }
+                managed = operation not in ("quota", "delete_session")
+                directory = (
+                    accounts / account["id"] / provider
+                    if managed
+                    else self.fixture.home
+                )
+                for name in ("fake-pid", "fake-child-pid"):
+                    (directory / name).unlink(missing_ok=True)
+                request = {
+                    "op": operation
+                    if operation in ("models", "quota", "delete_session")
+                    else "account",
+                    "provider": provider,
+                    "controller": controller,
+                }
+                if managed:
+                    request["account"] = account
+                if request["op"] == "account":
+                    request["action"] = operation
+                if operation == "delete_session":
                     native = str(uuid.uuid4())
-                    request.update(session_id=str(uuid.uuid4()), run_ids=[], native_session_id=native)
-                    folder = self.fixture.home/'.codex/sessions'
+                    request.update(
+                        session_id=str(uuid.uuid4()),
+                        run_ids=[],
+                        native_session_id=native,
+                    )
+                    folder = self.fixture.home / ".codex/sessions"
                     folder.mkdir(parents=True)
-                    (folder/(native+'.jsonl')).write_text(json.dumps({'type': 'session_meta',
-                        'payload': {'id': native, 'originator': 'agentdock'}})+'\n')
+                    (folder / (native + ".jsonl")).write_text(
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": native, "originator": "agentdock"},
+                            }
+                        )
+                        + "\n"
+                    )
                 pid = None
                 try:
                     with ThreadPoolExecutor(max_workers=1) as pool:
-                        future = pool.submit(self.manager.rpc, self.environment, request)
+                        future = pool.submit(
+                            self.manager.rpc, self.environment, request
+                        )
                         deadline = time.monotonic() + 5
-                        while not (directory/'fake-child-pid').exists() and time.monotonic() < deadline:
-                            time.sleep(.02)
-                        self.assertTrue((directory/'fake-child-pid').exists())
-                        pid = int((directory/'fake-pid').read_text())
-                        child = int((directory/'fake-child-pid').read_text())
+                        while (
+                            not (directory / "fake-child-pid").exists()
+                            and time.monotonic() < deadline
+                        ):
+                            time.sleep(0.02)
+                        self.assertTrue((directory / "fake-child-pid").exists())
+                        pid = int((directory / "fake-pid").read_text())
+                        child = int((directory / "fake-child-pid").read_text())
                         self.channels[-1].close()
-                        with self.assertRaises(TransportError): future.result(timeout=5)
-                    with self.assertRaises(ProcessLookupError): os.kill(pid, 0)
+                        with self.assertRaises(TransportError):
+                            future.result(timeout=5)
+                    with self.assertRaises(ProcessLookupError):
+                        os.kill(pid, 0)
                     # A reparented descendant may await PID 1's zombie reaper,
                     # but no executable child may survive the closed bridge.
-                    state = subprocess.run(['ps', '-o', 'stat=', '-p', str(child)],
-                                           capture_output=True, text=True).stdout.strip()
-                    self.assertTrue(not state or state.startswith('Z'), state)
+                    state = subprocess.run(
+                        ["ps", "-o", "stat=", "-p", str(child)],
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip()
+                    self.assertTrue(not state or state.startswith("Z"), state)
                     if managed:
                         # The native process inherits this lease: its death is
                         # required before later turns/deletion can use it.
-                        with AccountManager(accounts).lease(account, timeout=0): pass
+                        with AccountManager(accounts).lease(account, timeout=0):
+                            pass
                 finally:
                     # Keep a regression failure from leaking its fixture CLI.
                     if pid is not None:
-                        try: os.killpg(pid, signal.SIGKILL)
-                        except ProcessLookupError: pass
+                        try:
+                            os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
 
 
-if __name__ == '__main__': unittest.main()
+if __name__ == "__main__":
+    unittest.main()

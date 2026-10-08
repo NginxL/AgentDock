@@ -1,5 +1,7 @@
 """Explicit immutable inputs to one native turn."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from threading import Event
 from typing import Any, Callable, Optional
@@ -21,7 +23,7 @@ class NativeTurn:
     model: Optional[str] = None
     effort: Optional[str] = None
     inherit_process_cwd: bool = False
-    permission_mode: str = 'ask'
+    permission_mode: str = "ask"
     session_home: Optional[str] = None
     base_environment: Optional[dict] = None
     managed_account: bool = False

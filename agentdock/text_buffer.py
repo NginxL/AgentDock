@@ -1,8 +1,11 @@
 """Bounded incremental text, independent of a turn's total output volume."""
+
 from collections import deque
 
 TEXT_LIMIT = 120_000
-TRUNCATED = '\n[Earlier output truncated; the native transcript retains the full response.]\n'
+TRUNCATED = (
+    "\n[Earlier output truncated; the native transcript retains the full response.]\n"
+)
 
 
 class TextBuffer:
@@ -27,7 +30,9 @@ class TextBuffer:
             self.truncated = True
 
     def text(self) -> str:
-        return (TRUNCATED if self.truncated else '') + b''.join(self.parts).decode(errors='ignore')
+        return (TRUNCATED if self.truncated else "") + b"".join(self.parts).decode(
+            errors="ignore"
+        )
 
 
 def bounded_text(value: str) -> str:

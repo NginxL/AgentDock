@@ -1,6 +1,6 @@
 """Opt-in, bounded usage helper. Provider credentials never enter the HTTP service."""
+
 from __future__ import annotations
-from .registry import PROVIDERS
 
 import json
 import math
@@ -10,9 +10,9 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from .processes import stop_group as _kill_group
-
 from .errors import Forbidden
+from .processes import stop_group as _kill_group
+from .registry import PROVIDERS
 
 ERRORS = {
     "authorization_required": "This legacy quota source is unavailable. Refresh to read the local snapshot.",
@@ -53,7 +53,13 @@ class QuotaService:
     MAX_AGE = 900
     AUTO_REFRESH_INTERVAL = 600
 
-    def __init__(self, store, command: list[str] | None, execution_enabled: bool, source="AgentDock"):
+    def __init__(
+        self,
+        store,
+        command: list[str] | None,
+        execution_enabled: bool,
+        source="AgentDock",
+    ):
         self.store, self.command = store, list(command) if command else None
         self.source = source
         self.execution_enabled = execution_enabled
@@ -71,9 +77,15 @@ class QuotaService:
         """One service-owned timer, independent of visible windows or browser tabs."""
         with self._lifecycle:
             self._ensure_open()
-            if not self.execution_enabled or not (self.command or self.remote) or self._auto_thread is not None:
+            if (
+                not self.execution_enabled
+                or not (self.command or self.remote)
+                or self._auto_thread is not None
+            ):
                 return
-            self._auto_thread = threading.Thread(target=self._auto_refresh, name="quota-refresh", daemon=True)
+            self._auto_thread = threading.Thread(
+                target=self._auto_refresh, name="quota-refresh", daemon=True
+            )
             self._auto_thread.start()
 
     def _auto_refresh(self):
@@ -83,8 +95,10 @@ class QuotaService:
                 if self._auto_stop.is_set():
                     return
                 try:
-                    if environment_id == 'local': self.refresh(provider)
-                    else: self.refresh(provider, environment_id=environment_id)
+                    if environment_id == "local":
+                        self.refresh(provider)
+                    else:
+                        self.refresh(provider, environment_id=environment_id)
                 except Forbidden:
                     return
                 except Exception:
@@ -93,9 +107,11 @@ class QuotaService:
             now = time.monotonic()
             deadline += self.AUTO_REFRESH_INTERVAL
             if deadline <= now:
-                deadline = now + self.AUTO_REFRESH_INTERVAL  # No catch-up burst after suspension.
+                deadline = (
+                    now + self.AUTO_REFRESH_INTERVAL
+                )  # No catch-up burst after suspension.
 
-    def refresh(self, provider: str, authorize=False, environment_id='local') -> dict:
+    def refresh(self, provider: str, authorize=False, environment_id="local") -> dict:
         if provider not in PROVIDERS:
             raise ValueError("Unsupported quota provider.")
         if provider not in self.store.configured_providers(environment_id):
@@ -106,14 +122,21 @@ class QuotaService:
             self._ensure_open()
             self._inflight += 1
         try:
-            if provider not in ('codex', 'claude'):
-                value = {'provider': provider, 'status': 'unknown', 'windows': [], 'fetched_at': None,
-                         'error_code': 'unavailable', 'source': 'AgentDock'}
+            if provider not in ("codex", "claude"):
+                value = {
+                    "provider": provider,
+                    "status": "unknown",
+                    "windows": [],
+                    "fetched_at": None,
+                    "error_code": "unavailable",
+                    "source": "AgentDock",
+                }
                 with self._lifecycle:
                     self._ensure_open()
                     self.store.set_quota(provider, value, environment_id)
                 return value
-            if environment_id != 'local': return self._remote_refresh(provider, environment_id)
+            if environment_id != "local":
+                return self._remote_refresh(provider, environment_id)
             return self._refresh(provider)
         finally:
             with self._lifecycle:
@@ -148,31 +171,72 @@ class QuotaService:
             with self._lifecycle:
                 self._ensure_open()
             if not self.execution_enabled:
-                return self._failure(provider, "Quota reads are disabled until execution is enabled.", "disabled", code="disabled")
+                return self._failure(
+                    provider,
+                    "Quota reads are disabled until execution is enabled.",
+                    "disabled",
+                    code="disabled",
+                )
             if not self.command:
-                return self._failure(provider, "Configure the local usage helper first.", code="helper_unconfigured")
-            if (not all(isinstance(arg, str) and arg and "\x00" not in arg for arg in self.command)):
-                return self._failure(provider, "Usage helper command configuration is invalid.", code="helper_config_invalid")
+                return self._failure(
+                    provider,
+                    "Configure the local usage helper first.",
+                    code="helper_unconfigured",
+                )
+            if not all(
+                isinstance(arg, str) and arg and "\x00" not in arg
+                for arg in self.command
+            ):
+                return self._failure(
+                    provider,
+                    "Usage helper command configuration is invalid.",
+                    code="helper_config_invalid",
+                )
             now = time.monotonic()
-            if provider in self._last_attempt and now - self._last_attempt[provider] < 60:
+            if (
+                provider in self._last_attempt
+                and now - self._last_attempt[provider] < 60
+            ):
                 cached = self.cached(provider)
                 if cached:
                     return self._expire(cached)
-                return self._failure(provider, "Please wait before refreshing again.", code="refresh_throttled")
+                return self._failure(
+                    provider,
+                    "Please wait before refreshing again.",
+                    code="refresh_throttled",
+                )
             self._last_attempt[provider] = now
             try:
                 raw = self._probe(provider)
-                if isinstance(raw, dict) and raw.get("provider") == provider and raw.get("error_code") in ERRORS:
-                    return self._failure(provider, ERRORS[raw["error_code"]], code=raw["error_code"])
+                if (
+                    isinstance(raw, dict)
+                    and raw.get("provider") == provider
+                    and raw.get("error_code") in ERRORS
+                ):
+                    return self._failure(
+                        provider, ERRORS[raw["error_code"]], code=raw["error_code"]
+                    )
                 quota = self._normalize(provider, raw)
             except Forbidden:
                 raise
             except TimeoutError:
-                return self._failure(provider, "Usage helper timed out; its process was stopped.", code="timeout")
+                return self._failure(
+                    provider,
+                    "Usage helper timed out; its process was stopped.",
+                    code="timeout",
+                )
             except (ValueError, UnicodeError, TypeError):
-                return self._failure(provider, "Usage helper returned an invalid quota snapshot.", code="invalid_snapshot")
+                return self._failure(
+                    provider,
+                    "Usage helper returned an invalid quota snapshot.",
+                    code="invalid_snapshot",
+                )
             except (OSError, RuntimeError):
-                return self._failure(provider, "Usage helper could not read this provider. Check its local login and permissions.", code="read_failed")
+                return self._failure(
+                    provider,
+                    "Usage helper could not read this provider. Check its local login and permissions.",
+                    code="read_failed",
+                )
             self._save(provider, quota)
             return quota
 
@@ -181,22 +245,33 @@ class QuotaService:
             key = (provider, environment_id)
             if time.monotonic() - self._last_attempt.get(key, -60) < 60:
                 cached = self.cached(provider, environment_id)
-                if cached: return cached
+                if cached:
+                    return cached
             self._last_attempt[key] = time.monotonic()
             try:
-                if not self.execution_enabled or not self.remote: raise ValueError('disabled')
-                raw = self.remote.rpc(environment_id, {'op': 'quota', 'provider': provider})
+                if not self.execution_enabled or not self.remote:
+                    raise ValueError("disabled")
+                raw = self.remote.rpc(
+                    environment_id, {"op": "quota", "provider": provider}
+                )
                 value = self._normalize(provider, raw)
             except Exception:
-                value = self.cached(provider, environment_id) or {'provider': provider, 'windows': [], 'fetched_at': None}
-                value.update(status='stale' if value.get('fetched_at') else 'unknown', error_code='remote_unavailable')
-            value.update(environment_id=environment_id, source='ssh')
+                value = self.cached(provider, environment_id) or {
+                    "provider": provider,
+                    "windows": [],
+                    "fetched_at": None,
+                }
+                value.update(
+                    status="stale" if value.get("fetched_at") else "unknown",
+                    error_code="remote_unavailable",
+                )
+            value.update(environment_id=environment_id, source="ssh")
             with self._lifecycle:
                 self._ensure_open()
                 self.store.set_quota(provider, value, environment_id)
             return value
 
-    def cached(self, provider: str, environment_id='local'):
+    def cached(self, provider: str, environment_id="local"):
         """Age a saved snapshot for display without starting a process or reading credentials."""
         if provider not in PROVIDERS:
             raise ValueError("Unsupported quota provider.")
@@ -212,9 +287,14 @@ class QuotaService:
         try:
             with self._lifecycle:
                 self._ensure_open()
-                process = subprocess.Popen(self.command + ["--probe", provider], stdin=subprocess.DEVNULL,
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                           start_new_session=True, bufsize=0)
+                process = subprocess.Popen(
+                    self.command + ["--probe", provider],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                    bufsize=0,
+                )
                 self._processes.add(process)
         except BaseException:
             selector.close()
@@ -222,7 +302,10 @@ class QuotaService:
         output, total = bytearray(), 0
         deadline = time.monotonic() + self.TIMEOUT
         try:
-            for stream, kind in ((process.stdout, "stdout"), (process.stderr, "stderr")):
+            for stream, kind in (
+                (process.stdout, "stdout"),
+                (process.stderr, "stderr"),
+            ):
                 selector.register(stream, selectors.EVENT_READ, kind)
             while selector.get_map():
                 if time.monotonic() >= deadline:
@@ -271,21 +354,39 @@ class QuotaService:
             if not isinstance(entry, dict):
                 raise ValueError("Invalid window")
             used = entry.get("usedPercent")
-            if used is not None and (isinstance(used, bool) or not isinstance(used, (int, float))
-                                     or not math.isfinite(used) or not 0 <= used <= 100):
+            if used is not None and (
+                isinstance(used, bool)
+                or not isinstance(used, (int, float))
+                or not math.isfinite(used)
+                or not 0 <= used <= 100
+            ):
                 raise ValueError("Invalid percentage")
             reset = _date(entry.get("resetsAt"))
             if entry.get("resetsAt") is not None and reset is None:
                 raise ValueError("Invalid reset date")
-            windows.append({
-                "label": _text(entry.get("title", entry.get("label")), 120) or "Quota",
-                "remaining_percent": None if used is None else round(100 - used, 4),
-                "reset_at": _iso(reset) if reset else None,
-            })
-        return self._expire({"provider": provider, "plan": _text(raw.get("plan"), 120),
-                             "windows": windows, "fetched_at": _iso(fetched),
-                             "status": "available" if any(w["remaining_percent"] is not None for w in windows) else "unknown",
-                             "source": "claude-desktop-snapshot" if provider == "claude" and raw.get("source") == "claude-desktop-snapshot" else self.source})
+            windows.append(
+                {
+                    "label": _text(entry.get("title", entry.get("label")), 120)
+                    or "Quota",
+                    "remaining_percent": None if used is None else round(100 - used, 4),
+                    "reset_at": _iso(reset) if reset else None,
+                }
+            )
+        return self._expire(
+            {
+                "provider": provider,
+                "plan": _text(raw.get("plan"), 120),
+                "windows": windows,
+                "fetched_at": _iso(fetched),
+                "status": "available"
+                if any(w["remaining_percent"] is not None for w in windows)
+                else "unknown",
+                "source": "claude-desktop-snapshot"
+                if provider == "claude"
+                and raw.get("source") == "claude-desktop-snapshot"
+                else self.source,
+            }
+        )
 
     def _expire(self, snapshot):
         # Return a copy so cache aging never mutates Store-owned values in memory.
@@ -313,9 +414,17 @@ class QuotaService:
                 quota = self._expire(previous)
                 quota.update(status="stale", error=error)
             else:
-                quota = {"provider": provider, "plan": None, "windows": [], "fetched_at": None,
-                         "status": status, "error": error, "source": self.source}
+                quota = {
+                    "provider": provider,
+                    "plan": None,
+                    "windows": [],
+                    "fetched_at": None,
+                    "status": status,
+                    "error": error,
+                    "source": self.source,
+                }
             quota.pop("error_code", None)
-            if code: quota["error_code"] = code
+            if code:
+                quota["error_code"] = code
             self._save(provider, quota)
             return quota

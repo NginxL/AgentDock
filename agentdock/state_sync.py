@@ -1,16 +1,38 @@
 """Versioned state snapshots and scoped change notifications."""
-from contextlib import contextmanager
+
 import copy
-from pathlib import Path
 import re
 import sqlite3
 import threading
 import uuid
+from contextlib import contextmanager
+from pathlib import Path
 
-DOMAINS = {'projects', 'agents', 'sessions', 'messages', 'memories', 'proposals', 'runs',
-           'approvals', 'quotas', 'subscriptions', 'accounts', 'environments', 'tasks', 'task_questions'}
-ALIASES = {'metadata': 'features', 'run_attempts': 'account_attempts', 'session_account_branches': 'sessions'}
-WRITE = re.compile(r'^\s*(?:INSERT(?: OR \w+)? INTO|REPLACE INTO|UPDATE(?: OR \w+)?|DELETE FROM)\s+["`\[]?(\w+)', re.I)
+DOMAINS = {
+    "projects",
+    "agents",
+    "sessions",
+    "messages",
+    "memories",
+    "proposals",
+    "runs",
+    "approvals",
+    "quotas",
+    "subscriptions",
+    "accounts",
+    "environments",
+    "tasks",
+    "task_questions",
+}
+ALIASES = {
+    "metadata": "features",
+    "run_attempts": "account_attempts",
+    "session_account_branches": "sessions",
+}
+WRITE = re.compile(
+    r'^\s*(?:INSERT(?: OR \w+)? INTO|REPLACE INTO|UPDATE(?: OR \w+)?|DELETE FROM)\s+["`\[]?(\w+)',
+    re.I,
+)
 
 
 class StateSync:
@@ -35,11 +57,14 @@ class StateSync:
             self._changed_tables.add(match[1].lower())
 
     def _publish_changes(self):
-        domains = {ALIASES.get(table, table) for table in self._changed_tables
-                   if table in DOMAINS or table in ALIASES}
+        domains = {
+            ALIASES.get(table, table)
+            for table in self._changed_tables
+            if table in DOMAINS or table in ALIASES
+        }
         if domains:
             self._revision += 1
-            for domain in domains | {'events'}:
+            for domain in domains | {"events"}:
                 self._domain_versions[domain] = self._revision
             self.changed.notify_all()
         for session_id in self._changed_sessions:
@@ -51,13 +76,13 @@ class StateSync:
 
     def state_version(self):
         with self.lock:
-            return self._epoch + ':' + str(self._revision)
+            return self._epoch + ":" + str(self._revision)
 
     def changed_domains(self, since):
-        if not isinstance(since, str) or not since.startswith(self._epoch + ':'):
+        if not isinstance(since, str) or not since.startswith(self._epoch + ":"):
             return None
         try:
-            revision = int(since.split(':')[1])
+            revision = int(since.split(":")[1])
         except ValueError:
             return None
         if revision < 0 or revision > self._revision:
@@ -66,7 +91,12 @@ class StateSync:
 
     def wait_state_version(self, previous, stop, timeout=10):
         with self.changed:
-            self.changed.wait_for(lambda: self.closed or stop.is_set() or self.state_version() != previous, timeout)
+            self.changed.wait_for(
+                lambda: (
+                    self.closed or stop.is_set() or self.state_version() != previous
+                ),
+                timeout,
+            )
             return self.state_version()
 
     @contextmanager
@@ -77,17 +107,21 @@ class StateSync:
         release it before fetching/serializing rows. In-memory test databases
         retain their existing connection instead of silently opening another DB.
         """
-        if self._is_reader or self._database_path == ':memory:':
+        if self._is_reader or self._database_path == ":memory:":
             with self.lock:
                 yield self
             return
-        connection = sqlite3.connect(Path(self._database_path).absolute().as_uri() + '?mode=ro', uri=True, isolation_level=None)
+        connection = sqlite3.connect(
+            Path(self._database_path).absolute().as_uri() + "?mode=ro",
+            uri=True,
+            isolation_level=None,
+        )
         connection.row_factory = sqlite3.Row
         try:
-            connection.execute('PRAGMA query_only=ON')
+            connection.execute("PRAGMA query_only=ON")
             with self.lock:
-                connection.execute('BEGIN')
-                connection.execute('SELECT COUNT(*) FROM sqlite_master').fetchone()
+                connection.execute("BEGIN")
+                connection.execute("SELECT COUNT(*) FROM sqlite_master").fetchone()
                 reader = copy.copy(self)
                 reader.db = connection
                 reader.lock = threading.RLock()

@@ -1,15 +1,14 @@
 import json
 import os
-from pathlib import Path
 import sys
 import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from agentdock.providers import execute, ProviderCancelled, ProviderError
-
+from agentdock.providers import ProviderCancelled, ProviderError, execute
 
 FAKE = str(Path(__file__).with_name("fake_native.py"))
 CLAUDE_SESSION = "f11f67f0-04ba-49ac-aac5-cdc1a9c5a38d"
@@ -25,92 +24,192 @@ class NativeProvidersTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_provider(self, provider, scenario="success", native_id=None, approve=None, timeout=3, permission_mode='ask'):
+    def run_provider(
+        self,
+        provider,
+        scenario="success",
+        native_id=None,
+        approve=None,
+        timeout=3,
+        permission_mode="ask",
+    ):
         def permission(request, options):
             self.approvals.append((request, options))
             return options[0]["optionId"]
-        return execute(provider, [sys.executable, FAKE, provider, scenario], str(self.cwd),
-            "A bounded test prompt", native_id,
-            {"command": sys.executable, "args": ["-m", "agentdock.mcp"],
-             "env": {"AGENTDOCK_CAPABILITY": "private-token", "AGENTDOCK_URL": "http://127.0.0.1:1"}},
-            self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
-            approve or permission, timeout=timeout, permission_mode=permission_mode)
+
+        return execute(
+            provider,
+            [sys.executable, FAKE, provider, scenario],
+            str(self.cwd),
+            "A bounded test prompt",
+            native_id,
+            {
+                "command": sys.executable,
+                "args": ["-m", "agentdock.mcp"],
+                "env": {
+                    "AGENTDOCK_CAPABILITY": "private-token",
+                    "AGENTDOCK_URL": "http://127.0.0.1:1",
+                },
+            },
+            self.stop,
+            lambda kind, payload: self.events.append((kind, payload)),
+            self.bound.append,
+            approve or permission,
+            timeout=timeout,
+            permission_mode=permission_mode,
+        )
 
     def test_final_reply_survives_large_cumulative_commentary(self):
-        for provider in ('codex', 'claude'):
+        for provider in ("codex", "claude"):
             with self.subTest(provider=provider):
-                self.assertEqual(self.run_provider(provider, 'long_commentary', timeout=6), 'hello world')
+                self.assertEqual(
+                    self.run_provider(provider, "long_commentary", timeout=6),
+                    "hello world",
+                )
 
     def test_full_access_is_explicit_and_can_be_revoked_on_native_resume(self):
-        for provider in ('codex', 'claude'):
+        for provider in ("codex", "claude"):
             with self.subTest(provider=provider):
-                self.assertEqual(self.run_provider(provider, 'full_access', permission_mode='full_access'), 'hello world')
+                self.assertEqual(
+                    self.run_provider(
+                        provider, "full_access", permission_mode="full_access"
+                    ),
+                    "hello world",
+                )
                 native_id = self.bound[-1]
-                self.assertEqual(self.run_provider(provider, 'full_access', native_id, permission_mode='full_access'), 'hello world')
+                self.assertEqual(
+                    self.run_provider(
+                        provider,
+                        "full_access",
+                        native_id,
+                        permission_mode="full_access",
+                    ),
+                    "hello world",
+                )
                 self.assertEqual(self.bound[-1], native_id)
-                self.assertEqual(self.run_provider(provider, 'permission', native_id, permission_mode='ask'), 'hello world')
+                self.assertEqual(
+                    self.run_provider(
+                        provider, "permission", native_id, permission_mode="ask"
+                    ),
+                    "hello world",
+                )
                 self.assertEqual(self.bound[-1], native_id)
                 self.assertTrue(self.approvals)
                 self.approvals.clear()
 
     def test_discussion_selects_native_read_only_modes(self):
-        for provider in ('codex','claude'):
+        for provider in ("codex", "claude"):
             with self.subTest(provider=provider):
-                self.assertEqual(self.run_provider(provider,'read_only',permission_mode='read_only'),'hello world')
+                self.assertEqual(
+                    self.run_provider(
+                        provider, "read_only", permission_mode="read_only"
+                    ),
+                    "hello world",
+                )
 
     def test_live_steer_requires_exact_turn_receipt_without_fallback_queue(self):
         from agentdock.input_control import InputControl
-        for scenario,expected in (('steer','accepted'),('steer_reject','rejected'),('steer_mismatch','unknown')):
+
+        for scenario, expected in (
+            ("steer", "accepted"),
+            ("steer_reject", "rejected"),
+            ("steer_mismatch", "unknown"),
+        ):
             with self.subTest(scenario=scenario):
-                control=InputControl(); receipts=[]
-                def emit(kind,payload):
-                    if kind=='input_control':
-                        control.submit('input-1','Use JSON'); control.submit('input-1','Use JSON')
-                    if kind=='input_receipt': receipts.append(payload)
-                result=execute('codex',[sys.executable,FAKE,'codex',scenario],str(self.cwd),'Work',None,
-                    {'command':sys.executable,'args':[],'env':{'AGENTDOCK_CAPABILITY':'private-token'}},
-                    self.stop,emit,self.bound.append,lambda *_:None,control=control,timeout=3)
-                self.assertEqual(result,'hello world')
-                self.assertEqual(receipts,[{'input_id':'input-1','status':expected}])
+                control = InputControl()
+                receipts = []
+
+                def emit(kind, payload):
+                    if kind == "input_control":
+                        control.submit("input-1", "Use JSON")
+                        control.submit("input-1", "Use JSON")
+                    if kind == "input_receipt":
+                        receipts.append(payload)
+
+                result = execute(
+                    "codex",
+                    [sys.executable, FAKE, "codex", scenario],
+                    str(self.cwd),
+                    "Work",
+                    None,
+                    {
+                        "command": sys.executable,
+                        "args": [],
+                        "env": {"AGENTDOCK_CAPABILITY": "private-token"},
+                    },
+                    self.stop,
+                    emit,
+                    self.bound.append,
+                    lambda *_: None,
+                    control=control,
+                    timeout=3,
+                )
+                self.assertEqual(result, "hello world")
+                self.assertEqual(
+                    receipts, [{"input_id": "input-1", "status": expected}]
+                )
                 self.assertFalse(control.available)
 
     def test_invalid_permissions_never_start_a_native_process(self):
-        for provider in ('codex', 'claude'):
-            for value in (None, '', 'full', 'FULL_ACCESS', True, {}):
+        for provider in ("codex", "claude"):
+            for value in (None, "", "full", "FULL_ACCESS", True, {}):
                 with self.subTest(provider=provider, value=value):
-                    with patch('agentdock.providers._Pipe') as pipe:
-                        with self.assertRaisesRegex(ProviderError, 'Invalid agent permission mode'):
+                    with patch("agentdock.providers._Pipe") as pipe:
+                        with self.assertRaisesRegex(
+                            ProviderError, "Invalid agent permission mode"
+                        ):
                             self.run_provider(provider, permission_mode=value)
                         pipe.assert_not_called()
 
     def test_live_progress_precedes_final_reply_and_excludes_private_fields(self):
-        for provider in ('codex', 'claude'):
+        for provider in ("codex", "claude"):
             with self.subTest(provider=provider):
                 self.events = []
-                self.assertEqual(self.run_provider(provider, 'progress'), 'hello world')
+                self.assertEqual(self.run_provider(provider, "progress"), "hello world")
                 kinds = [k for k, p in self.events]
-                self.assertIn('reasoning_chunk', kinds)
-                self.assertIn('tool_call', kinds)
-                self.assertIn('tool_result', kinds)
-                self.assertLess(kinds.index('reasoning_chunk'), kinds.index('agent_message_chunk'))
-                if provider == 'codex': self.assertIn('tool_output', kinds)
-                self.assertNotIn('private-token', json.dumps(self.events))
-                self.assertNotIn('do not forward', json.dumps(self.events))
-                if provider == 'claude': self.assertNotIn('reasoning_message', kinds)
+                self.assertIn("reasoning_chunk", kinds)
+                self.assertIn("tool_call", kinds)
+                self.assertIn("tool_result", kinds)
+                self.assertLess(
+                    kinds.index("reasoning_chunk"), kinds.index("agent_message_chunk")
+                )
+                if provider == "codex":
+                    self.assertIn("tool_output", kinds)
+                self.assertNotIn("private-token", json.dumps(self.events))
+                self.assertNotIn("do not forward", json.dumps(self.events))
+                if provider == "claude":
+                    self.assertNotIn("reasoning_message", kinds)
 
     def test_model_effort_and_real_usage_event_are_forwarded(self):
-        execute("codex", [sys.executable, FAKE, "codex", "usage"], str(self.cwd), "hello", None,
-            {"command": sys.executable, "args": [], "env": {"AGENTDOCK_CAPABILITY":"private-token"}},
-            self.stop, lambda k,p:self.events.append((k,p)), self.bound.append, lambda *a:None,
-            model="fixture-model", effort="high")
-        usage = next(p for k,p in self.events if k == "token_usage")
+        execute(
+            "codex",
+            [sys.executable, FAKE, "codex", "usage"],
+            str(self.cwd),
+            "hello",
+            None,
+            {
+                "command": sys.executable,
+                "args": [],
+                "env": {"AGENTDOCK_CAPABILITY": "private-token"},
+            },
+            self.stop,
+            lambda k, p: self.events.append((k, p)),
+            self.bound.append,
+            lambda *a: None,
+            model="fixture-model",
+            effort="high",
+        )
+        usage = next(p for k, p in self.events if k == "token_usage")
         self.assertEqual(usage["usage"]["total_tokens"], 15)
         self.assertEqual(usage["output_delta"], 5)
         self.assertEqual(usage["native_id"], self.bound[0])
         self.assertNotIn("private-token", json.dumps(usage))
 
     def test_unphased_progress_never_leaks_into_final_result(self):
-        for provider, result in (("codex", "hello world"), ("claude", "hello world\nSecond paragraph")):
+        for provider, result in (
+            ("codex", "hello world"),
+            ("claude", "hello world\nSecond paragraph"),
+        ):
             with self.subTest(provider=provider):
                 self.events = []
                 self.assertEqual(self.run_provider(provider, "unphased"), result)
@@ -118,23 +217,43 @@ class NativeProvidersTest(unittest.TestCase):
                 self.assertEqual(snapshots[0]["content"]["text"], "Working on the task")
                 self.assertNotEqual(snapshots[0]["item_id"], snapshots[-1]["item_id"])
                 self.assertEqual(snapshots[-1]["item_id"], "answer-1")
-                chunks = [p for k, p in self.events if k == "agent_message_chunk" and p["item_id"] == "answer-1"]
+                chunks = [
+                    p
+                    for k, p in self.events
+                    if k == "agent_message_chunk" and p["item_id"] == "answer-1"
+                ]
                 self.assertEqual(chunks[0]["part"], 0)
-                if provider == "claude": self.assertEqual(chunks[-1]["part"], 1)
+                if provider == "claude":
+                    self.assertEqual(chunks[-1]["part"], 1)
 
-    def test_codex_preserves_started_message_phase_and_does_not_promote_commentary(self):
+    def test_codex_preserves_started_message_phase_and_does_not_promote_commentary(
+        self,
+    ):
         self.assertEqual(self.run_provider("codex", "progress"), "hello world")
         snapshots = [p for k, p in self.events if k == "agent_message"]
-        self.assertEqual([p["phase"] for p in snapshots], ["commentary", "final_answer"])
+        self.assertEqual(
+            [p["phase"] for p in snapshots], ["commentary", "final_answer"]
+        )
         self.assertEqual(self.run_provider("codex", "commentary_only"), "")
 
     def test_effective_model_comes_from_native_protocol(self):
-        self.run_provider('codex', 'metadata')
-        metadata = next(p for k,p in self.events if k == 'model_info')
-        self.assertEqual(metadata, {'native_id':'native-codex-1', 'model':'gateway/configured-model', 'model_provider':'custom-relay', 'effort':'xhigh'})
+        self.run_provider("codex", "metadata")
+        metadata = next(p for k, p in self.events if k == "model_info")
+        self.assertEqual(
+            metadata,
+            {
+                "native_id": "native-codex-1",
+                "model": "gateway/configured-model",
+                "model_provider": "custom-relay",
+                "effort": "xhigh",
+            },
+        )
 
     def contract(self):
-        return [json.loads(line) for line in (self.cwd / "fake-contract.jsonl").read_text().splitlines()]
+        return [
+            json.loads(line)
+            for line in (self.cwd / "fake-contract.jsonl").read_text().splitlines()
+        ]
 
     def assert_process_stopped(self):
         pid = int((self.cwd / "fake-pid").read_text())
@@ -144,9 +263,19 @@ class NativeProvidersTest(unittest.TestCase):
     def test_codex_start_and_resume_preserve_native_thread(self):
         self.assertEqual(self.run_provider("codex"), "hello world")
         self.assertEqual(self.bound, ["native-codex-1"])
-        self.assertEqual([m["method"] for m in self.contract()[:4]], ["initialize", "initialized", "thread/start", "turn/start"])
+        self.assertEqual(
+            [m["method"] for m in self.contract()[:4]],
+            ["initialize", "initialized", "thread/start", "turn/start"],
+        )
         self.assertNotIn("excludeTurns", self.contract()[2]["params"])
-        self.assertEqual("".join(p["content"]["text"] for k, p in self.events if k == "agent_message_chunk"), "hello world")
+        self.assertEqual(
+            "".join(
+                p["content"]["text"]
+                for k, p in self.events
+                if k == "agent_message_chunk"
+            ),
+            "hello world",
+        )
         self.assert_process_stopped()
         (self.cwd / "fake-contract.jsonl").unlink()
         self.run_provider("codex", native_id=self.bound[0])
@@ -159,7 +288,14 @@ class NativeProvidersTest(unittest.TestCase):
         self.assertEqual(self.run_provider("claude"), "hello world")
         self.assertEqual(len(self.bound), 1)
         first_id = self.bound[0]
-        self.assertEqual("".join(p["content"]["text"] for k, p in self.events if k == "agent_message_chunk"), "hello world")
+        self.assertEqual(
+            "".join(
+                p["content"]["text"]
+                for k, p in self.events
+                if k == "agent_message_chunk"
+            ),
+            "hello world",
+        )
         self.assert_process_stopped()
         self.run_provider("claude", native_id=first_id)
         self.assertEqual(self.bound, [first_id, first_id])
@@ -171,18 +307,29 @@ class NativeProvidersTest(unittest.TestCase):
         for provider in ("codex", "claude"):
             for allow in (True, False):
                 with self.subTest(provider=provider, allow=allow):
+
                     def approve(request, options):
                         self.assertEqual(request["provider"], provider)
                         return options[0 if allow else 1]["optionId"]
+
                     self.run_provider(provider, "permission", approve=approve)
                     response = self.contract()[-1]
                     if provider == "codex":
-                        self.assertEqual(response["result"]["decision"], "accept" if allow else "decline")
+                        self.assertEqual(
+                            response["result"]["decision"],
+                            "accept" if allow else "decline",
+                        )
                     else:
                         data = response["response"]["response"]
                         self.assertEqual(data["behavior"], "allow" if allow else "deny")
                         if allow:
-                            self.assertEqual(data["updatedInput"], {"file_path": "/tmp/reviewed-file", "content": "approved input"})
+                            self.assertEqual(
+                                data["updatedInput"],
+                                {
+                                    "file_path": "/tmp/reviewed-file",
+                                    "content": "approved input",
+                                },
+                            )
                         else:
                             self.assertNotIn("updatedInput", data)
 
@@ -193,11 +340,22 @@ class NativeProvidersTest(unittest.TestCase):
 
     def test_codex_permission_grants_are_turn_scoped(self):
         self.run_provider("codex", "permissions")
-        self.assertEqual(self.contract()[-1]["result"], {"permissions": {"network": {"enabled": True}}, "scope": "turn"})
+        self.assertEqual(
+            self.contract()[-1]["result"],
+            {"permissions": {"network": {"enabled": True}}, "scope": "turn"},
+        )
 
     def test_errors_never_expose_private_output(self):
         for provider in ("codex", "claude"):
-            for scenario in ("protocol_error", "invalid_json", "early_exit", "partial", "failed", "wrong_session", "duplicate_permission"):
+            for scenario in (
+                "protocol_error",
+                "invalid_json",
+                "early_exit",
+                "partial",
+                "failed",
+                "wrong_session",
+                "duplicate_permission",
+            ):
                 with self.subTest(provider=provider, scenario=scenario):
                     with self.assertRaises(ProviderError) as error:
                         self.run_provider(provider, scenario)
@@ -213,9 +371,15 @@ class NativeProvidersTest(unittest.TestCase):
     def test_secrets_stay_out_of_argv_events_results_and_handshake(self):
         for provider in ("codex", "claude"):
             with self.subTest(provider=provider):
-                self.assertEqual(self.run_provider(provider, "redact"), "hello [redacted]")
-                self.assertNotIn("private-token", (self.cwd / "fake-argv.json").read_text())
-                self.assertNotIn("private-token", (self.cwd / "fake-contract.jsonl").read_text())
+                self.assertEqual(
+                    self.run_provider(provider, "redact"), "hello [redacted]"
+                )
+                self.assertNotIn(
+                    "private-token", (self.cwd / "fake-argv.json").read_text()
+                )
+                self.assertNotIn(
+                    "private-token", (self.cwd / "fake-contract.jsonl").read_text()
+                )
                 self.assertNotIn("private-token", json.dumps(self.events))
 
     def test_output_limits_stop_process(self):
@@ -228,21 +392,28 @@ class NativeProvidersTest(unittest.TestCase):
     def test_human_approval_does_not_consume_execution_time(self):
         release = threading.Event()
         entered = threading.Event()
+
         def blocked(request, options):
             entered.set()
-            release.wait(.5)
+            release.wait(0.5)
             return options[0]["optionId"]
+
         before = time.monotonic()
         try:
-            self.assertEqual(self.run_provider("claude", "permission_slow", approve=blocked, timeout=0.35), 'hello world')
+            self.assertEqual(
+                self.run_provider(
+                    "claude", "permission_slow", approve=blocked, timeout=0.35
+                ),
+                "hello world",
+            )
             self.assertTrue(entered.is_set())
-            self.assertGreater(time.monotonic() - before, .5)
+            self.assertGreater(time.monotonic() - before, 0.5)
             self.assert_process_stopped()
         finally:
             release.set()
 
     def test_noisy_native_output_keeps_the_final_result(self):
-        self.assertEqual(self.run_provider('codex', 'noisy', timeout=10), 'hello world')
+        self.assertEqual(self.run_provider("codex", "noisy", timeout=10), "hello world")
         self.assertLess(len(self.events), 2000)
 
     def test_cancel_stops_a_hung_native_process(self):
@@ -263,11 +434,17 @@ class NativeProvidersTest(unittest.TestCase):
         # A reparented zombie can briefly remain until PID 1 reaps it; no child
         # that can still execute may survive the process-group stop.
         import subprocess
-        state = subprocess.run(["ps", "-o", "stat=", "-p", str(child)], capture_output=True, text=True).stdout.strip()
+
+        state = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(child)], capture_output=True, text=True
+        ).stdout.strip()
         self.assertTrue(not state or state.startswith("Z"), state)
 
     def test_invalid_session_does_not_spawn_a_cli(self):
-        for provider, identifier in (("codex", "--dangerous"), ("claude", "not-a-uuid")):
+        for provider, identifier in (
+            ("codex", "--dangerous"),
+            ("claude", "not-a-uuid"),
+        ):
             with self.subTest(provider=provider):
                 with self.assertRaises(ProviderError):
                     self.run_provider(provider, native_id=identifier)
@@ -276,20 +453,35 @@ class NativeProvidersTest(unittest.TestCase):
 
 class RuntimeNativeContractTest(unittest.TestCase):
     """Exercise the actual dispatcher and native transports together, offline."""
+
     def test_native_sessions_and_permission_decisions_are_persisted(self):
         from agentdock.runtime import Runtime
         from agentdock.store import Store
+
         with tempfile.TemporaryDirectory() as directory:
             store = Store(":memory:")
             project = store.add_project("Native fixtures", directory)
             sessions = {}
             for provider in ("codex", "claude"):
                 agent = store.add_agent(project["id"], provider, provider)
-                sessions[provider] = store.add_session(agent["id"], "Retained native session")
-            runtime = Runtime(store, {"execution_enabled": True, "python": sys.executable,
-                "package_root": str(Path(__file__).resolve().parents[1]), "base_url": "http://127.0.0.1:1",
-                "run_timeout": 3, "approval_timeout": 2,
-                "commands": {provider: [sys.executable, FAKE, provider, "permission"] for provider in sessions}})
+                sessions[provider] = store.add_session(
+                    agent["id"], "Retained native session"
+                )
+            runtime = Runtime(
+                store,
+                {
+                    "execution_enabled": True,
+                    "python": sys.executable,
+                    "package_root": str(Path(__file__).resolve().parents[1]),
+                    "base_url": "http://127.0.0.1:1",
+                    "run_timeout": 3,
+                    "approval_timeout": 2,
+                    "commands": {
+                        provider: [sys.executable, FAKE, provider, "permission"]
+                        for provider in sessions
+                    },
+                },
+            )
             try:
                 for provider, session in sessions.items():
                     for turn in range(2):
@@ -298,19 +490,29 @@ class RuntimeNativeContractTest(unittest.TestCase):
                         while time.monotonic() < deadline:
                             for approval in store.state()["approvals"]:
                                 if approval["status"] == "pending":
-                                    runtime.approve(approval["id"], approval["options"][1]["optionId"])
+                                    runtime.approve(
+                                        approval["id"],
+                                        approval["options"][1]["optionId"],
+                                    )
                             current = store.get_run(run["id"])
                             if current["status"] not in ("queued", "running"):
                                 break
                             time.sleep(0.01)
-                        self.assertEqual(current["status"], "completed", current.get("error"))
+                        self.assertEqual(
+                            current["status"], "completed", current.get("error")
+                        )
                         self.assertEqual(current["result"], "hello world")
                         bound = store.get_session(session["id"])["native_session_id"]
                         self.assertTrue(bound)
                         if turn:
                             self.assertEqual(bound, previous)
                         previous = bound
-                        self.assertEqual(store.db.execute("SELECT COUNT(*) FROM capabilities WHERE revoked=0").fetchone()[0], 0)
+                        self.assertEqual(
+                            store.db.execute(
+                                "SELECT COUNT(*) FROM capabilities WHERE revoked=0"
+                            ).fetchone()[0],
+                            0,
+                        )
             finally:
                 runtime.close()
                 store.close()

@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
 import json
-import sys
 import subprocess
+import sys
 import threading
 import time
 import unittest
-from unittest.mock import patch, Mock, call
+from datetime import datetime, timedelta, timezone
+from unittest.mock import Mock, call, patch
 
 from agentdock.quota import QuotaService
 from agentdock.store import Forbidden
@@ -33,54 +33,79 @@ class QuotaTests(unittest.TestCase):
     def test_refresh_and_timer_follow_configured_agents(self):
         store = QuotaStore()
         store.providers = []
-        service = QuotaService(store, ['helper'], True)
-        service.AUTO_REFRESH_INTERVAL = .01
-        with patch.object(service, '_probe') as probe:
-            with self.assertRaises(ValueError): service.refresh('codex')
+        service = QuotaService(store, ["helper"], True)
+        service.AUTO_REFRESH_INTERVAL = 0.01
+        with patch.object(service, "_probe") as probe:
+            with self.assertRaises(ValueError):
+                service.refresh("codex")
             service.start_auto_refresh()
-            time.sleep(.04)
+            time.sleep(0.04)
             probe.assert_not_called()
             called = threading.Event()
+
             def result(provider):
-                self.assertEqual(provider, 'claude')
+                self.assertEqual(provider, "claude")
                 called.set()
-                return {'provider': provider, 'windows': []}
+                return {"provider": provider, "windows": []}
+
             probe.side_effect = result
-            store.providers = ['claude']
+            store.providers = ["claude"]
             self.assertTrue(called.wait(1))
             service.close()
-            self.assertEqual({c.args[0] for c in probe.call_args_list}, {'claude'})
+            self.assertEqual({c.args[0] for c in probe.call_args_list}, {"claude"})
 
     def test_helper_failures_are_whitelisted_and_authorization_is_explicit(self):
-        service = QuotaService(QuotaStore(), ['helper'], True)
-        with patch.object(service, '_probe', return_value={'provider':'claude','error_code':'authorization_required','error':'private token'}) as probe:
-            result = service.refresh('claude')
-            self.assertEqual(result['error_code'], 'authorization_required')
-            self.assertNotIn('private token', str(result))
-            probe.assert_called_once_with('claude')
-        with patch.object(service, '_probe') as probe:
-            with self.assertRaises(ValueError): service.refresh('claude', authorize=True)
+        service = QuotaService(QuotaStore(), ["helper"], True)
+        with patch.object(
+            service,
+            "_probe",
+            return_value={
+                "provider": "claude",
+                "error_code": "authorization_required",
+                "error": "private token",
+            },
+        ) as probe:
+            result = service.refresh("claude")
+            self.assertEqual(result["error_code"], "authorization_required")
+            self.assertNotIn("private token", str(result))
+            probe.assert_called_once_with("claude")
+        with patch.object(service, "_probe") as probe:
+            with self.assertRaises(ValueError):
+                service.refresh("claude", authorize=True)
             probe.assert_not_called()
-        with self.assertRaises(ValueError): service.refresh('codex', authorize=True)
-        legacy = QuotaService(QuotaStore(), ['AgentMeter'], True, source='AgentMeter')
-        with self.assertRaises(ValueError): legacy.refresh('claude', authorize=True)
+        with self.assertRaises(ValueError):
+            service.refresh("codex", authorize=True)
+        legacy = QuotaService(QuotaStore(), ["AgentMeter"], True, source="AgentMeter")
+        with self.assertRaises(ValueError):
+            legacy.refresh("claude", authorize=True)
 
     def test_authorization_never_starts_in_review_mode(self):
-        service = QuotaService(QuotaStore(), ['helper'], False)
-        with patch.object(service, '_probe') as probe:
-            with self.assertRaises(ValueError): service.refresh('claude', authorize=True)
+        service = QuotaService(QuotaStore(), ["helper"], False)
+        with patch.object(service, "_probe") as probe:
+            with self.assertRaises(ValueError):
+                service.refresh("claude", authorize=True)
             probe.assert_not_called()
 
     def setUp(self):
         self.store = QuotaStore()
 
     def snapshot(self, **extra):
-        return {"provider": "codex", "plan": "Pro", "accountID": "private-account",
-                "source": "local credential data", "fetchedAt": datetime.now(timezone.utc).isoformat(),
-                "windows": [{"title": "Five hours", "usedPercent": 23}], **extra}
+        return {
+            "provider": "codex",
+            "plan": "Pro",
+            "accountID": "private-account",
+            "source": "local credential data",
+            "fetchedAt": datetime.now(timezone.utc).isoformat(),
+            "windows": [{"title": "Five hours", "usedPercent": 23}],
+            **extra,
+        }
 
     def command(self, snapshot):
-        return [sys.executable, "-c", "import sys; sys.stdout.write(" + repr(json.dumps(snapshot)) + ")"]
+        return [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.write(" + repr(json.dumps(snapshot)) + ")",
+        ]
 
     def test_disabled_does_not_launch(self):
         service = QuotaService(self.store, ["AgentMeter"], False)
@@ -118,15 +143,22 @@ class QuotaTests(unittest.TestCase):
 
     def test_stale_snapshot_and_elapsed_reset(self):
         old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        raw = self.snapshot(fetchedAt=old, windows=[{"title": "Five hours", "usedPercent": 23, "resetsAt": old}])
+        raw = self.snapshot(
+            fetchedAt=old,
+            windows=[{"title": "Five hours", "usedPercent": 23, "resetsAt": old}],
+        )
         quota = QuotaService(self.store, self.command(raw), True).refresh("codex")
         self.assertEqual(quota["status"], "stale")
         self.assertEqual(quota["error_code"], "outdated_cache")
         self.assertIsNone(quota["windows"][0]["remaining_percent"])
 
     def test_invalid_values_fail_closed(self):
-        for raw in (self.snapshot(provider="claude"), self.snapshot(fetchedAt="invalid"),
-                    self.snapshot(windows=[{"usedPercent": 101}]), self.snapshot(windows=[{"usedPercent": True}])):
+        for raw in (
+            self.snapshot(provider="claude"),
+            self.snapshot(fetchedAt="invalid"),
+            self.snapshot(windows=[{"usedPercent": 101}]),
+            self.snapshot(windows=[{"usedPercent": True}]),
+        ):
             with self.subTest(raw=raw):
                 service = QuotaService(QuotaStore(), ["fixture"], True)
                 with patch.object(service, "_probe", return_value=raw):
@@ -144,8 +176,10 @@ class QuotaTests(unittest.TestCase):
         self.assertNotIn("private-token", json.dumps(quota))
 
     def test_timeout_and_output_limit(self):
-        commands = [[sys.executable, "-c", "import time; time.sleep(60)"],
-                    [sys.executable, "-c", "print('x' * 1100000)"]]
+        commands = [
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            [sys.executable, "-c", "print('x' * 1100000)"],
+        ]
         for command in commands:
             service = QuotaService(QuotaStore(), command, True)
             service.TIMEOUT = 0.15
@@ -154,15 +188,25 @@ class QuotaTests(unittest.TestCase):
             self.assertLess(len(json.dumps(quota)), 500)
 
     def test_stderr_never_exposed(self):
-        command = [sys.executable, "-c", "import sys; print('private-debug-secret', file=sys.stderr); sys.exit(2)"]
+        command = [
+            sys.executable,
+            "-c",
+            "import sys; print('private-debug-secret', file=sys.stderr); sys.exit(2)",
+        ]
         quota = QuotaService(self.store, command, True).refresh("codex")
         self.assertNotIn("private-debug-secret", str(quota))
         self.assertEqual(quota["status"], "unavailable")
 
     def test_cached_read_ages_without_process_or_store_mutation(self):
         old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        original = {"provider": "codex", "plan": "Pro", "windows": [],
-                    "fetched_at": old, "status": "available", "source": "AgentMeter"}
+        original = {
+            "provider": "codex",
+            "plan": "Pro",
+            "windows": [],
+            "fetched_at": old,
+            "status": "available",
+            "source": "AgentMeter",
+        }
         self.store.set_quota("codex", original)
         service = QuotaService(self.store, ["AgentMeter"], False)
         with patch("agentdock.quota.subprocess.Popen") as spawn:
@@ -198,8 +242,15 @@ class QuotaTests(unittest.TestCase):
         service._auto_stop = Mock()
         service._auto_stop.wait.side_effect = [False, False, True]
         service._auto_stop.is_set.return_value = False
-        with patch("agentdock.quota.time.monotonic", side_effect=[100, 100, 700, 700, 1300, 1300]), \
-                patch.object(service, "refresh", side_effect=[RuntimeError("offline"), {}, {}, {}]) as refresh:
+        with (
+            patch(
+                "agentdock.quota.time.monotonic",
+                side_effect=[100, 100, 700, 700, 1300, 1300],
+            ),
+            patch.object(
+                service, "refresh", side_effect=[RuntimeError("offline"), {}, {}, {}]
+            ) as refresh,
+        ):
             service._auto_refresh()
         self.assertEqual(service._auto_stop.wait.call_args_list, [call(600)] * 3)
         self.assertEqual(refresh.call_args_list, [call("codex"), call("claude")] * 2)
@@ -209,14 +260,18 @@ class QuotaTests(unittest.TestCase):
         service._auto_stop = Mock()
         service._auto_stop.wait.side_effect = [False, True]
         service._auto_stop.is_set.return_value = False
-        with patch("agentdock.quota.time.monotonic", side_effect=[0, 2000, 2010, 2010]), \
-                patch.object(service, "refresh") as refresh:
+        with (
+            patch("agentdock.quota.time.monotonic", side_effect=[0, 2000, 2010, 2010]),
+            patch.object(service, "refresh") as refresh,
+        ):
             service._auto_refresh()
         self.assertEqual(service._auto_stop.wait.call_args_list, [call(0), call(600)])
         self.assertEqual(refresh.call_count, 2)
 
     def test_close_stops_automatic_probe_and_joins_timer(self):
-        service = QuotaService(self.store, [sys.executable, "-c", "import time; time.sleep(60)"], True)
+        service = QuotaService(
+            self.store, [sys.executable, "-c", "import time; time.sleep(60)"], True
+        )
         service.AUTO_REFRESH_INTERVAL = 0.01
         service.start_auto_refresh()
         try:
@@ -274,8 +329,10 @@ class QuotaTests(unittest.TestCase):
     def test_closed_refresh_rejected_before_process_or_store_access(self):
         service = QuotaService(self.store, ["AgentMeter"], True)
         service.close()
-        with patch("agentdock.quota.subprocess.Popen") as spawn, \
-                patch.object(self.store, "set_quota") as save:
+        with (
+            patch("agentdock.quota.subprocess.Popen") as spawn,
+            patch.object(self.store, "set_quota") as save,
+        ):
             with self.assertRaisesRegex(Forbidden, "closed"):
                 service.refresh("codex")
             spawn.assert_not_called()

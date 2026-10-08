@@ -1,9 +1,10 @@
 """Bounded, ordered delta batching without delaying control/final messages."""
+
 import threading
 
 
 class StreamBuffer:
-    def __init__(self, emit, interval=.1, max_bytes=16384):
+    def __init__(self, emit, interval=0.1, max_bytes=16384):
         self.emit = emit
         self.interval, self.max_bytes = interval, max_bytes
         self.lock = threading.RLock()
@@ -17,12 +18,23 @@ class StreamBuffer:
         with self.lock:
             if self.failure:
                 raise self.failure
-            field = 'content' if isinstance(payload.get('content'), dict) else 'text'
-            text = payload[field].get('text') if field == 'content' else payload.get('text')
-            if kind not in ('agent_message_chunk', 'reasoning_chunk', 'tool_output') or not isinstance(text, str):
+            field = "content" if isinstance(payload.get("content"), dict) else "text"
+            text = (
+                payload[field].get("text")
+                if field == "content"
+                else payload.get("text")
+            )
+            if kind not in (
+                "agent_message_chunk",
+                "reasoning_chunk",
+                "tool_output",
+            ) or not isinstance(text, str):
                 self.flush()
                 return self.emit(kind, payload)
-            metadata = {**payload, field: {**payload[field], 'text': ''} if field == 'content' else ''}
+            metadata = {
+                **payload,
+                field: {**payload[field], "text": ""} if field == "content" else "",
+            }
             key = (kind, metadata, field)
             if self.pending != key:
                 self.flush()
@@ -51,11 +63,11 @@ class StreamBuffer:
             if not self.parts:
                 return
             kind, payload, field = self.pending
-            text = ''.join(self.parts)
-            if field == 'content':
-                payload = {**payload, 'content': {**payload['content'], 'text': text}}
+            text = "".join(self.parts)
+            if field == "content":
+                payload = {**payload, "content": {**payload["content"], "text": text}}
             else:
-                payload = {**payload, 'text': text}
+                payload = {**payload, "text": text}
             self.pending, self.parts, self.size = None, [], 0
             self.emit(kind, payload)
 
