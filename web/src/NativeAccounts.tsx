@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useState } from "react";
 import { request } from "./api";
 import type { Account, Translate } from "./types";
@@ -45,8 +46,7 @@ export default function NativeAccounts({
         if (!controller.signal.aborted)
           setError(
             t(
-              "无法读取本机客户端，请稍后重试。",
-              "Could not read native clients. Try again.",
+              ...uiMessages.nativeaccounts_could_not_read_native_clients_try_again_70a4b4,
             ),
           );
       });
@@ -65,19 +65,19 @@ export default function NativeAccounts({
       setMessage(
         operation === "capture"
           ? t(
-              "已保存此客户端的登录。以后可一键切回。",
-              "Native sign-in saved. You can now switch back to it.",
+              ...uiMessages.nativeaccounts_native_sign_in_saved_you_can_now_switch_back_21d494,
             )
           : t(
-              "已恢复保存的登录，请在客户端确认账号；新开的 CLI 会使用此登录。",
-              "Saved sign-in restored. Confirm the account in the client; new CLI instances will use it.",
+              ...uiMessages.nativeaccounts_saved_sign_in_restored_confirm_the_account_in_829577,
             ),
       );
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : t("操作未完成。", "The operation did not complete."),
+          : t(
+              ...uiMessages.nativeaccounts_the_operation_did_not_complete_2e40a2,
+            ),
       );
       try {
         setStatus(await request<Status>(token, path));
@@ -91,30 +91,32 @@ export default function NativeAccounts({
   return (
     <section
       className="account-native"
-      aria-label={t("本机客户端账号", "Native client accounts")}
+      aria-label={t(...uiMessages.nativeaccounts_native_client_accounts_01b0df)}
     >
       <div className="panel-heading">
-        <strong>{t("本机客户端账号", "Native client accounts")}</strong>
+        <strong>
+          {t(...uiMessages.nativeaccounts_native_client_accounts_01b0df)}
+        </strong>
         <button
           type="button"
           className="icon-button"
           onClick={close}
           disabled={busy}
-          aria-label={t("关闭本机账号面板", "Close native account panel")}
+          aria-label={t(
+            ...uiMessages.nativeaccounts_close_native_account_panel_ac68c7,
+          )}
         >
           <Icon name="close" />
         </button>
       </div>
       <p>
         {t(
-          "首次在对应客户端登录此账号后，点击「保存当前登录」。以后点击「切换到此账号」即可切回。",
-          "First sign in to this account in each client, then save its current sign-in. Afterwards, switch back with one click.",
+          ...uiMessages.nativeaccounts_first_sign_in_to_this_account_in_each_client_a54862,
         )}
       </p>
       <p>
         {t(
-          "保存和切换会退出并重开相关桌面应用，请先结束 CLI 和桌面任务。Codex CLI 与桌面版共用本机登录；Claude 两端分别保存。",
-          "Saving and switching quit and reopen the related desktop app. Finish CLI and desktop tasks first. Codex CLI and desktop share a native login; Claude logins are saved separately.",
+          ...uiMessages.nativeaccounts_saving_and_switching_quit_and_reopen_the_rela_955ed5,
         )}
       </p>
       {error && (
@@ -123,12 +125,13 @@ export default function NativeAccounts({
         </p>
       )}
       {message && <p role="status">{message}</p>}
-      {!status && !error && <p role="status">{t("正在读取…", "Loading…")}</p>}
+      {!status && !error && (
+        <p role="status">{t(...uiMessages.nativeaccounts_loading_e20f83)}</p>
+      )}
       {status && !status.available && (
         <p>
           {t(
-            "此功能适用于本机 macOS 客户端。",
-            "This feature requires local macOS clients.",
+            ...uiMessages.nativeaccounts_this_feature_requires_local_macos_clients_565e91,
           )}
         </p>
       )}
@@ -139,8 +142,10 @@ export default function NativeAccounts({
               <strong>{labels[client.id]}</strong>
               <small>
                 {client.saved
-                  ? `${t("已保存", "Saved")} · ${client.identity?.email ?? ""}`
-                  : t("尚未保存此客户端的登录", "No native sign-in saved yet")}
+                  ? `${t(...uiMessages.nativeaccounts_saved_82b5db)} · ${client.identity?.email ?? ""}`
+                  : t(
+                      ...uiMessages.nativeaccounts_no_native_sign_in_saved_yet_41e511,
+                    )}
               </small>
             </div>
             <div className="button-row">
@@ -150,7 +155,7 @@ export default function NativeAccounts({
                 disabled={busy || !client.saved || status.recovery_needed}
                 onClick={() => void act(client.id, "switch")}
               >
-                {t("切换到此账号", "Switch to this account")}
+                {t(...uiMessages.nativeaccounts_switch_to_this_account_a90bd1)}
               </button>
               <button
                 type="button"
@@ -158,7 +163,7 @@ export default function NativeAccounts({
                 disabled={busy || status.recovery_needed}
                 onClick={() => void act(client.id, "capture")}
               >
-                {t("保存当前登录", "Save current sign-in")}
+                {t(...uiMessages.nativeaccounts_save_current_sign_in_de562c)}
               </button>
               {status.recovery_client === client.id && (
                 <button
@@ -167,7 +172,9 @@ export default function NativeAccounts({
                   disabled={busy}
                   onClick={() => void act(client.id, "recover")}
                 >
-                  {t("恢复切换前登录", "Recover previous sign-in")}
+                  {t(
+                    ...uiMessages.nativeaccounts_recover_previous_sign_in_ce66d6,
+                  )}
                 </button>
               )}
             </div>
@@ -175,7 +182,7 @@ export default function NativeAccounts({
         ))}
       {busy && (
         <p role="status">
-          {t("正在处理，请等待完成…", "Working. Please wait…")}
+          {t(...uiMessages.nativeaccounts_working_please_wait_bf7eef)}
         </p>
       )}
     </section>

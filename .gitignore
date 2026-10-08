@@ -21,3 +21,8 @@ output/playwright/
 
 native/.build/
 dist/
+
+.ruff_cache/
+.mypy_cache/
+build/
+*.egg-info/

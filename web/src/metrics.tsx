@@ -1,4 +1,7 @@
+import * as uiMessages from "./messages";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useConnectionQueries } from "./queryClient";
 import { request } from "./api";
 import type { Translate } from "./types";
 
@@ -56,11 +59,30 @@ export function agentTPS(
 }
 export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [failed, setFailed] = useState(false);
+  const queries = useConnectionQueries(token);
+  const query = useQuery(
+    {
+      queryKey: ["metrics"],
+      enabled: !!token && !demo,
+      queryFn: async ({ signal }) => {
+        const next = await request<Metrics>(
+          token,
+          "/api/metrics",
+          undefined,
+          signal,
+        );
+        if (!next?.total || !Array.isArray(next.total.points))
+          throw new Error("Invalid metrics");
+        return next;
+      },
+      refetchInterval: 3000,
+      refetchIntervalInBackground: false,
+    },
+    queries,
+  );
   const demoKey = agentIDs.join(",");
   useEffect(() => {
     setMetrics(null);
-    setFailed(false);
     if (demo) {
       const meter = (factor: number): Meter => ({
         input_tokens: Math.round(823400 * factor),
@@ -120,41 +142,11 @@ export function useMetrics(token: string, demo: boolean, agentIDs: string[]) {
       });
       return;
     }
-    if (!token) return;
-    const abort = new AbortController();
-    let pending = false;
-    async function poll() {
-      if (pending) return;
-      pending = true;
-      try {
-        const next = await request<Metrics>(
-          token,
-          "/api/metrics",
-          undefined,
-          abort.signal,
-        );
-        if (!abort.signal.aborted) {
-          if (!next?.total || !Array.isArray(next.total.points))
-            throw new Error("Invalid metrics");
-          setMetrics(next);
-          setFailed(false);
-        }
-      } catch {
-        if (!abort.signal.aborted) setFailed(true);
-      } finally {
-        pending = false;
-      }
-    }
-    void poll();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") void poll();
-    }, 3000);
-    return () => {
-      abort.abort();
-      window.clearInterval(timer);
-    };
   }, [token, demo, demoKey]);
-  return { metrics, failed };
+  return {
+    metrics: demo ? metrics : (query.data ?? null),
+    failed: !demo && query.isError,
+  };
 }
 const exactNumber = new Intl.NumberFormat("en-US");
 const shortNumber = new Intl.NumberFormat("en-US", {
@@ -199,7 +191,7 @@ export function TPS({
   return (
     <div
       className={`tps-panel ${compact ? "compact" : ""}`}
-      aria-label={t("输出 Token 吞吐量", "Output token throughput")}
+      aria-label={t(...uiMessages.metrics_output_token_throughput_1f6e21)}
     >
       <div className="tps-heading">
         <strong>TPS</strong>
@@ -208,10 +200,12 @@ export function TPS({
           {t("会话", meter?.active_sessions === 1 ? "session" : "sessions")}
         </span>
         <span className="tps-latest">
-          {t("当前", "Current")} <b>{number(meter?.current_tps)} TPS</b>
+          {t(...uiMessages.metrics_current_aadf8e)}{" "}
+          <b>{number(meter?.current_tps)} TPS</b>
         </span>
         <span>
-          {t("3m 均值", "3m avg")} <b>{number(meter?.average_tps)} TPS</b>
+          {t(...uiMessages.metrics_3m_avg_59025a)}{" "}
+          <b>{number(meter?.average_tps)} TPS</b>
         </span>
       </div>
       <div className="tps-plot">
@@ -225,8 +219,7 @@ export function TPS({
           preserveAspectRatio="none"
           role="img"
           aria-label={t(
-            "最近三分钟输出吞吐趋势",
-            "Output throughput over the last three minutes",
+            ...uiMessages.metrics_output_throughput_over_the_last_three_minutes_b0bf8a,
           )}
         >
           {[0, 50, 100].map((y) => (
@@ -252,11 +245,13 @@ export function TPS({
       </div>
       <div className="tps-axis">
         <span>-3m</span>
-        <span>{t("现在", "now")}</span>
+        <span>{t(...uiMessages.metrics_now_7315e6)}</span>
       </div>
       {!compact && stale && (
         <p className="form-hint">
-          {t("连接中断，等待更新。", "Connection lost. Waiting for an update.")}
+          {t(
+            ...uiMessages.metrics_connection_lost_waiting_for_an_update_d52ca2,
+          )}
         </p>
       )}
     </div>

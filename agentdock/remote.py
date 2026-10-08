@@ -151,7 +151,8 @@ class RemoteManager:
         response = self.transport(environment, payload, stop)
         if not isinstance(response, dict) or not response.get("ok"):
             raise ProviderError(
-                "Remote operation failed. Reconnect the environment and check the remote CLI."
+                "Remote operation failed. Reconnect the environment and check the remote CLI.",
+                code="remote_operation_failed_reconnect_the_environment_and_check_the_remote_cli",
             )
         return response["value"]
 
@@ -177,20 +178,27 @@ class RemoteManager:
             except Exception:
                 self.store.update_environment_status(environment_id, "error")
                 raise Conflict(
-                    "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs."
+                    "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.",
+                    code="ssh_connection_failed_check_ssh_access_python_3_9_and_the_installed_clis",
                 ) from None
 
     def check(self, agent):
         environment = self.store.get_environment(agent["environment_id"])
         if environment["payload"].get("digest") != self.digest:
-            raise Conflict("Connect this SSH environment before starting an agent.")
+            raise Conflict(
+                "Connect this SSH environment before starting an agent.",
+                code="connect_this_ssh_environment_before_starting_an_agent",
+            )
         if (
             not environment["payload"]
             .get("providers", {})
             .get(agent["provider"], {})
             .get("available")
         ):
-            raise Conflict("The selected native CLI was not found on this environment.")
+            raise Conflict(
+                "The selected native CLI was not found on this environment.",
+                code="the_selected_native_cli_was_not_found_on_this_environment",
+            )
 
     def models(self, environment_id, provider, account=None):
         if not self.enabled or self.closed.is_set():
@@ -358,7 +366,8 @@ class RemoteManager:
                             environment_id, "disconnected"
                         )
                         raise ProviderError(
-                            "SSH remained disconnected. The remote task will stop when its 90-second lease expires."
+                            "SSH remained disconnected. The remote task will stop when its 90-second lease expires.",
+                            code="ssh_remained_disconnected_the_remote_task_will_stop_when_its_90_second_leas",
                         ) from None
                     stop.wait(1)
             raise ProviderCancelled()

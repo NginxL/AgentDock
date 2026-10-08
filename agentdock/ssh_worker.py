@@ -548,7 +548,10 @@ def work(path):
                 private(Path.home() / ".local/share/agentdock/workspaces" / identifier)
             )
         if not Path(cwd).is_absolute() or not Path(cwd).is_dir():
-            raise ProviderError("The remote working directory does not exist.")
+            raise ProviderError(
+                "The remote working directory does not exist.",
+                code="the_remote_working_directory_does_not_exist",
+            )
         command = commands().get(spec["provider"])
         if not command:
             raise ProviderError("The remote native CLI was not found.")

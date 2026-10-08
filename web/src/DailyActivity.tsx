@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 import type { Activity } from "./metrics";
@@ -98,11 +99,11 @@ export default function DailyActivity({
   return (
     <section
       className="panel daily-activity"
-      aria-label={t("每日活跃", "Daily activity")}
+      aria-label={t(...uiMessages.dailyactivity_daily_activity_95786c)}
     >
       <div className="activity-heading">
         <div>
-          <h2>{t("每日活跃", "DAILY ACTIVITY")}</h2>
+          <h2>{t(...uiMessages.dailyactivity_daily_activity_4ce6f3)}</h2>
           <p aria-live="polite">
             {known ? t(`${active} 个活跃日`, `${active} active days`) : "—"}
             {" · "}
@@ -111,16 +112,16 @@ export default function DailyActivity({
               <span className="activity-status" role="status">
                 {" · "}
                 {failed
-                  ? t("连接中断", "Disconnected")
+                  ? t(...uiMessages.dailyactivity_disconnected_f289e2)
                   : partial
-                    ? t("部分数据", "Partial data")
-                    : t("更新中", "Updating")}
+                    ? t(...uiMessages.dailyactivity_partial_data_6fc2db)
+                    : t(...uiMessages.dailyactivity_updating_246dca)}
               </span>
             )}
           </p>
         </div>
         <select
-          aria-label={t("活跃图时间范围", "Activity range")}
+          aria-label={t(...uiMessages.dailyactivity_activity_range_b823a2)}
           value={range}
           onChange={(e) => {
             setRange(Number(e.target.value));
@@ -150,7 +151,7 @@ export default function DailyActivity({
           <div
             className="activity-grid"
             role="group"
-            aria-label={t("每日 Token 用量", "Daily token usage")}
+            aria-label={t(...uiMessages.dailyactivity_daily_token_usage_02a599)}
           >
             {Array.from({ length: pad }, (_, i) => (
               <span key={`pad-${i}`} aria-hidden="true" />
@@ -194,9 +195,11 @@ export default function DailyActivity({
       </div>
       <div
         className="activity-legend"
-        aria-label={t("用量由少到多", "Usage from less to more")}
+        aria-label={t(
+          ...uiMessages.dailyactivity_usage_from_less_to_more_ae7823,
+        )}
       >
-        <span>{t("少", "Less")}</span>
+        <span>{t(...uiMessages.dailyactivity_less_3fe00a)}</span>
         {[0, 1, 2, 3, 4].map((level) => (
           <i
             key={level}
@@ -204,7 +207,7 @@ export default function DailyActivity({
             aria-hidden="true"
           />
         ))}
-        <span>{t("多", "More")}</span>
+        <span>{t(...uiMessages.dailyactivity_more_57fbae)}</span>
       </div>
       {tip && (
         <div

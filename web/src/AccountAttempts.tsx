@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { accountError } from "./accountDisplay";
 import type { Account, AccountAttempt, AgentEvent, Translate } from "./types";
 
@@ -40,20 +41,20 @@ export default function AccountAttempts({
   const name = (id: unknown) =>
     typeof id === "string"
       ? (accounts.find((account) => account.id === id)?.label ??
-        t("已移除的账号", "Removed account"))
-      : t("设备登录", "Device login");
+        t(...uiMessages.accountattempts_removed_account_250a5c))
+      : t(...uiMessages.accountattempts_device_login_5ac5e5);
   const status = (value: string) =>
     ({
-      started: t("开始使用", "Started"),
-      running: t("使用中", "In use"),
-      completed: t("完成", "Completed"),
-      failed: t("失败", "Failed"),
-      rejected: t("账号暂不可用", "Account unavailable"),
-      interrupted: t("已中断", "Interrupted"),
-      rate_limited: t("额度受限", "Quota reached"),
-      expired: t("需要登录", "Sign-in required"),
-      cancelled: t("已取消", "Cancelled"),
-      waiting: t("等待可用账号", "Waiting for an account"),
+      started: t(...uiMessages.accountattempts_started_a775f1),
+      running: t(...uiMessages.accountattempts_in_use_12e59e),
+      completed: t(...uiMessages.accountattempts_completed_066012),
+      failed: t(...uiMessages.accountattempts_failed_840d25),
+      rejected: t(...uiMessages.accountattempts_account_unavailable_c22d50),
+      interrupted: t(...uiMessages.accountattempts_interrupted_464894),
+      rate_limited: t(...uiMessages.accountattempts_quota_reached_da5aeb),
+      expired: t(...uiMessages.accountattempts_sign_in_required_e04e32),
+      cancelled: t(...uiMessages.accountattempts_cancelled_2dbec7),
+      waiting: t(...uiMessages.accountattempts_waiting_for_an_account_afd8d7),
     })[value] ?? value;
   const last = activity.at(-1);
   const needsAction =
@@ -63,8 +64,7 @@ export default function AccountAttempts({
       {active && last?.kind === "account_waiting" && (
         <p role="status">
           {t(
-            "正在等待可用订阅账号。",
-            "Waiting for an available subscription account.",
+            ...uiMessages.accountattempts_waiting_for_an_available_subscription_account_0b2ddd,
           )}
         </p>
       )}
@@ -72,8 +72,7 @@ export default function AccountAttempts({
         <div className="account-action-required" role="status">
           <p>
             {t(
-              "已保留执行现场，请选择账号后继续。",
-              "Execution progress is preserved. Choose an account to continue.",
+              ...uiMessages.accountattempts_execution_progress_is_preserved_choose_an_acc_f88fd1,
             )}
           </p>
           {onConfigureAccount && (
@@ -82,13 +81,17 @@ export default function AccountAttempts({
               className="secondary"
               onClick={onConfigureAccount}
             >
-              {t("选择账号后继续", "Choose an account to continue")}
+              {t(
+                ...uiMessages.accountattempts_choose_an_account_to_continue_d01241,
+              )}
             </button>
           )}
         </div>
       )}
       <details>
-        <summary>{t("账号使用记录", "Account activity")}</summary>
+        <summary>
+          {t(...uiMessages.accountattempts_account_activity_b7719e)}
+        </summary>
         <ol>
           {managedAttempts.map((attempt) => (
             <li key={attempt.id}>
@@ -108,17 +111,23 @@ export default function AccountAttempts({
               <li key={event.id}>
                 <strong>
                   {event.kind === "account_waiting" && !payload.account_id
-                    ? t("订阅账号", "Subscription accounts")
+                    ? t(
+                        ...uiMessages.accountattempts_subscription_accounts_49009b,
+                      )
                     : name(payload.account_id ?? payload.to_account_id)}
                 </strong>
                 <span>
                   {event.kind === "account_switched" ||
                   event.kind === "account_changed"
-                    ? t("已切换账号", "Account switched")
+                    ? t(...uiMessages.accountattempts_account_switched_00b6ad)
                     : event.kind === "account_action_required"
-                      ? t("等待选择账号", "Account selection required")
+                      ? t(
+                          ...uiMessages.accountattempts_account_selection_required_8d1231,
+                        )
                       : event.kind === "account_waiting"
-                        ? t("等待可用账号", "Waiting for an account")
+                        ? t(
+                            ...uiMessages.accountattempts_waiting_for_an_account_afd8d7,
+                          )
                         : status(
                             typeof payload.status === "string"
                               ? payload.status

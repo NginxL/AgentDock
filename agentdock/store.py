@@ -323,7 +323,9 @@ class Store(
     @staticmethod
     def _permission_mode(value):
         if value not in ("ask", "full_access"):
-            raise Invalid("Invalid agent permission mode")
+            raise Invalid(
+                "Invalid agent permission mode", code="invalid_agent_permission_mode"
+            )
         return value
 
     def _migrate_project_agents(self):
@@ -470,7 +472,10 @@ class Store(
                 return "~/.local/share/agentdock/workspaces/" + identifier
             path = text(workspace, "workspace", 4096)
             if not path.startswith("/") or any(ord(c) < 32 for c in path):
-                raise Invalid("Use an absolute directory on the remote host")
+                raise Invalid(
+                    "Use an absolute directory on the remote host",
+                    code="use_an_absolute_directory_on_the_remote_host",
+                )
             return posixpath.normpath(path)
         if workspace:
             path = Path(text(workspace, "workspace", 4096)).expanduser()

@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import SessionListItem from "../SessionListItem";
 import { useEffect, useRef, useState } from "react";
 import type {
@@ -56,7 +57,7 @@ export default function Conversations({
   const agent = state.agents.find((a) => a.id === selected?.agent_id);
   const projectName = (session: Session) =>
     state.projects.find((p) => p.id === session.project_id)?.name ??
-    t("日常对话", "Everyday chats");
+    t(...uiMessages.conversations_everyday_chats_0dc423);
   const matchesScope = (s: Session, value: string) =>
     value === "all" ||
     (value === "daily" ? !s.project_id : s.project_id === value);
@@ -123,11 +124,13 @@ export default function Conversations({
     <section className="conversation-hub">
       <aside className="panel conversation-index">
         <div className="panel-heading conversation-heading">
-          <h1>{t("对话", "Conversations")}</h1>
+          <h1>{t(...uiMessages.conversations_conversations_d3714e)}</h1>
           <div
             className="conversation-toolbar"
             role="group"
-            aria-label={t("对话工具", "Conversation tools")}
+            aria-label={t(
+              ...uiMessages.conversations_conversation_tools_bcce11,
+            )}
           >
             <ConversationAgentFilter
               agents={state.agents.filter(
@@ -144,12 +147,10 @@ export default function Conversations({
               type="button"
               className="icon-button"
               aria-label={t(
-                "仅显示最近 24 小时活跃的对话",
-                "Show only conversations active in the last 24 hours",
+                ...uiMessages.conversations_show_only_conversations_active_in_the_last_24_7b70e3,
               )}
               title={t(
-                "仅显示最近 24 小时活跃的对话",
-                "Show only conversations active in the last 24 hours",
+                ...uiMessages.conversations_show_only_conversations_active_in_the_last_24_7b70e3,
               )}
               aria-pressed={recentOnly}
               onClick={() => {
@@ -162,8 +163,8 @@ export default function Conversations({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("按 Agent 分组", "Group by agent")}
-              title={t("按 Agent 分组", "Group by agent")}
+              aria-label={t(...uiMessages.conversations_group_by_agent_4e82ca)}
+              title={t(...uiMessages.conversations_group_by_agent_4e82ca)}
               aria-pressed={grouped}
               onClick={() => setGrouped(!grouped)}
             >
@@ -171,8 +172,10 @@ export default function Conversations({
             </button>
             <button
               className="icon-button"
-              aria-label={t("新建对话", "New conversation")}
-              title={t("新建对话", "New conversation")}
+              aria-label={t(
+                ...uiMessages.conversations_new_conversation_f0bb24,
+              )}
+              title={t(...uiMessages.conversations_new_conversation_f0bb24)}
               aria-expanded={creating}
               aria-controls="new-conversation"
               onClick={() => {
@@ -191,21 +194,31 @@ export default function Conversations({
         </div>
         <div className="conversation-filters">
           <input
-            aria-label={t("搜索对话", "Search conversations")}
-            placeholder={t("搜索对话", "Search conversations")}
+            aria-label={t(
+              ...uiMessages.conversations_search_conversations_eae0c2,
+            )}
+            placeholder={t(
+              ...uiMessages.conversations_search_conversations_eae0c2,
+            )}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
           <select
-            aria-label={t("对话范围", "Conversation scope")}
+            aria-label={t(
+              ...uiMessages.conversations_conversation_scope_486170,
+            )}
             value={scope}
             onChange={(e) => {
               setScope(e.target.value);
               setFilterAgents([]);
             }}
           >
-            <option value="all">{t("全部对话", "All conversations")}</option>
-            <option value="daily">{t("日常对话", "Everyday chats")}</option>
+            <option value="all">
+              {t(...uiMessages.conversations_all_conversations_9ab276)}
+            </option>
+            <option value="daily">
+              {t(...uiMessages.conversations_everyday_chats_0dc423)}
+            </option>
             {state.projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -224,7 +237,9 @@ export default function Conversations({
                 "/api/sessions",
                 {
                   agent_id: agentID,
-                  title: title.trim() || t("新对话", "New conversation"),
+                  title:
+                    title.trim() ||
+                    t(...uiMessages.conversations_new_conversation_0747d6),
                 },
                 (session) => {
                   setCreating(false);
@@ -238,18 +253,22 @@ export default function Conversations({
             }}
           >
             <div className="panel-heading">
-              <strong>{t("新建对话", "New conversation")}</strong>
+              <strong>
+                {t(...uiMessages.conversations_new_conversation_f0bb24)}
+              </strong>
               <button
                 type="button"
                 className="icon-button"
-                aria-label={t("关闭新建对话", "Close new conversation")}
+                aria-label={t(
+                  ...uiMessages.conversations_close_new_conversation_d174d4,
+                )}
                 onClick={() => setCreating(false)}
               >
                 <Icon name="close" />
               </button>
             </div>
             <label>
-              {t("所属项目", "Project")}
+              {t(...uiMessages.conversations_project_4eca63)}
               <select
                 value={newScope}
                 onChange={(e) => {
@@ -257,7 +276,9 @@ export default function Conversations({
                   setAgentID("");
                 }}
               >
-                <option value="">{t("日常对话", "Everyday chats")}</option>
+                <option value="">
+                  {t(...uiMessages.conversations_everyday_chats_0dc423)}
+                </option>
                 {state.projects.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -272,7 +293,9 @@ export default function Conversations({
                 value={agentID}
                 onChange={(e) => setAgentID(e.target.value)}
               >
-                <option value="">{t("选择 Agent", "Select an agent")}</option>
+                <option value="">
+                  {t(...uiMessages.conversations_select_an_agent_08897f)}
+                </option>
                 {choices.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -281,7 +304,7 @@ export default function Conversations({
               </select>
             </label>
             <label>
-              {t("标题（可选）", "Title (optional)")}
+              {t(...uiMessages.conversations_title_optional_bda802)}
               <input
                 maxLength={160}
                 value={title}
@@ -301,7 +324,7 @@ export default function Conversations({
               </p>
             )}
             <button className="primary" disabled={busy || !agentID}>
-              {t("创建对话", "Create conversation")}
+              {t(...uiMessages.conversations_create_conversation_5889a6)}
             </button>
           </form>
         )}
@@ -313,7 +336,7 @@ export default function Conversations({
               role={grouped ? "group" : undefined}
               aria-label={
                 grouped
-                  ? `${state.agents.find((a) => a.id === key)?.name ?? t("已移除的 Agent", "Removed agent")} · ${projectName(sessions[0])}`
+                  ? `${state.agents.find((a) => a.id === key)?.name ?? t(...uiMessages.conversations_removed_agent_22e81a)} · ${projectName(sessions[0])}`
                   : undefined
               }
             >
@@ -322,7 +345,7 @@ export default function Conversations({
                   <span>
                     <strong>
                       {state.agents.find((a) => a.id === key)?.name ??
-                        t("已移除的 Agent", "Removed agent")}
+                        t(...uiMessages.conversations_removed_agent_22e81a)}
                     </strong>
                     <small>{projectName(sessions[0])}</small>
                   </span>
@@ -369,8 +392,10 @@ export default function Conversations({
           {!visible.length && (
             <p className="muted conversation-empty">
               {query.trim() || filterAgents.length || recentOnly
-                ? t("没有符合条件的对话", "No matching conversations")
-                : t("暂无对话", "No conversations")}
+                ? t(
+                    ...uiMessages.conversations_no_matching_conversations_b3bdf3,
+                  )
+                : t(...uiMessages.conversations_no_conversations_9ac294)}
             </p>
           )}
         </div>
@@ -393,7 +418,7 @@ export default function Conversations({
                       if (task) onTask(task);
                     }}
                   >
-                    {t("打开任务", "Open task")}
+                    {t(...uiMessages.conversations_open_task_ff4a5d)}
                   </button>
                 ) : (
                   <button
@@ -401,14 +426,15 @@ export default function Conversations({
                     aria-expanded={converting}
                     onClick={() => setConverting(!converting)}
                   >
-                    {t("转为项目任务", "Create project task")}
+                    {t(...uiMessages.conversations_create_project_task_11cca7)}
                   </button>
                 ))}
               <button
                 className="text-button"
                 onClick={() => onAgent(agent.id, agent.project_id)}
               >
-                {t("打开 Agent", "Open agent")} <Icon name="arrow" size={16} />
+                {t(...uiMessages.conversations_open_agent_f26aad)}{" "}
+                <Icon name="arrow" size={16} />
               </button>
             </div>
             {converting && onTask && (
@@ -449,7 +475,9 @@ export default function Conversations({
           <section className="panel conversation-placeholder">
             <Empty
               icon="message"
-              title={t("选择或新建对话", "Select or start a conversation")}
+              title={t(
+                ...uiMessages.conversations_select_or_start_a_conversation_cb5b4d,
+              )}
             >
               {null}
             </Empty>

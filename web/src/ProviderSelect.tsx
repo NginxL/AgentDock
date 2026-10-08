@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import {
   useEffect,
   useId,
@@ -70,23 +71,25 @@ export default function ProviderSelect({
       navigate(enabled[(index + direction + enabled.length) % enabled.length]);
   }
   function description(provider: Provider) {
-    if (loading) return t("正在检测…", "Checking…");
+    if (loading) return t(...uiMessages.providerselect_checking_09194d);
     if (failed)
-      return t("检测失败，点击刷新重试", "Check failed. Refresh to retry.");
+      return t(
+        ...uiMessages.providerselect_check_failed_refresh_to_retry_85c58f,
+      );
     const reason = availability?.[provider]?.reason;
     if (reason === "connect_required")
-      return t("请先连接所选设备", "Connect the selected device first");
+      return t(
+        ...uiMessages.providerselect_connect_the_selected_device_first_a94e15,
+      );
     if (provider === "pi")
       return t(
-        "需要 Pi CLI 和 pi-acp 适配器",
-        "Requires Pi CLI and the pi-acp adapter",
+        ...uiMessages.providerselect_requires_pi_cli_and_the_pi_acp_adapter_8c907a,
       );
     if (provider === "antigravity")
       return t(
-        "需要 Antigravity ACP 服务",
-        "Requires the Antigravity ACP server",
+        ...uiMessages.providerselect_requires_the_antigravity_acp_server_d49e42,
       );
-    return t("所选设备未找到此 CLI", "CLI not found on this device");
+    return t(...uiMessages.providerselect_cli_not_found_on_this_device_363b3e);
   }
 
   function close() {
@@ -212,7 +215,9 @@ export default function ProviderSelect({
         }
       }}
     >
-      <label htmlFor={id}>{t("服务", "Provider")}</label>
+      <label htmlFor={id}>
+        {t(...uiMessages.providerselect_provider_620040)}
+      </label>
       <button
         id={id}
         ref={trigger}
@@ -262,13 +267,17 @@ export default function ProviderSelect({
             style={placement ?? { visibility: "hidden" }}
           >
             <div className="provider-select-heading">
-              <span>{t("选择服务", "Select provider")}</span>
+              <span>
+                {t(...uiMessages.providerselect_select_provider_937ab4)}
+              </span>
               {onRefresh && (
                 <button
                   type="button"
                   className="icon-button"
                   disabled={loading}
-                  aria-label={t("重新检测服务", "Refresh providers")}
+                  aria-label={t(
+                    ...uiMessages.providerselect_refresh_providers_a8bb90,
+                  )}
                   onClick={onRefresh}
                 >
                   ↻
@@ -277,7 +286,9 @@ export default function ProviderSelect({
               <button
                 type="button"
                 className="icon-button"
-                aria-label={t("关闭服务选择", "Close provider selection")}
+                aria-label={t(
+                  ...uiMessages.providerselect_close_provider_selection_cec654,
+                )}
                 onClick={close}
               >
                 <Icon name="close" size={16} />
@@ -286,7 +297,7 @@ export default function ProviderSelect({
             <div
               id={`${id}-options`}
               role="listbox"
-              aria-label={t("服务", "Provider")}
+              aria-label={t(...uiMessages.providerselect_provider_620040)}
               className="provider-options"
               ref={options}
             >
@@ -311,7 +322,7 @@ export default function ProviderSelect({
                       {providerNames[provider]}
                       {availability?.[provider]?.available !== true && (
                         <small className="provider-unavailable">
-                          {t("不可用", "Unavailable")}
+                          {t(...uiMessages.providerselect_unavailable_e38308)}
                         </small>
                       )}
                     </span>

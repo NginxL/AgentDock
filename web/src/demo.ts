@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import type { DockState, Language } from "./types";
 
 /** Fictional, local-only fixtures. No real paths, credentials, accounts or model calls. */
@@ -48,7 +49,7 @@ export function demoState(lang: Language): DockState {
         id: "demo-session-1",
         project_id: "demo-project",
         agent_id: "demo-codex",
-        title: t("完善搜索体验", "Refine the search experience"),
+        title: t(...uiMessages.demo_refine_the_search_experience_dea2e3),
         native_session_id: "demo-native-codex-01",
         status: "idle",
         created_at: date,
@@ -58,7 +59,7 @@ export function demoState(lang: Language): DockState {
         id: "demo-session-2",
         project_id: "demo-project",
         agent_id: "demo-codex",
-        title: t("设置页可访问性", "Settings accessibility"),
+        title: t(...uiMessages.demo_settings_accessibility_cda5ed),
         native_session_id: "demo-native-codex-02",
         status: "idle",
         created_at: date,
@@ -68,7 +69,7 @@ export function demoState(lang: Language): DockState {
         id: "demo-session-3",
         project_id: "demo-project",
         agent_id: "demo-claude",
-        title: t("审阅搜索变更", "Review search changes"),
+        title: t(...uiMessages.demo_review_search_changes_e9da7e),
         native_session_id: "demo-native-claude-01",
         status: "idle",
         created_at: date,
@@ -82,8 +83,7 @@ export function demoState(lang: Language): DockState {
         agent_id: "demo-codex",
         project_id: "demo-project",
         prompt: t(
-          "为搜索加入键盘导航，并补充相关测试。",
-          "Add keyboard navigation to search and cover the behavior with tests.",
+          ...uiMessages.demo_add_keyboard_navigation_to_search_and_cover_t_445903,
         ),
         status: "completed",
         origin: "human",
@@ -98,8 +98,7 @@ export function demoState(lang: Language): DockState {
         agent_id: "demo-claude",
         project_id: "demo-project",
         prompt: t(
-          "独立审阅键盘导航与焦点恢复。",
-          "Independently review keyboard navigation and focus restoration.",
+          ...uiMessages.demo_independently_review_keyboard_navigation_and_d7b8da,
         ),
         status: "completed",
         origin: "delegate",
@@ -116,8 +115,7 @@ export function demoState(lang: Language): DockState {
         agent_id: "demo-codex",
         project_id: "demo-project",
         prompt: t(
-          "审阅结果：测试通过，可交付。",
-          "Review result: tests pass and the change is ready.",
+          ...uiMessages.demo_review_result_tests_pass_and_the_change_is_re_ae8930,
         ),
         status: "completed",
         origin: "reply",
@@ -141,12 +139,10 @@ export function demoState(lang: Language): DockState {
         reply_run_id: "demo-run-3",
         status: "completed",
         body: t(
-          "请审阅搜索的键盘导航变更，重点检查 Esc 关闭、焦点恢复以及空结果。",
-          "Review search keyboard navigation, focusing on Escape, focus restoration and empty results.",
+          ...uiMessages.demo_review_search_keyboard_navigation_focusing_on_5cdfde,
         ),
         result: t(
-          "已检查 3 个边界场景，相关测试通过。焦点会回到触发按钮，未发现阻塞问题。",
-          "Verified three edge cases and the related tests. Focus returns to the trigger; no blocking issues found.",
+          ...uiMessages.demo_verified_three_edge_cases_and_the_related_tes_abef4f,
         ),
         correlation_id: "SEARCH-24",
         created_at: date,
@@ -158,12 +154,11 @@ export function demoState(lang: Language): DockState {
         project_id: "demo-project",
         key: "project.conventions",
         content: t(
-          "界面默认中文，提供完整英语切换。交互变更需覆盖键盘操作和焦点管理。",
-          "Default to Chinese with full English switching. Cover keyboard interaction and focus management for UI changes.",
+          ...uiMessages.demo_default_to_chinese_with_full_english_switchin_264ee0,
         ),
         version: 3,
         author: "human",
-        source: t("项目约定", "Project conventions"),
+        source: t(...uiMessages.demo_project_conventions_8c752f),
         updated_at: date,
       },
       {
@@ -171,12 +166,11 @@ export function demoState(lang: Language): DockState {
         project_id: "demo-project",
         key: "search.behavior",
         content: t(
-          "搜索结果保持稳定排序；Esc 关闭浮层后，焦点回到搜索入口。",
-          "Keep search results in a stable order. Escape closes the overlay and restores focus to the search trigger.",
+          ...uiMessages.demo_keep_search_results_in_a_stable_order_escape_5c54a5,
         ),
         version: 1,
         author: "human",
-        source: t("已确认决策", "Reviewed decision"),
+        source: t(...uiMessages.demo_reviewed_decision_786d66),
         updated_at: date,
       },
     ],
@@ -187,8 +181,7 @@ export function demoState(lang: Language): DockState {
         agent_id: "demo-claude",
         key: "testing.accessibility",
         content: t(
-          "交互测试优先使用角色和可访问名称定位元素，覆盖键盘输入路径。",
-          "Use roles and accessible names in interaction tests, including keyboard input paths.",
+          ...uiMessages.demo_use_roles_and_accessible_names_in_interaction_f571a8,
         ),
         expected_version: 0,
         status: "pending",
@@ -221,8 +214,7 @@ export function demoState(lang: Language): DockState {
           item_id: "thought",
           part: 0,
           text: t(
-            "先检查搜索组件的键盘事件与焦点管理，再补充方向键、Esc 和空结果测试。",
-            "Check keyboard events and focus handling in the search component, then cover arrow keys, Escape and empty results.",
+            ...uiMessages.demo_check_keyboard_events_and_focus_handling_in_t_e6271e,
           ),
         },
         created_at: date,
@@ -242,8 +234,7 @@ export function demoState(lang: Language): DockState {
             status: "completed",
             exitCode: 0,
             aggregatedOutput: t(
-              "测试文件  1 通过\n测试用例  8 通过",
-              "Test files  1 passed\nTests       8 passed",
+              ...uiMessages.demo_test_files_1_passed_tests_8_passed_6d56e7,
             ),
           },
         },
@@ -259,8 +250,7 @@ export function demoState(lang: Language): DockState {
         payload: {
           run_id: "demo-run-1",
           text: t(
-            "为搜索加入键盘导航，沿用项目的可访问性约定。完成后请 Agent B 独立审阅。",
-            "Add keyboard navigation to search following the project accessibility conventions. Ask Agent B for an independent review when ready.",
+            ...uiMessages.demo_add_keyboard_navigation_to_search_following_t_8a0042,
           ),
         },
         created_at: date,
@@ -274,8 +264,7 @@ export function demoState(lang: Language): DockState {
         payload: {
           run_id: "demo-run-1",
           text: t(
-            "已完成键盘导航和焦点恢复。\n\n• ↑ / ↓ 在结果中移动，Enter 打开所选项\n• Esc 关闭搜索并恢复焦点\n• 空结果不会触发无效选择\n\n已将审阅任务派给 Agent B，沿用独立的审阅会话。",
-            "Keyboard navigation and focus restoration are complete.\n\n• ↑ / ↓ move through results; Enter opens the selection\n• Escape closes search and restores focus\n• Empty results cannot trigger invalid selections\n\nThe review was dispatched to Agent B in its own review session.",
+            ...uiMessages.demo_keyboard_navigation_and_focus_restoration_are_a352eb,
           ),
         },
         created_at: date,
@@ -289,8 +278,7 @@ export function demoState(lang: Language): DockState {
         payload: {
           run_id: "demo-run-1",
           text: t(
-            "Agent A → Agent B · 审阅搜索变更",
-            "Agent A → Agent B · Review search changes",
+            ...uiMessages.demo_agent_a_agent_b_review_search_changes_00d14d,
           ),
         },
         created_at: date,
@@ -304,8 +292,7 @@ export function demoState(lang: Language): DockState {
         payload: {
           run_id: "demo-run-3",
           text: t(
-            "审阅结果已回传：3 个边界场景与相关测试均通过。变更已准备好供你查看。",
-            "The review returned: all three edge cases and related tests pass. The change is ready for your review.",
+            ...uiMessages.demo_the_review_returned_all_three_edge_cases_and_d565a7,
           ),
         },
         created_at: date,
@@ -320,12 +307,12 @@ export function demoState(lang: Language): DockState {
         fetched_at: date,
         windows: [
           {
-            label: t("5 小时额度", "5-hour window"),
+            label: t(...uiMessages.demo_5_hour_window_d8f429),
             remaining_percent: 78,
             reset_at: "2026-09-26T12:00:00Z",
           },
           {
-            label: t("每周额度", "Weekly window"),
+            label: t(...uiMessages.demo_weekly_window_d98769),
             remaining_percent: 64,
             reset_at: "2026-09-30T09:00:00Z",
           },
@@ -340,12 +327,12 @@ export function demoState(lang: Language): DockState {
         fetched_at: date,
         windows: [
           {
-            label: t("5 小时额度", "5-hour window"),
+            label: t(...uiMessages.demo_5_hour_window_d8f429),
             remaining_percent: 52,
             reset_at: "2026-09-26T11:30:00Z",
           },
           {
-            label: t("每周额度", "Weekly window"),
+            label: t(...uiMessages.demo_weekly_window_d98769),
             remaining_percent: 83,
             reset_at: "2026-10-01T09:00:00Z",
           },

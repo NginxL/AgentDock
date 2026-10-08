@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Agent, Mutate, Translate } from "./types";
 
@@ -54,22 +55,21 @@ export default function AgentDeletion({
         title={
           active
             ? t(
-                "请先结束该 Agent 的未完成任务，再删除。",
-                "Finish this agent’s pending tasks before deleting it.",
+                ...uiMessages.agentdeletion_finish_this_agent_s_pending_tasks_before_dele_a3ac51,
               )
             : undefined
         }
         disabled={busy || active}
         onClick={() => setConfirm(!confirm)}
       >
-        {t("删除 Agent", "Delete agent")}
+        {t(...uiMessages.agentdeletion_delete_agent_f8bb10)}
       </button>
       {confirm && (
         <div
           id={dialogID}
           className="agent-delete-confirm"
           role="alertdialog"
-          aria-label={t("删除 Agent", "Delete agent")}
+          aria-label={t(...uiMessages.agentdeletion_delete_agent_f8bb10)}
         >
           <div className="panel-heading">
             <strong>
@@ -78,7 +78,7 @@ export default function AgentDeletion({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭", "Close")}
+              aria-label={t(...uiMessages.agentdeletion_close_f09d50)}
               onClick={() => setConfirm(false)}
             >
               ×
@@ -103,7 +103,7 @@ export default function AgentDeletion({
               disabled={busy}
               onClick={() => setConfirm(false)}
             >
-              {t("取消", "Cancel")}
+              {t(...uiMessages.agentdeletion_cancel_68f563)}
             </button>
             <button
               type="button"
@@ -120,7 +120,7 @@ export default function AgentDeletion({
                 );
               }}
             >
-              {t("确认删除", "Delete permanently")}
+              {t(...uiMessages.agentdeletion_delete_permanently_da50a4)}
             </button>
           </div>
         </div>

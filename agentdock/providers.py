@@ -71,7 +71,9 @@ def _execute(turn: NativeTurn):
     if turn.provider not in PROVIDERS:
         raise ProviderError("Unsupported native agent provider.")
     if turn.permission_mode not in ("ask", "full_access", "read_only"):
-        raise ProviderError("Invalid agent permission mode")
+        raise ProviderError(
+            "Invalid agent permission mode", code="invalid_agent_permission_mode"
+        )
     if (
         not isinstance(turn.command, list)
         or not turn.command
@@ -128,7 +130,8 @@ def _execute(turn: NativeTurn):
                 )
             except (OSError, ValueError):
                 raise ProviderError(
-                    "Could not prepare isolated Codex session storage; no prompt was sent."
+                    "Could not prepare isolated Codex session storage; no prompt was sent.",
+                    code="could_not_prepare_isolated_codex_session_storage_no_prompt_was_sent",
                 ) from None
             argv += flags
             if legacy:

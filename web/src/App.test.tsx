@@ -133,7 +133,7 @@ describe("desktop connection and built-in usage", () => {
     render(<App />);
     await connect();
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-    expect(screen.getByText("待更新")).toBeTruthy();
+    expect(await screen.findByText("待更新")).toBeTruthy();
     expect(
       screen.queryByText(
         "Cached quota is outdated. Refresh to read current limits.",
@@ -1204,7 +1204,7 @@ describe("usage semantics and transport", () => {
         (order === "quota-first" ? resolveState : resolveQuota)();
       });
       fireEvent.click(screen.getByRole("button", { name: "账号" }));
-      expect(screen.getByText("已停用")).toBeTruthy();
+      expect(await screen.findByText("已停用")).toBeTruthy();
       expect(screen.queryByText("可用")).toBeNull();
     },
   );

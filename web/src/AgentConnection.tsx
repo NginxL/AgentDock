@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useRef, useState, type ReactNode } from "react";
 import type { Environment, Mutate, Translate } from "./types";
 import { Icon } from "./ui";
@@ -44,11 +45,11 @@ export default function AgentConnection({
   const python = newConnection ? draft.python : (selected?.python ?? "python3");
   const disabled = busy || connecting;
   const labels: Record<string, string> = {
-    connected: t("已连接", "Connected"),
-    connecting: t("连接中", "Connecting"),
-    reconnecting: t("重连中", "Reconnecting"),
-    disconnected: t("未连接", "Disconnected"),
-    error: t("连接失败", "Connection failed"),
+    connected: t(...uiMessages.agentconnection_connected_ca3dba),
+    connecting: t(...uiMessages.agentconnection_connecting_da44c1),
+    reconnecting: t(...uiMessages.agentconnection_reconnecting_161fd2),
+    disconnected: t(...uiMessages.agentconnection_disconnected_c401a7),
+    error: t(...uiMessages.agentconnection_connection_failed_e3b0ae),
   };
 
   async function connect() {
@@ -93,7 +94,7 @@ export default function AgentConnection({
       <div className="form-grid device-directory-row">
         <div className="device-field">
           <label>
-            {t("设备", "Device")}
+            {t(...uiMessages.agentconnection_device_744986)}
             <select
               value={value}
               disabled={locked || disabled}
@@ -103,14 +104,22 @@ export default function AgentConnection({
                 onChange(e.target.value);
               }}
             >
-              <option value="local">{t("本机 CLI", "Local CLI")}</option>
+              <option value="local">
+                {t(...uiMessages.agentconnection_local_cli_75f187)}
+              </option>
               {!locked && (
                 <option value={NEW_SSH_CONNECTION}>
-                  {t("新建 SSH / Devbox 连接…", "New SSH / Devbox connection…")}
+                  {t(
+                    ...uiMessages.agentconnection_new_ssh_devbox_connection_ce8406,
+                  )}
                 </option>
               )}
               {!!environments.some((e) => e.kind === "ssh") && (
-                <optgroup label={t("已保存的连接", "Saved connections")}>
+                <optgroup
+                  label={t(
+                    ...uiMessages.agentconnection_saved_connections_bceafc,
+                  )}
+                >
                   {environments
                     .filter((e) => e.kind === "ssh")
                     .map((e) => (
@@ -127,7 +136,7 @@ export default function AgentConnection({
               className={`pill device-status ${selected.status === "connected" ? "good" : ""}`}
             >
               {connecting
-                ? t("连接中", "Connecting")
+                ? t(...uiMessages.agentconnection_connecting_da44c1)
                 : (labels[selected.status] ?? selected.status)}
             </span>
           )}
@@ -138,7 +147,9 @@ export default function AgentConnection({
         <div className="connection-setup">
           <div className="ssh-address-row">
             <label>
-              {t("SSH 地址或 Host 别名", "SSH destination or Host alias")}
+              {t(
+                ...uiMessages.agentconnection_ssh_destination_or_host_alias_b424ad,
+              )}
               <input
                 value={host}
                 onChange={(e) => {
@@ -165,17 +176,19 @@ export default function AgentConnection({
               onClick={() => void connect()}
             >
               {connecting
-                ? t("连接中…", "Connecting…")
+                ? t(...uiMessages.agentconnection_connecting_1dc33b)
                 : newConnection
-                  ? t("连接并使用", "Connect and use")
-                  : t("连接 / 检查", "Connect / check")}
+                  ? t(...uiMessages.agentconnection_connect_and_use_ccc76d)
+                  : t(...uiMessages.agentconnection_connect_check_f711c5)}
             </button>
             {newConnection && (
               <button
                 type="button"
                 className="icon-button"
                 disabled={disabled}
-                aria-label={t("关闭 SSH 连接配置", "Close SSH setup")}
+                aria-label={t(
+                  ...uiMessages.agentconnection_close_ssh_setup_947af0,
+                )}
                 onClick={() => onChange(draft.previous)}
               >
                 <Icon name="close" />
@@ -184,10 +197,12 @@ export default function AgentConnection({
           </div>
           <details className="connection-advanced">
             <summary>
-              {t("高级连接设置", "Advanced connection settings")}
+              {t(
+                ...uiMessages.agentconnection_advanced_connection_settings_113985,
+              )}
             </summary>
             <label>
-              {t("远端 Python", "Remote Python")}
+              {t(...uiMessages.agentconnection_remote_python_4e7a09)}
               <input
                 value={python}
                 onChange={(e) => {
@@ -204,8 +219,7 @@ export default function AgentConnection({
             </label>
             <p className="form-hint">
               {t(
-                "沿用你的 SSH 配置与远端 CLI 登录。",
-                "Uses your SSH configuration and remote CLI login.",
+                ...uiMessages.agentconnection_uses_your_ssh_configuration_and_remote_cli_lo_922b6e,
               )}
             </p>
           </details>

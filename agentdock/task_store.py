@@ -120,10 +120,16 @@ class TaskStore:
     def _task_owner(self, task, agent_id):
         agent = self._available("agents", agent_id)
         if agent["project_id"] != task["project_id"]:
-            raise Forbidden("Choose an Agent in this project")
+            raise Forbidden(
+                "Choose an Agent in this project",
+                code="choose_an_agent_in_this_project",
+            )
         project = self._one("projects", task["project_id"])
         if agent["environment_id"] != project["environment_id"]:
-            raise Forbidden("Task Agents must use the project device")
+            raise Forbidden(
+                "Task Agents must use the project device",
+                code="task_agents_must_use_the_project_device",
+            )
         return agent
 
     def create_task(
@@ -236,7 +242,10 @@ class TaskStore:
         with self.transaction():
             task = self._one("tasks", task_id)
             if self._task_live(task_id):
-                raise Conflict("Pause execution before changing task requirements")
+                raise Conflict(
+                    "Pause execution before changing task requirements",
+                    code="pause_execution_before_changing_task_requirements",
+                )
             if task["status"] in ("completed", "cancelled", "archived"):
                 raise Conflict("Reopen this task before changing requirements")
             values = dict(
@@ -343,12 +352,19 @@ class TaskStore:
                     raise Conflict("Request identity already belongs to another input")
                 return dict(existing)
             if task["status"] in ("archived", "cancelled", "paused", "interrupted"):
-                raise Conflict("Resume this task before submitting more work")
+                raise Conflict(
+                    "Resume this task before submitting more work",
+                    code="resume_this_task_before_submitting_more_work",
+                )
             if task["status"] == "completed":
-                raise Conflict("Reopen this task before adding requirements")
+                raise Conflict(
+                    "Reopen this task before adding requirements",
+                    code="reopen_this_task_before_adding_requirements",
+                )
             if self._task_live(task_id) and intent not in ("record", task["intent"]):
                 raise Conflict(
-                    "Wait for the current work before changing discussion or execution mode"
+                    "Wait for the current work before changing discussion or execution mode",
+                    code="wait_for_the_current_work_before_changing_discussion_or_execution_mode",
                 )
             if action == "steer":
                 if intent == "record":
@@ -360,7 +376,10 @@ class TaskStore:
                     or run["task_role"] != "owner"
                     or intent != task["intent"]
                 ):
-                    raise Conflict("The active task run changed")
+                    raise Conflict(
+                        "The active task run changed",
+                        code="the_active_task_run_changed",
+                    )
                 run_id, status = run["id"], "pending"
             else:
                 run_id, status = None, "recorded"
@@ -622,14 +641,23 @@ class TaskStore:
 
     def _task_can_accept(self, task):
         if self._task_live(task["id"]):
-            raise Conflict("Wait for task execution and delegated results")
+            raise Conflict(
+                "Wait for task execution and delegated results",
+                code="wait_for_task_execution_and_delegated_results",
+            )
         if self.db.execute(
             "SELECT 1 FROM task_questions WHERE task_id=? AND status='open'",
             (task["id"],),
         ).fetchone():
-            raise Conflict("Answer the pending task questions first")
+            raise Conflict(
+                "Answer the pending task questions first",
+                code="answer_the_pending_task_questions_first",
+            )
         if not task["delivery_id"]:
-            raise Conflict("The task owner has not submitted a delivery")
+            raise Conflict(
+                "The task owner has not submitted a delivery",
+                code="the_task_owner_has_not_submitted_a_delivery",
+            )
         delivery = self._one("task_deliveries", task["delivery_id"])
         if delivery["revision"] != task["revision"]:
             raise Conflict("Delivery does not cover the latest requirements")
@@ -637,7 +665,10 @@ class TaskStore:
         if run["status"] != "completed":
             raise Conflict("Delivery execution did not finish successfully")
         if any(c["status"] != "passed" for c in delivery["checks"]):
-            raise Conflict("All acceptance checks need passing evidence")
+            raise Conflict(
+                "All acceptance checks need passing evidence",
+                code="all_acceptance_checks_need_passing_evidence",
+            )
         if task["review_required"]:
             review = self.db.execute(
                 """SELECT v.verdict,r.rowid AS run_order FROM task_reviews v JOIN runs r ON r.id=v.run_id
@@ -647,14 +678,16 @@ class TaskStore:
             ).fetchone()
             if not review or review["verdict"] != "approved":
                 raise Conflict(
-                    "An approved independent review is required before final delivery"
+                    "An approved independent review is required before final delivery",
+                    code="an_approved_independent_review_is_required_before_final_delivery",
                 )
             if self.db.execute(
                 "SELECT 1 FROM runs WHERE work_task_id=? AND task_role='worker' AND rowid>?",
                 (task["id"], review["run_order"]),
             ).fetchone():
                 raise Conflict(
-                    "Request a new review after the latest delegated changes"
+                    "Request a new review after the latest delegated changes",
+                    code="request_a_new_review_after_the_latest_delegated_changes",
                 )
         if self.db.execute(
             "SELECT 1 FROM messages WHERE sender_run_id IN (SELECT id FROM runs WHERE work_task_id=?) AND status IN ('queued','running','waiting')",

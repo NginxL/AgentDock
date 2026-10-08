@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { DockState, Mutate, Session, Translate } from "./types";
 import { Icon } from "./ui";
@@ -105,10 +106,9 @@ export default function SessionListItem({
           title={
             active
               ? t(
-                  "请先结束此会话的未完成任务。",
-                  "Finish this session’s pending tasks first.",
+                  ...uiMessages.sessionlistitem_finish_this_session_s_pending_tasks_first_964d1f,
                 )
-              : t("删除会话", "Delete session")
+              : t(...uiMessages.sessionlistitem_delete_session_5b8934)
           }
           aria-expanded={confirm}
           aria-controls={confirm ? dialogID : undefined}
@@ -136,7 +136,7 @@ export default function SessionListItem({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭", "Close")}
+              aria-label={t(...uiMessages.sessionlistitem_close_f09d50)}
               onClick={dismiss}
             >
               <Icon name="close" size={16} />
@@ -144,8 +144,7 @@ export default function SessionListItem({
           </div>
           <p>
             {t(
-              "将删除会话及其专属文件，无法撤销。共用项目文件会保留。",
-              "Permanently delete this conversation and its private files. Shared project files are kept.",
+              ...uiMessages.sessionlistitem_permanently_delete_this_conversation_and_its_227666,
             )}
           </p>
           <div className="button-row">
@@ -156,7 +155,7 @@ export default function SessionListItem({
               disabled={busy || deleting}
               onClick={dismiss}
             >
-              {t("取消", "Cancel")}
+              {t(...uiMessages.sessionlistitem_cancel_68f563)}
             </button>
             <button
               type="button"
@@ -182,8 +181,8 @@ export default function SessionListItem({
               }}
             >
               {deleting
-                ? t("删除中…", "Deleting…")
-                : t("确认删除", "Delete permanently")}
+                ? t(...uiMessages.sessionlistitem_deleting_99ae94)
+                : t(...uiMessages.sessionlistitem_delete_permanently_da50a4)}
             </button>
           </div>
         </div>

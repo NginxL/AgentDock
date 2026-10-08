@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useId, useRef, useState } from "react";
 import ProviderIcon from "./ProviderIcon";
 import type { Agent, Project, Translate } from "./types";
@@ -21,7 +22,9 @@ export default function ConversationAgentFilter({
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const first = useRef<HTMLButtonElement>(null);
-  const label = t("按 Agent 筛选对话", "Filter conversations by agent");
+  const label = t(
+    ...uiMessages.conversationagentfilter_filter_conversations_by_agent_1bed51,
+  );
   const close = () => {
     setOpen(false);
     trigger.current?.focus();
@@ -72,11 +75,15 @@ export default function ConversationAgentFilter({
           aria-label={label}
         >
           <div className="panel-heading">
-            <strong>{t("筛选 Agent", "Filter agents")}</strong>
+            <strong>
+              {t(...uiMessages.conversationagentfilter_filter_agents_354ca8)}
+            </strong>
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭 Agent 筛选", "Close agent filter")}
+              aria-label={t(
+                ...uiMessages.conversationagentfilter_close_agent_filter_08200d,
+              )}
               onClick={close}
             >
               <Icon name="close" size={16} />
@@ -89,7 +96,7 @@ export default function ConversationAgentFilter({
             aria-pressed={!selected.length}
             onClick={() => onChange([])}
           >
-            {t("全部 Agent", "All agents")}
+            {t(...uiMessages.conversationagentfilter_all_agents_60d33a)}
             {!selected.length && <span aria-hidden="true">✓</span>}
           </button>
           <div className="conversation-agent-choices">
@@ -111,13 +118,17 @@ export default function ConversationAgentFilter({
                   <strong>{agent.name}</strong>
                   <small>
                     {projects.find((p) => p.id === agent.project_id)?.name ??
-                      t("日常对话", "Everyday chats")}
+                      t(
+                        ...uiMessages.conversationagentfilter_everyday_chats_0dc423,
+                      )}
                   </small>
                 </span>
               </label>
             ))}
             {!agents.length && (
-              <p className="muted">{t("暂无 Agent", "No agents")}</p>
+              <p className="muted">
+                {t(...uiMessages.conversationagentfilter_no_agents_696385)}
+              </p>
             )}
           </div>
         </div>

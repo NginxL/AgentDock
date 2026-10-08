@@ -1,4 +1,7 @@
+import * as uiMessages from "./messages";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -9,6 +12,7 @@ import { ApiError, listOf, request } from "./api";
 import { FeatureContext } from "./ExperimentalFeatures";
 import DiagnosticExport from "./DiagnosticExport";
 import { watchState } from "./stateStream";
+import { useConnectionQueries } from "./queryClient";
 import type {
   DockState,
   Account,
@@ -25,9 +29,9 @@ import Conversations from "./views/Conversations";
 import Tasks from "./views/Tasks";
 import Memories from "./views/Memories";
 import { ProjectHeader, ProjectList } from "./views/Projects";
-import Usage from "./views/Usage";
-import Tokens from "./views/Tokens";
-import Accounts from "./views/Accounts";
+const Usage = lazy(() => import("./views/Usage"));
+const Tokens = lazy(() => import("./views/Tokens"));
+const Accounts = lazy(() => import("./views/Accounts"));
 import { useMetrics } from "./metrics";
 import { clearModelCatalog, prewarmModels } from "./modelCatalog";
 import { quotaRefreshTargets, usageTargets } from "./usageTargets";
@@ -71,6 +75,7 @@ export default function App() {
   const t: Translate = (zh, en) => (lang === "zh" ? zh : en);
   const [token, setToken] = useState("");
   const tokenRef = useRef("");
+  const queries = useConnectionQueries(token);
   const mutationInFlight = useRef(false);
   const stateEpoch = useRef(0);
   const quotaEpoch = useRef(0);
@@ -212,67 +217,78 @@ export default function App() {
     setError("");
   }, [navigate]);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const currentToken = tokenRef.current;
-    const currentEpoch = stateEpoch.current;
-    const currentQuotaEpoch = quotaEpoch.current;
-    if (!currentToken) return false;
-    const snapshot = await request<DockState>(
-      currentToken,
-      stateRef.current?.version
-        ? `/api/state?since=${encodeURIComponent(stateRef.current.version)}`
-        : "/api/state",
-      undefined,
-      signal,
-    );
-    if (
-      currentToken !== tokenRef.current ||
-      currentEpoch !== stateEpoch.current
-    )
-      return false;
-    setState((current) => {
-      if (current?.version && snapshot.version) {
-        const [currentEpoch, currentRevision] = current.version.split(":");
-        const [nextEpoch, nextRevision] = snapshot.version.split(":");
-        if (
-          currentEpoch === nextEpoch &&
-          Number(nextRevision) <= Number(currentRevision)
-        )
-          return current;
-      }
-      const next =
-        snapshot.partial && current ? { ...current, ...snapshot } : snapshot;
-      return currentQuotaEpoch === quotaEpoch.current
-        ? next
-        : {
-            ...next,
-            quotas: current?.quotas ?? next.quotas,
-            accounts: next.accounts?.map((account) => {
-              const latest = current?.accounts?.find(
-                (a) => a.id === account.id,
-              );
-              if (
-                !latest ||
-                latest.generation !== account.generation ||
-                !newerAccount(latest, account) ||
-                (accountQuotaEpochs.current.get(account.id) ?? 0) <=
-                  currentQuotaEpoch
-              )
-                return account;
-              return {
-                ...account,
-                updated_at: latest.updated_at,
-                quota: latest.quota,
-                identity: latest.identity,
-                status: latest.status,
-                cooldown_until: latest.cooldown_until,
-                error: latest.error,
-              };
-            }),
-          };
-    });
-    return true;
-  }, []);
+  const refresh = useCallback(
+    async (signal?: AbortSignal) => {
+      const currentToken = tokenRef.current;
+      const currentEpoch = stateEpoch.current;
+      const currentQuotaEpoch = quotaEpoch.current;
+      if (!currentToken) return false;
+      const since = stateRef.current?.version;
+      if (signal?.aborted) return false;
+      const snapshot = await queries.fetchQuery({
+        queryKey: ["state", currentEpoch, since ?? null],
+        gcTime: 0,
+        queryFn: ({ signal: querySignal }) =>
+          request<DockState>(
+            currentToken,
+            since
+              ? `/api/state?since=${encodeURIComponent(since)}`
+              : "/api/state",
+            undefined,
+            querySignal,
+          ),
+      });
+      if (signal?.aborted) return false;
+      if (
+        currentToken !== tokenRef.current ||
+        currentEpoch !== stateEpoch.current
+      )
+        return false;
+      setState((current) => {
+        if (current?.version && snapshot.version) {
+          const [currentEpoch, currentRevision] = current.version.split(":");
+          const [nextEpoch, nextRevision] = snapshot.version.split(":");
+          if (
+            currentEpoch === nextEpoch &&
+            Number(nextRevision) <= Number(currentRevision)
+          )
+            return current;
+        }
+        const next =
+          snapshot.partial && current ? { ...current, ...snapshot } : snapshot;
+        return currentQuotaEpoch === quotaEpoch.current
+          ? next
+          : {
+              ...next,
+              quotas: current?.quotas ?? next.quotas,
+              accounts: next.accounts?.map((account) => {
+                const latest = current?.accounts?.find(
+                  (a) => a.id === account.id,
+                );
+                if (
+                  !latest ||
+                  latest.generation !== account.generation ||
+                  !newerAccount(latest, account) ||
+                  (accountQuotaEpochs.current.get(account.id) ?? 0) <=
+                    currentQuotaEpoch
+                )
+                  return account;
+                return {
+                  ...account,
+                  updated_at: latest.updated_at,
+                  quota: latest.quota,
+                  identity: latest.identity,
+                  status: latest.status,
+                  cooldown_until: latest.cooldown_until,
+                  error: latest.error,
+                };
+              }),
+            };
+      });
+      return true;
+    },
+    [queries],
+  );
 
   const canRefreshQuota = !demo && !!token && !!state?.runtime.enabled;
 
@@ -525,12 +541,10 @@ export default function App() {
       setError(
         e instanceof ApiError && e.status === 401
           ? t(
-              "访问令牌无效，请使用本地服务提供的管理员令牌。",
-              "Invalid token. Use the admin token supplied by your local service.",
+              ...uiMessages.app_invalid_token_use_the_admin_token_supplied_by_46e52e,
             )
           : t(
-              "无法连接本地服务。请检查服务地址和访问令牌。",
-              "Cannot connect to the local service. Check its address and access token.",
+              ...uiMessages.app_cannot_connect_to_the_local_service_check_its_af0391,
             ),
       );
     } finally {
@@ -545,6 +559,7 @@ export default function App() {
     mutationInFlight.current = true;
     // Ignore any polling response captured before this mutation began.
     stateEpoch.current += 1;
+    await queries.cancelQueries({ queryKey: ["state"] });
     setBusy(path);
     setError("");
     setNotice("");
@@ -564,8 +579,7 @@ export default function App() {
       } catch {
         setError(
           t(
-            "操作已提交，但最新状态读取失败；请刷新确认结果，勿重复提交。",
-            "The action was submitted, but state refresh failed. Refresh before retrying.",
+            ...uiMessages.app_the_action_was_submitted_but_state_refresh_fa_4c37af,
           ),
         );
       }
@@ -578,15 +592,14 @@ export default function App() {
       )
         setError(
           t(
-            "版本或状态发生冲突，操作未应用。已保留草稿；请刷新并核对最新记录。",
-            "A version or state conflict prevented the action. Your draft is preserved; refresh and review the latest record.",
+            ...uiMessages.app_a_version_or_state_conflict_prevented_the_act_666e0a,
           ),
         );
       else
         setError(
           e instanceof Error
             ? errorMessage(e.message, t)
-            : t("操作失败，请重试。", "The action failed. Please retry."),
+            : t(...uiMessages.app_the_action_failed_please_retry_6b599a),
         );
       return false;
     } finally {
@@ -603,16 +616,12 @@ export default function App() {
       await refresh();
       setNotice(
         t(
-          "工作台状态已刷新。进入「额度与订阅」时会自动更新额度。",
-          "Workspace refreshed. Opening Usage & billing updates quotas automatically.",
+          ...uiMessages.app_workspace_refreshed_opening_usage_billing_upd_4358c2,
         ),
       );
     } catch {
       setError(
-        t(
-          "刷新失败，请检查本地服务。",
-          "Refresh failed. Check the local service.",
-        ),
+        t(...uiMessages.app_refresh_failed_check_the_local_service_17422f),
       );
     } finally {
       setBusy(null);
@@ -623,7 +632,7 @@ export default function App() {
     <button
       className="language"
       onClick={() => setLang(lang === "zh" ? "en" : "zh")}
-      aria-label={t("Switch to English", "切换为中文")}
+      aria-label={t(...uiMessages.app__d4d090)}
     >
       {lang === "zh" ? "EN" : "中文"}
     </button>
@@ -638,55 +647,54 @@ export default function App() {
         <main className="welcome-main">
           <section className="welcome-copy">
             <span className="eyebrow">
-              {t("本地 Agent 工作台", "LOCAL AGENT WORKSPACE")}
+              {t(...uiMessages.app_local_agent_workspace_fd3b8b)}
             </span>
             <h1>
-              {t("一个工作台，", "One workspace.")}
+              {t(...uiMessages.app_one_workspace_659bb3)}
               <br />
-              <em>{t("连续的协作。", "Connected work.")}</em>
+              <em>{t(...uiMessages.app_connected_work_d41bc1)}</em>
             </h1>
             <p>
               {t(
-                "连接已安装的 Agent CLI，例如 Codex、Claude Code，管理会话、任务协作、共享记忆与可用额度。",
-                "Connect installed agent CLIs such as Codex and Claude Code to manage conversations, collaboration, shared memory and usage.",
+                ...uiMessages.app_connect_installed_agent_clis_such_as_codex_an_002bed,
               )}
             </p>
             <div className="welcome-features">
               <span>
                 <Icon name="message" />
-                {t("连续的原生会话", "Persistent native sessions")}
+                {t(...uiMessages.app_persistent_native_sessions_6960ed)}
               </span>
               <span>
                 <Icon name="memory" />
-                {t("可审阅的共享记忆", "Reviewed shared memory")}
+                {t(...uiMessages.app_reviewed_shared_memory_5e2961)}
               </span>
               <span>
                 <Icon name="usage" />
-                {t("额度与订阅", "Usage and billing")}
+                {t(...uiMessages.app_usage_and_billing_cafc3c)}
               </span>
             </div>
             <div className="preview-note">
               <Icon name="shield" />
               <p>
                 {t(
-                  "默认关闭执行。连接工作台不会启动任何 Agent，也不会读取远端额度。",
-                  "Execution is disabled by default. Connecting does not start agents or fetch remote quotas.",
+                  ...uiMessages.app_execution_is_disabled_by_default_connecting_d_29ea4f,
                 )}
               </p>
             </div>
           </section>
           <section className="connection-card">
-            <span className="step-label">{t("连接工作台", "CONNECT")}</span>
-            <h2>{t("连接本地工作台", "Connect your local workspace")}</h2>
+            <span className="step-label">
+              {t(...uiMessages.app_connect_9ce0cd)}
+            </span>
+            <h2>{t(...uiMessages.app_connect_your_local_workspace_08a55a)}</h2>
             <p>
               {t(
-                "输入服务终端显示的管理员访问令牌。令牌只保存在此页面的内存中，刷新页面后需重新输入。",
-                "Enter the admin access token shown by the local service. It stays in this page’s memory and is cleared when the page reloads.",
+                ...uiMessages.app_enter_the_admin_access_token_shown_by_the_loc_dd0d03,
               )}
             </p>
             <form onSubmit={connect}>
               <label htmlFor="access-token">
-                {t("访问令牌", "Access token")}
+                {t(...uiMessages.app_access_token_96121b)}
               </label>
               <input
                 id="access-token"
@@ -703,8 +711,8 @@ export default function App() {
                 disabled={connecting || !entryToken.trim()}
               >
                 {connecting
-                  ? t("正在连接…", "Connecting…")
-                  : t("进入工作台", "Open workspace")}
+                  ? t(...uiMessages.app_connecting_df2b48)
+                  : t(...uiMessages.app_open_workspace_de5364)}
                 <Icon name="arrow" />
               </button>
             </form>
@@ -715,15 +723,14 @@ export default function App() {
             )}
             <div className="connection-footer">
               <span className="status-dot" />
-              {t("同源连接 · 本机服务", "Same-origin · Local service")}
+              {t(...uiMessages.app_same_origin_local_service_8eef00)}
             </div>
           </section>
         </main>
         <footer className="welcome-footer">
           AgentDock ·{" "}
           {t(
-            "独立管理本机或 SSH 主机上的 Agent CLI 会话。",
-            "Manage independent agent CLI sessions locally or over SSH.",
+            ...uiMessages.app_manage_independent_agent_cli_sessions_locally_c2551e,
           )}
         </footer>
       </div>
@@ -782,11 +789,11 @@ export default function App() {
     <FeatureContext.Provider value={state.runtime.features ?? {}}>
       <div className="shell">
         <a className="skip-link" href="#main-content">
-          {t("跳至主要内容", "Skip to content")}
+          {t(...uiMessages.app_skip_to_content_d07c14)}
         </a>
         <aside className="sidebar">
           <Brand small />
-          <nav aria-label={t("主导航", "Main navigation")}>
+          <nav aria-label={t(...uiMessages.app_main_navigation_790887)}>
             {nav.map((item) => (
               <button
                 key={item.key}
@@ -813,15 +820,17 @@ export default function App() {
             <div className="local-status">
               <span className="status-dot" />
               <div>
-                {demo ? t("离线演示", "Offline demo") : t("已就绪", "Ready")}
+                {demo
+                  ? t(...uiMessages.app_offline_demo_5b3dba)
+                  : t(...uiMessages.app_ready_c06cf9)}
                 <small>v{state.runtime.version}</small>
               </div>
             </div>
             {(demo || !desktopToken.current) && (
               <button className="disconnect" onClick={disconnect}>
                 {demo
-                  ? t("退出演示", "Exit demo")
-                  : t("退出工作台", "Sign out")}
+                  ? t(...uiMessages.app_exit_demo_59244d)
+                  : t(...uiMessages.app_sign_out_39ac2d)}
               </button>
             )}
           </div>
@@ -837,7 +846,7 @@ export default function App() {
                     className="breadcrumb-page"
                     onClick={() => setTab("projects")}
                   >
-                    {t("项目", "Projects")}
+                    {t(...uiMessages.app_projects_23574c)}
                   </button>
                   <span>/</span>
                   {pageAgent ? (
@@ -856,10 +865,10 @@ export default function App() {
               ) : pageAgent ? (
                 <button
                   className="breadcrumb-page"
-                  aria-label={t("返回工作台", "Back to workspace")}
+                  aria-label={t(...uiMessages.app_back_to_workspace_0993b7)}
                   onClick={() => setTab("workspace")}
                 >
-                  {t("协作工作台", "Workspace")}
+                  {t(...uiMessages.app_workspace_e6f3d2)}
                 </button>
               ) : (
                 <strong>
@@ -881,8 +890,10 @@ export default function App() {
               {tab !== "usage" && (
                 <button
                   className="icon-button"
-                  title={t("刷新工作台状态", "Refresh workspace state")}
-                  aria-label={t("刷新工作台状态", "Refresh workspace state")}
+                  title={t(...uiMessages.app_refresh_workspace_state_1044ae)}
+                  aria-label={t(
+                    ...uiMessages.app_refresh_workspace_state_1044ae,
+                  )}
                   onClick={manualRefresh}
                   disabled={!!busy || demo}
                 >
@@ -891,235 +902,241 @@ export default function App() {
               )}
             </div>
           </header>
-          <main
-            id="main-content"
-            className={`main-content ${pageAgent || tab === "conversations" ? "agent-content" : ""}`}
+          <Suspense
+            fallback={
+              <p role="status">{t(...uiMessages.app_opening_166491)}</p>
+            }
           >
-            {(demo || !state.runtime.enabled) && (
-              <div
-                className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
-              >
-                <Icon name="shield" size={18} />
-                <span>
-                  {demo
-                    ? t(
-                        "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
-                        "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
-                      )
-                    : t(
-                        "当前仅可查看，尚未启用任务执行。",
-                        "View only. Task execution is not enabled.",
-                      )}
-                </span>
-              </div>
-            )}
-            {error && (
-              <div className="alert error" role="alert">
-                <span>{error}</span>
-                <button
-                  className="icon-button"
-                  onClick={() => setError("")}
-                  aria-label={t("关闭错误提示", "Dismiss error")}
+            <main
+              id="main-content"
+              className={`main-content ${pageAgent || tab === "conversations" ? "agent-content" : ""}`}
+            >
+              {(demo || !state.runtime.enabled) && (
+                <div
+                  className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
                 >
-                  <Icon name="close" size={16} />
-                </button>
-              </div>
-            )}
-            {notice && (
-              <div className="alert success" role="status">
-                {notice}
-                <button
-                  className="icon-button"
-                  onClick={() => setNotice("")}
-                  aria-label={t("关闭提示", "Dismiss notice")}
-                >
-                  <Icon name="close" size={16} />
-                </button>
-              </div>
-            )}
-            {tab === "conversations" && (
-              <Conversations
-                state={state}
-                sessionID={conversationID}
-                token={token}
-                demo={demo}
-                busy={!!busy || demo}
-                mutate={mutate}
-                lang={lang}
-                t={t}
-                onSelect={(id) => navigate({ sessionID: id })}
-                onTask={(task) =>
-                  navigate({
-                    tab: "projects",
-                    projectID: task.project_id,
-                    projectView: "tasks",
-                    taskID: task.id,
-                    agentID: "",
-                  })
-                }
-                onAgent={(id, projectID) =>
-                  navigate({
-                    tab: projectID ? "projects" : "workspace",
-                    projectID: projectID ?? "",
-                    projectView: "agents",
-                    agentID: id,
-                  })
-                }
-              />
-            )}
-            {tab === "projects" && !pageAgent && (
-              <ProjectHeader
-                onPolicy={(project) =>
-                  void mutate(`/api/projects/${project.id}/policy`, {
-                    confirm_dispatch: !project.confirm_dispatch,
-                  })
-                }
-                busy={!!busy || demo}
-                project={project}
-                projects={state.projects}
-                view={projectView}
-                pending={proposals.length}
-                creating={projectForm}
-                onCreate={() => setProjectForm(!projectForm)}
-                onSelect={setProjectID}
-                onView={(view) =>
-                  navigate({ projectView: view, agentID: "", taskID: "" })
-                }
-                t={t}
-              />
-            )}
-            {projectForm && tab === "projects" && !project && (
-              <ProjectForm
-                environments={state.environments ?? []}
-                t={t}
-                busy={!!busy || demo}
-                mutate={mutate}
-                close={() => setProjectForm(false)}
-                onCreated={(id) =>
-                  navigate({
-                    tab: "projects",
-                    projectID: id,
-                    projectView: "tasks",
-                    agentID: "",
-                  })
-                }
-              />
-            )}
-            {tab === "projects" && !project && (
-              <ProjectList
-                state={state}
-                t={t}
-                onSelect={setProjectID}
-                creating={projectForm}
-                onCreate={() => setProjectForm(!projectForm)}
-              />
-            )}
-            {(tab === "workspace" ||
-              (tab === "projects" && project && projectView === "agents")) && (
-              <Workspace
-                key={projectID}
-                t={t}
-                lang={lang}
-                metrics={metrics}
-                metricsFailed={metricsFailed}
-                project={project}
-                agents={agents}
-                sessions={sessions}
-                approvals={approvals}
-                state={state}
-                token={token}
-                demo={demo}
-                runtimeEnabled={state.runtime.enabled}
-                busy={!!busy || demo}
-                mutate={mutate}
-                agentPageID={agentPageID}
-                onNavigateAgent={(id, replace) =>
-                  navigate({ agentID: id }, replace)
-                }
-                initialEnvironment={agentEnvironment ?? undefined}
-                onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
-                onConfigureAgent={() => {
-                  setAgentEnvironment(project?.environment_id ?? "local");
-                  navigate({
-                    tab: "workspace",
-                    projectID: "",
-                    projectView: "agents",
-                    agentID: "",
-                  });
-                }}
-              />
-            )}
-            {tab === "projects" && project && projectView === "tasks" && (
-              <Tasks
-                key={projectID}
-                t={t}
-                lang={lang}
-                state={state}
-                projectID={projectID}
-                taskID={taskID}
-                onSelect={(id) => navigate({ taskID: id })}
-                token={token}
-                demo={demo}
-                busy={!!busy || demo}
-                mutate={mutate}
-              />
-            )}
-            {tab === "projects" && project && projectView === "memory" && (
-              <Memories
-                key={projectID}
-                t={t}
-                lang={lang}
-                state={state}
-                projectID={projectID}
-                agents={agents}
-                proposals={proposals}
-                busy={!!busy || demo}
-                mutate={mutate}
-              />
-            )}
-            {tab === "accounts" && (
-              <Accounts
-                state={state}
-                token={token}
-                busy={!!busy || demo}
-                mutate={mutate}
-                onChanged={() => {
-                  void refresh().catch(() => {});
-                }}
-                t={t}
-              />
-            )}
-            {tab === "tokens" && (
-              <Tokens
-                metrics={metrics}
-                failed={metricsFailed}
-                agents={state.agents}
-                t={t}
-                lang={lang}
-              />
-            )}
-            {tab === "usage" && (
-              <Usage
-                t={t}
-                lang={lang}
-                quotas={listOf(state.quotas)}
-                subscriptions={listOf(state.subscriptions)}
-                agents={state.agents}
-                sessions={state.sessions}
-                accounts={state.accounts ?? []}
-                environments={state.environments ?? []}
-                onAddAgent={() => {
-                  setProjectForm(false);
-                  setAgentEnvironment("local");
-                  setTab("workspace");
-                }}
-                refreshing={quotaRefreshing}
-                refreshFailed={quotaRefreshFailed}
-                busy={!!busy || demo}
-                mutate={mutate}
-              />
-            )}
-          </main>
+                  <Icon name="shield" size={18} />
+                  <span>
+                    {demo
+                      ? t(
+                          ...uiMessages.app_demo_mode_fictional_examples_only_no_service_04fd71,
+                        )
+                      : t(
+                          ...uiMessages.app_view_only_task_execution_is_not_enabled_49f09d,
+                        )}
+                  </span>
+                </div>
+              )}
+              {error && (
+                <div className="alert error" role="alert">
+                  <span>{error}</span>
+                  <button
+                    className="icon-button"
+                    onClick={() => setError("")}
+                    aria-label={t(...uiMessages.app_dismiss_error_099758)}
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+              )}
+              {notice && (
+                <div className="alert success" role="status">
+                  {notice}
+                  <button
+                    className="icon-button"
+                    onClick={() => setNotice("")}
+                    aria-label={t(...uiMessages.app_dismiss_notice_d905ab)}
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+              )}
+              {tab === "conversations" && (
+                <Conversations
+                  state={state}
+                  sessionID={conversationID}
+                  token={token}
+                  demo={demo}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                  lang={lang}
+                  t={t}
+                  onSelect={(id) => navigate({ sessionID: id })}
+                  onTask={(task) =>
+                    navigate({
+                      tab: "projects",
+                      projectID: task.project_id,
+                      projectView: "tasks",
+                      taskID: task.id,
+                      agentID: "",
+                    })
+                  }
+                  onAgent={(id, projectID) =>
+                    navigate({
+                      tab: projectID ? "projects" : "workspace",
+                      projectID: projectID ?? "",
+                      projectView: "agents",
+                      agentID: id,
+                    })
+                  }
+                />
+              )}
+              {tab === "projects" && !pageAgent && (
+                <ProjectHeader
+                  onPolicy={(project) =>
+                    void mutate(`/api/projects/${project.id}/policy`, {
+                      confirm_dispatch: !project.confirm_dispatch,
+                    })
+                  }
+                  busy={!!busy || demo}
+                  project={project}
+                  projects={state.projects}
+                  view={projectView}
+                  pending={proposals.length}
+                  creating={projectForm}
+                  onCreate={() => setProjectForm(!projectForm)}
+                  onSelect={setProjectID}
+                  onView={(view) =>
+                    navigate({ projectView: view, agentID: "", taskID: "" })
+                  }
+                  t={t}
+                />
+              )}
+              {projectForm && tab === "projects" && !project && (
+                <ProjectForm
+                  environments={state.environments ?? []}
+                  t={t}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                  close={() => setProjectForm(false)}
+                  onCreated={(id) =>
+                    navigate({
+                      tab: "projects",
+                      projectID: id,
+                      projectView: "tasks",
+                      agentID: "",
+                    })
+                  }
+                />
+              )}
+              {tab === "projects" && !project && (
+                <ProjectList
+                  state={state}
+                  t={t}
+                  onSelect={setProjectID}
+                  creating={projectForm}
+                  onCreate={() => setProjectForm(!projectForm)}
+                />
+              )}
+              {(tab === "workspace" ||
+                (tab === "projects" &&
+                  project &&
+                  projectView === "agents")) && (
+                <Workspace
+                  key={projectID}
+                  t={t}
+                  lang={lang}
+                  metrics={metrics}
+                  metricsFailed={metricsFailed}
+                  project={project}
+                  agents={agents}
+                  sessions={sessions}
+                  approvals={approvals}
+                  state={state}
+                  token={token}
+                  demo={demo}
+                  runtimeEnabled={state.runtime.enabled}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                  agentPageID={agentPageID}
+                  onNavigateAgent={(id, replace) =>
+                    navigate({ agentID: id }, replace)
+                  }
+                  initialEnvironment={agentEnvironment ?? undefined}
+                  onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
+                  onConfigureAgent={() => {
+                    setAgentEnvironment(project?.environment_id ?? "local");
+                    navigate({
+                      tab: "workspace",
+                      projectID: "",
+                      projectView: "agents",
+                      agentID: "",
+                    });
+                  }}
+                />
+              )}
+              {tab === "projects" && project && projectView === "tasks" && (
+                <Tasks
+                  key={projectID}
+                  t={t}
+                  lang={lang}
+                  state={state}
+                  projectID={projectID}
+                  taskID={taskID}
+                  onSelect={(id) => navigate({ taskID: id })}
+                  token={token}
+                  demo={demo}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                />
+              )}
+              {tab === "projects" && project && projectView === "memory" && (
+                <Memories
+                  key={projectID}
+                  t={t}
+                  lang={lang}
+                  state={state}
+                  projectID={projectID}
+                  agents={agents}
+                  proposals={proposals}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                />
+              )}
+              {tab === "accounts" && (
+                <Accounts
+                  state={state}
+                  token={token}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                  onChanged={() => {
+                    void refresh().catch(() => {});
+                  }}
+                  t={t}
+                />
+              )}
+              {tab === "tokens" && (
+                <Tokens
+                  metrics={metrics}
+                  failed={metricsFailed}
+                  agents={state.agents}
+                  t={t}
+                  lang={lang}
+                />
+              )}
+              {tab === "usage" && (
+                <Usage
+                  t={t}
+                  lang={lang}
+                  quotas={listOf(state.quotas)}
+                  subscriptions={listOf(state.subscriptions)}
+                  agents={state.agents}
+                  sessions={state.sessions}
+                  accounts={state.accounts ?? []}
+                  environments={state.environments ?? []}
+                  onAddAgent={() => {
+                    setProjectForm(false);
+                    setAgentEnvironment("local");
+                    setTab("workspace");
+                  }}
+                  refreshing={quotaRefreshing}
+                  refreshFailed={quotaRefreshFailed}
+                  busy={!!busy || demo}
+                  mutate={mutate}
+                />
+              )}
+            </main>
+          </Suspense>
         </div>
       </div>
     </FeatureContext.Provider>
@@ -1147,11 +1164,11 @@ function ProjectForm({
   return (
     <section className="panel inset-form" id="project-form">
       <div className="panel-heading">
-        <h2>{t("新建项目", "New project")}</h2>
+        <h2>{t(...uiMessages.app_new_project_213635)}</h2>
         <button
           className="icon-button"
           onClick={close}
-          aria-label={t("取消新建项目", "Cancel new project")}
+          aria-label={t(...uiMessages.app_cancel_new_project_4db663)}
         >
           <Icon name="close" />
         </button>
@@ -1174,12 +1191,14 @@ function ProjectForm({
         }}
       >
         <label>
-          {t("项目所在设备", "Project device")}
+          {t(...uiMessages.app_project_device_5437ee)}
           <select
             value={environment}
             onChange={(e) => setEnvironment(e.target.value)}
           >
-            <option value="local">{t("本机", "This Mac")}</option>
+            <option value="local">
+              {t(...uiMessages.app_this_mac_e21573)}
+            </option>
             {environments
               .filter((e) => e.kind === "ssh")
               .map((e) => (
@@ -1191,17 +1210,17 @@ function ProjectForm({
         </label>
         <div className="form-grid">
           <label>
-            {t("项目名称", "Project name")}
+            {t(...uiMessages.app_project_name_035ea1)}
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               maxLength={100}
-              placeholder={t("例如：我的应用", "For example: My app")}
+              placeholder={t(...uiMessages.app_for_example_my_app_ea87ba)}
             />
           </label>
           <label>
-            {t("工作目录（绝对路径）", "Workspace directory (absolute path)")}
+            {t(...uiMessages.app_workspace_directory_absolute_path_2f9bd8)}
             <input
               value={path}
               onChange={(e) => setPath(e.target.value)}
@@ -1213,15 +1232,14 @@ function ProjectForm({
         </div>
         <p className="form-hint">
           {t(
-            "此目录将作为 Agent 的工作目录。请选择你信任的现有目录。",
-            "Agents will use this working directory. Choose an existing directory you trust.",
+            ...uiMessages.app_agents_will_use_this_working_directory_choose_2bfa39,
           )}
         </p>
         <button
           className="primary"
           disabled={busy || !name.trim() || !path.trim()}
         >
-          {t("创建项目", "Create project")}
+          {t(...uiMessages.app_create_project_3075b5)}
         </button>
       </form>
     </section>

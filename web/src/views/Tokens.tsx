@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import type { Agent, Provider, Translate, Language } from "../types";
 import { providerNames } from "../ProviderIcon";
 import type { Metrics, Meter } from "../metrics";
@@ -38,15 +39,17 @@ export default function Tokens({
   return (
     <>
       <PageTitle
-        eyebrow={t("本机用量", "LOCAL USAGE")}
-        title={t("Token 统计", "Token statistics")}
+        eyebrow={t(...uiMessages.tokens_local_usage_73d88c)}
+        title={t(...uiMessages.tokens_token_statistics_4cd094)}
       />
       {!agents.length ? (
         <section className="panel">
-          <Empty icon="dock" title={t("暂无 Agent", "No agents yet")}>
+          <Empty
+            icon="dock"
+            title={t(...uiMessages.tokens_no_agents_yet_be317a)}
+          >
             {t(
-              "添加 Agent 并开始对话后查看用量。",
-              "Add an agent and start a conversation to track usage.",
+              ...uiMessages.tokens_add_an_agent_and_start_a_conversation_to_trac_caa5cf,
             )}
           </Empty>
         </section>
@@ -54,13 +57,19 @@ export default function Tokens({
         <>
           <div className="token-totals">
             {[
-              [t("累计 Token", "Total tokens"), total?.total_tokens],
               [
-                t("输入（含缓存）", "Input (including cache)"),
+                t(...uiMessages.tokens_total_tokens_278342),
+                total?.total_tokens,
+              ],
+              [
+                t(...uiMessages.tokens_input_including_cache_3c66c3),
                 total?.input_tokens,
               ],
-              [t("输出", "Output"), total?.output_tokens],
-              [t("已记录会话", "Recorded sessions"), total?.sessions],
+              [t(...uiMessages.tokens_output_6424f4), total?.output_tokens],
+              [
+                t(...uiMessages.tokens_recorded_sessions_19cd67),
+                total?.sessions,
+              ],
             ].map(([label, n], i) => (
               <div className="panel token-stat" key={label as string}>
                 <span>{label}</span>
@@ -84,16 +93,16 @@ export default function Tokens({
             <TPS meter={total} t={t} stale={failed} />
           </section>
           <section className="panel token-table">
-            <h2>{t("按服务", "By provider")}</h2>
+            <h2>{t(...uiMessages.tokens_by_provider_1b2c16)}</h2>
             <table>
               <thead>
                 <tr>
-                  <th>{t("服务", "Provider")}</th>
-                  <th>{t("累计", "Total")}</th>
-                  <th>{t("输入", "Input")}</th>
-                  <th>{t("输出", "Output")}</th>
-                  <th>{t("缓存读取", "Cache read")}</th>
-                  <th>{t("缓存写入", "Cache write")}</th>
+                  <th>{t(...uiMessages.tokens_provider_620040)}</th>
+                  <th>{t(...uiMessages.tokens_total_e4a2aa)}</th>
+                  <th>{t(...uiMessages.tokens_input_58d1c4)}</th>
+                  <th>{t(...uiMessages.tokens_output_6424f4)}</th>
+                  <th>{t(...uiMessages.tokens_cache_read_f7e5b0)}</th>
+                  <th>{t(...uiMessages.tokens_cache_write_8aacc9)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -117,14 +126,14 @@ export default function Tokens({
             </table>
           </section>
           <section className="panel token-table">
-            <h2>{t("我的 Agent", "My agents")}</h2>
+            <h2>{t(...uiMessages.tokens_my_agents_99e4c7)}</h2>
             <table>
               <thead>
                 <tr>
                   <th>Agent</th>
-                  <th>{t("累计 Token", "Total tokens")}</th>
-                  <th>{t("会话", "Sessions")}</th>
-                  <th>{t("数据更新于", "Data updated")}</th>
+                  <th>{t(...uiMessages.tokens_total_tokens_278342)}</th>
+                  <th>{t(...uiMessages.tokens_sessions_7fcc00)}</th>
+                  <th>{t(...uiMessages.tokens_data_updated_1bf097)}</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,8 +163,7 @@ export default function Tokens({
             {!agents.length && (
               <p>
                 {t(
-                  "创建 Agent 后可查看各自统计。",
-                  "Create an agent to see its individual usage.",
+                  ...uiMessages.tokens_create_an_agent_to_see_its_individual_usage_925c75,
                 )}
               </p>
             )}

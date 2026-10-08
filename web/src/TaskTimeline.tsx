@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import AccountAttempts from "./AccountAttempts";
 import type {
   Account,
@@ -260,21 +261,25 @@ export default function TaskTimeline({
           const label =
             run.status === "completed"
               ? run.work_task_id
-                ? t("本轮执行结束", "Run finished")
-                : t("任务已完成", "Task completed")
+                ? t(...uiMessages.tasktimeline_run_finished_3a0e76)
+                : t(...uiMessages.tasktimeline_task_completed_bdb582)
               : run.status === "running"
                 ? reconnecting
-                  ? t("连接中断 · 正在重连", "Connection lost · reconnecting")
+                  ? t(
+                      ...uiMessages.tasktimeline_connection_lost_reconnecting_0274a0,
+                    )
                   : waiting
-                    ? t("等待授权", "Awaiting approval")
-                    : t("任务执行中", "Task running")
+                    ? t(...uiMessages.tasktimeline_awaiting_approval_caad1d)
+                    : t(...uiMessages.tasktimeline_task_running_0604a8)
                 : run.status === "queued"
-                  ? t("任务排队中", "Task queued")
+                  ? t(...uiMessages.tasktimeline_task_queued_b7058d)
                   : run.status === "failed"
-                    ? t("任务失败", "Task failed")
+                    ? t(...uiMessages.tasktimeline_task_failed_e053ac)
                     : run.status === "loading"
-                      ? t("正在读取任务…", "Loading task…")
-                      : t("任务", "Task") + " · " + statusLabel(run.status, t);
+                      ? t(...uiMessages.tasktimeline_loading_task_5c1733)
+                      : t(...uiMessages.tasktimeline_task_e8ed2b) +
+                        " · " +
+                        statusLabel(run.status, t);
           return (
             <article className="task-turn" key={run.id}>
               {run.prompt && (
@@ -284,8 +289,8 @@ export default function TaskTimeline({
                   <div className="event-meta">
                     <span>
                       {run.origin === "human"
-                        ? t("你", "You")
-                        : t("协作任务", "Delegated task")}
+                        ? t(...uiMessages.tasktimeline_you_d1c11b)
+                        : t(...uiMessages.tasktimeline_delegated_task_b17737)}
                     </span>
                     <DateText date={run.created_at} lang={lang} />
                   </div>
@@ -313,8 +318,7 @@ export default function TaskTimeline({
                       <small
                         className="task-model"
                         title={t(
-                          "客户端返回的模型标识",
-                          "Model identifier reported by the CLI",
+                          ...uiMessages.tasktimeline_model_identifier_reported_by_the_cli_7e8617,
                         )}
                       >
                         {modelInfo.model}
@@ -327,15 +331,23 @@ export default function TaskTimeline({
                   <div
                     className="task-steps"
                     role="log"
-                    aria-label={t("实时执行过程", "Live execution")}
+                    aria-label={t(
+                      ...uiMessages.tasktimeline_live_execution_ce86e3,
+                    )}
                   >
                     {!steps.length && (
                       <p className="muted">
                         {run.status === "queued"
-                          ? t("等待开始", "Waiting to start")
+                          ? t(
+                              ...uiMessages.tasktimeline_waiting_to_start_59a4fb,
+                            )
                           : active
-                            ? t("等待 Agent 输出…", "Waiting for agent output…")
-                            : t("没有执行记录", "No execution details")}
+                            ? t(
+                                ...uiMessages.tasktimeline_waiting_for_agent_output_470f31,
+                              )
+                            : t(
+                                ...uiMessages.tasktimeline_no_execution_details_a6e3d1,
+                              )}
                       </p>
                     )}
                     {steps.map((step) =>
@@ -347,7 +359,10 @@ export default function TaskTimeline({
                         >
                           <summary>
                             <span>
-                              {step.name || t("工具执行", "Tool execution")}
+                              {step.name ||
+                                t(
+                                  ...uiMessages.tasktimeline_tool_execution_bd5475,
+                                )}
                             </span>
                             <small>
                               {step.status === "running" && !active
@@ -367,10 +382,12 @@ export default function TaskTimeline({
                         <div className={`task-step ${step.kind}`} key={step.id}>
                           <small>
                             {step.kind === "reasoning"
-                              ? t("思考", "Thinking")
+                              ? t(...uiMessages.tasktimeline_thinking_e891a0)
                               : step.phase === "final_answer"
-                                ? t("正在生成回复", "Composing reply")
-                                : t("进展", "Progress")}
+                                ? t(
+                                    ...uiMessages.tasktimeline_composing_reply_a78a01,
+                                  )
+                                : t(...uiMessages.tasktimeline_progress_cdc159)}
                           </small>
                           <pre>{step.text}</pre>
                         </div>
@@ -390,7 +407,7 @@ export default function TaskTimeline({
                       )
                     }
                   >
-                    {t("取消", "Cancel")}
+                    {t(...uiMessages.tasktimeline_cancel_68f563)}
                   </button>
                 )}
               </div>
@@ -416,12 +433,12 @@ export default function TaskTimeline({
               {answer && (
                 <div
                   className="task-answer"
-                  aria-label={t("Agent 回复", "Agent reply")}
+                  aria-label={t(...uiMessages.tasktimeline_agent_reply_8131a8)}
                 >
                   <div className="event-meta">
                     <span>{agentName}</span>
                     <span className="task-reply-label">
-                      {t("回复", "Reply")}
+                      {t(...uiMessages.tasktimeline_reply_0754fa)}
                     </span>
                   </div>
                   <pre>{answer}</pre>

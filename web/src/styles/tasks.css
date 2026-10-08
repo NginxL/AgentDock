@@ -1,0 +1,245 @@
+.project-task-page {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.task-page-header,
+.task-controls,
+.task-composer-actions,
+.task-filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.task-page-header {
+  margin-bottom: 24px;
+}
+.task-page-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 20px;
+}
+.task-form {
+  display: grid;
+  gap: 20px;
+}
+.task-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding-top: 14px;
+}
+.task-form label,
+.task-controls label,
+.task-process label {
+  display: grid;
+  gap: 8px;
+}
+.task-form input,
+.task-form textarea,
+.task-form select,
+.task-controls select,
+.task-composer select,
+.task-process select,
+.task-question textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.task-checkbox {
+  display: flex !important;
+  align-items: center;
+}
+.task-checkbox input {
+  width: auto;
+}
+.task-create,
+.task-brief,
+.task-delivery,
+.task-inbox,
+.task-process {
+  margin-bottom: 22px;
+}
+.task-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.task-brief details {
+  margin: 20px 0;
+  color: var(--muted);
+}
+.task-controls {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  align-items: end;
+}
+.task-controls label {
+  min-width: 160px;
+}
+.project-task-list {
+  display: grid;
+  gap: 12px;
+}
+.project-task-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+  justify-content: start;
+  background: var(--paper);
+}
+.project-task-card:hover {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+.project-task-card > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+.project-task-card strong,
+.project-task-card small {
+  display: block;
+}
+.project-task-card strong {
+  font-size: 16px;
+}
+.project-task-card small {
+  color: var(--muted);
+  margin-top: 7px;
+}
+.task-filters {
+  margin: 18px 0;
+}
+.task-filters button,
+.task-answer-options button {
+  padding: 8px 13px;
+  border-radius: 8px;
+  background: var(--soft);
+}
+.task-filters .selected,
+.task-answer-options .selected {
+  color: var(--accent);
+  background: #efeffb;
+}
+.task-inbox {
+  border-left: 3px solid var(--accent);
+}
+.task-inbox-item {
+  width: 100%;
+  text-align: left;
+  justify-content: start;
+  background: transparent;
+  padding: 12px 0;
+}
+.task-inbox-item span {
+  flex: 1;
+}
+.task-question {
+  display: grid;
+  gap: 14px;
+}
+.task-question .primary {
+  justify-self: end;
+}
+.task-answer-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.task-checks {
+  list-style: none;
+  padding: 0;
+}
+.task-checks li {
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.task-checks p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.task-delivery code,
+.task-delivery a {
+  overflow-wrap: anywhere;
+}
+.task-input-history {
+  display: grid;
+  gap: 16px;
+  margin: 24px 0;
+}
+.task-user-input {
+  background: #edf3fb;
+  border-radius: 16px;
+  padding: 16px 22px;
+  max-width: 84%;
+  justify-self: end;
+}
+.task-user-input p {
+  margin: 0 0 6px;
+}
+.task-user-input small {
+  color: var(--muted);
+}
+.task-process .task-timeline {
+  margin-top: 24px;
+  max-height: 680px;
+  overflow: auto;
+}
+.task-composer textarea {
+  width: 100%;
+  border: 0;
+  padding: 12px 0;
+  resize: vertical;
+  outline-offset: 3px;
+}
+.task-composer-actions {
+  justify-content: space-between;
+  margin-top: 12px;
+}
+.task-composer-actions label {
+  max-width: 210px;
+}
+.task-composer-actions .primary {
+  margin-left: auto;
+}
+.task-legacy {
+  margin-top: 30px;
+}
+.panel.task-create,
+.panel.task-brief,
+.panel.task-delivery,
+.panel.task-inbox,
+.panel.task-process,
+.panel.task-composer,
+.panel.task-form,
+.project-task-page > details.panel {
+  padding: 20px 24px;
+}
+.task-create > .panel-heading,
+.task-delivery > .panel-heading,
+.task-process > .panel-heading,
+.task-form > .panel-heading {
+  padding: 0 0 16px;
+  margin-bottom: 16px;
+}
+.task-brief > p:first-child {
+  margin-top: 0;
+}
+@media (max-width: 720px) {
+  .task-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .task-controls {
+    align-items: stretch;
+  }
+  .task-controls label {
+    width: 100%;
+  }
+  .task-user-input {
+    max-width: 96%;
+  }
+}

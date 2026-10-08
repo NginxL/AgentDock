@@ -14,18 +14,18 @@ class NativeTurn:
     cwd: str
     prompt: str
     native_session_id: Optional[str]
-    mcp_config: dict
+    mcp_config: dict[str, Any]
     stop: Event
-    emit: Callable[[str, dict], None]
+    emit: Callable[[str, dict[str, Any]], None]
     bind_session: Callable[[str], Any]
-    approve: Callable[[dict, list], Any]
+    approve: Callable[[dict[str, Any], list[dict[str, Any]]], Any]
     timeout: float = 900
     model: Optional[str] = None
     effort: Optional[str] = None
     inherit_process_cwd: bool = False
     permission_mode: str = "ask"
     session_home: Optional[str] = None
-    base_environment: Optional[dict] = None
+    base_environment: Optional[dict[str, str]] = None
     managed_account: bool = False
     control: Any = None
     execution_fd: Optional[int] = None

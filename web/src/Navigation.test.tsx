@@ -145,7 +145,7 @@ it.each(["local", "remote"])(
   async (id) => {
     const fetchMock = await setup();
     expect(screen.queryByRole("button", { name: "设备与连接" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+    fireEvent.click(await screen.findByRole("button", { name: "添加 Agent" }));
     fireEvent.change(screen.getByLabelText("设备"), {
       target: { value: id },
     });
@@ -181,7 +181,7 @@ it.each(["local", "remote"])(
 it("opens agent creation from the empty billing page and keeps connection setup inside it in both languages", async () => {
   await setup({ agents: [] });
   fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
-  fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+  fireEvent.click(await screen.findByRole("button", { name: "添加 Agent" }));
   fireEvent.change(screen.getByLabelText("设备"), {
     target: { value: "new-ssh-connection" },
   });
@@ -203,7 +203,7 @@ it("connects a new host inside the agent form, preserves the agent draft, and di
   const fetchMock = await setup({
     runtime: { enabled: true, version: "0.3.0" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+  fireEvent.click(await screen.findByRole("button", { name: "添加 Agent" }));
   fireEvent.change(screen.getByLabelText("名称"), {
     target: { value: "My assistant" },
   });
@@ -337,7 +337,7 @@ it("toggles agent forms without losing a collapsed draft, and switches targets i
   fireEvent.click(screen.getByRole("button", { name: "取消编辑 Agent" }));
   expect(screen.queryByLabelText("名称")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "返回 Agent 列表" }));
-  fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
+  fireEvent.click(await screen.findByRole("button", { name: "添加 Agent" }));
   fireEvent.click(screen.getByRole("button", { name: "取消添加 Agent" }));
   expect(screen.queryByLabelText("名称")).toBeNull();
 });

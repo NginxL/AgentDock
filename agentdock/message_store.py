@@ -84,7 +84,8 @@ class MessageStore:
                     )
                 if sender_id == "human" and recipient_session.get("work_task_id"):
                     raise Forbidden(
-                        "Use the project task input to continue this conversation"
+                        "Use the project task input to continue this conversation",
+                        code="use_the_project_task_input_to_continue_this_conversation",
                     )
             if idempotency_key:
                 row = self.db.execute(

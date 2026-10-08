@@ -154,7 +154,10 @@ class Runtime(TaskRuntime):
             # is persisted before any remote files can be created.
             if runs or session.get("native_session_id"):
                 if not self.enabled:
-                    raise Forbidden("Enable execution to clean up a remote session")
+                    raise Forbidden(
+                        "Enable execution to clean up a remote session",
+                        code="enable_execution_to_clean_up_a_remote_session",
+                    )
                 try:
                     result = self.remote.rpc(
                         session["environment_id"],
@@ -181,7 +184,8 @@ class Runtime(TaskRuntime):
                         raise ProviderError("Remote cleanup was not acknowledged")
                 except (ProviderError, OSError):
                     raise Conflict(
-                        "Could not clean up the remote session. Check the SSH connection and retry. The session has been kept."
+                        "Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.",
+                        code="could_not_clean_up_the_remote_session_check_the_ssh_connection_and_retry_th",
                     ) from None
             remove_session_directory(
                 self.store.workspaces.parent / "sessions", session_id

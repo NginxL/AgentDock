@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import type { Translate } from "./types";
 
 export function accountError(code: string | null | undefined, t: Translate) {
@@ -61,20 +62,18 @@ export function accountError(code: string | null | undefined, t: Translate) {
   return label
     ? t(label[0], label[1])
     : t(
-        "账号操作暂未成功，请检查设备连接和登录状态后重试。",
-        "The account action did not complete. Check the device connection and sign-in, then retry.",
+        ...uiMessages.accountdisplay_the_account_action_did_not_complete_check_the_ec74ad,
       );
 }
 
 export function resetCountdown(value: string, now: number, t: Translate) {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp))
-    return t("恢复时间未知", "Reset time unknown");
+    return t(...uiMessages.accountdisplay_reset_time_unknown_c6be26);
   const minutes = Math.ceil((timestamp - now) / 60_000);
   if (minutes <= 0)
     return t(
-      "已到恢复时间，可刷新确认",
-      "Reset time reached; refresh to check",
+      ...uiMessages.accountdisplay_reset_time_reached_refresh_to_check_262c14,
     );
   const days = Math.floor(minutes / 1440);
   const hours = Math.floor((minutes % 1440) / 60);
@@ -94,9 +93,9 @@ export function quotaWindow(
   t: Translate,
 ) {
   if (window.name === "weekly_sonnet")
-    return t("Sonnet · 7 天额度", "Sonnet · 7-day limit");
+    return t(...uiMessages.accountdisplay_sonnet_7_day_limit_bc45b0);
   if (window.name === "weekly_opus")
-    return t("Opus · 7 天额度", "Opus · 7-day limit");
+    return t(...uiMessages.accountdisplay_opus_7_day_limit_42d58b);
   const minutes = window.duration_minutes;
   if (minutes && minutes > 0) {
     if (minutes % 1440 === 0)
@@ -109,11 +108,11 @@ export function quotaWindow(
     window.label ??
     (
       {
-        session: t("5 小时额度", "5-hour limit"),
-        weekly: t("7 天额度", "7-day limit"),
-        daily: t("每日额度", "Daily limit"),
+        session: t(...uiMessages.accountdisplay_5_hour_limit_bf2ba5),
+        weekly: t(...uiMessages.accountdisplay_7_day_limit_679107),
+        daily: t(...uiMessages.accountdisplay_daily_limit_464b47),
       } as Record<string, string>
     )[window.name ?? ""] ??
-    t("周期额度", "Usage limit")
+    t(...uiMessages.accountdisplay_usage_limit_e26f7d)
   );
 }

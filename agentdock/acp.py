@@ -397,7 +397,8 @@ class ACP:
             )
             if not mode:
                 raise ProviderError(
-                    "This CLI does not advertise a read-only planning mode. Choose another Agent for discussion or review."
+                    "This CLI does not advertise a read-only planning mode. Choose another Agent for discussion or review.",
+                    code="this_cli_does_not_advertise_a_read_only_planning_mode_choose_another_agent_",
                 )
             self.request(
                 "session/set_mode", {"sessionId": self.native_id, "modeId": mode}

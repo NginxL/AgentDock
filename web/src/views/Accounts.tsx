@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import { useEffect, useState } from "react";
 import type { Account, DockState, Mutate, Translate } from "../types";
 import { request, remainingPercent } from "../api";
@@ -110,11 +111,11 @@ function AccountLogin({
       aria-label={t(`登录 ${account.label}`, `Sign in to ${account.label}`)}
     >
       <div className="panel-heading">
-        <strong>{t("账号授权", "Authorize account")}</strong>
+        <strong>{t(...uiMessages.accounts_authorize_account_83a506)}</strong>
         <button
           type="button"
           className="icon-button"
-          aria-label={t("关闭登录面板", "Close sign-in panel")}
+          aria-label={t(...uiMessages.accounts_close_sign_in_panel_37ff5b)}
           onClick={close}
         >
           <Icon name="close" />
@@ -122,22 +123,18 @@ function AccountLogin({
       </div>
       {failed ? (
         <p className="inline-error" role="status">
-          {t(
-            "暂时无法读取登录状态，正在重试。",
-            "Cannot read sign-in status. Retrying.",
-          )}
+          {t(...uiMessages.accounts_cannot_read_sign_in_status_retrying_00162f)}
         </p>
       ) : (
         <p role="status">
           {job?.status === "completed"
-            ? t("登录成功，账号已可使用。", "Signed in. This account is ready.")
+            ? t(...uiMessages.accounts_signed_in_this_account_is_ready_14509f)
             : job?.status === "failed"
               ? accountError(job.error_code ?? "native_login_failed", t)
               : job?.status === "cancelled"
-                ? t("已取消登录。", "Sign-in cancelled.")
+                ? t(...uiMessages.accounts_sign_in_cancelled_b2e73f)
                 : t(
-                    "请在浏览器中完成账号授权。",
-                    "Complete authorization in your browser.",
+                    ...uiMessages.accounts_complete_authorization_in_your_browser_9ce850,
                   )}
         </p>
       )}
@@ -150,12 +147,12 @@ function AccountLogin({
               target="_blank"
               rel="noopener noreferrer"
             >
-              {t("打开登录页面", "Open sign-in page")} ↗
+              {t(...uiMessages.accounts_open_sign_in_page_da262f)} ↗
             </a>
           )}
           {(job.code || job.device_code) && (
             <p>
-              {t("验证码", "Verification code")}：
+              {t(...uiMessages.accounts_verification_code_75e7d2)}：
               <code className="account-device-code">
                 {job.code || job.device_code}
               </code>
@@ -177,8 +174,7 @@ function AccountLogin({
             >
               <label>
                 {t(
-                  "授权码（仅登录页面提供时填写）",
-                  "Authorization code (only if provided by the sign-in page)",
+                  ...uiMessages.accounts_authorization_code_only_if_provided_by_the_si_7c83a7,
                 )}
                 <input
                   value={code}
@@ -187,7 +183,7 @@ function AccountLogin({
                 />
               </label>
               <button className="secondary" disabled={busy || !code.trim()}>
-                {t("提交验证码", "Submit code")}
+                {t(...uiMessages.accounts_submit_code_4918d6)}
               </button>
             </form>
           )}
@@ -206,7 +202,7 @@ function AccountLogin({
               )
             }
           >
-            {t("取消登录", "Cancel sign-in")}
+            {t(...uiMessages.accounts_cancel_sign_in_92777a)}
           </button>
         </>
       )}
@@ -270,8 +266,8 @@ function AccountCard({
           <small>
             {account.provider === "codex" ? "Codex" : "Claude Code"} ·{" "}
             {account.environment_id === "local"
-              ? t("本机", "This Mac")
-              : (env?.name ?? t("远端设备", "Remote device"))}
+              ? t(...uiMessages.accounts_this_mac_e21573)
+              : (env?.name ?? t(...uiMessages.accounts_remote_device_be5b9e))}
           </small>
         </div>
         <span className={`account-status ${account.status}`}>
@@ -305,15 +301,15 @@ function AccountCard({
                 <span>{name}</span>
                 <strong>
                   {remaining === null
-                    ? t("未知", "Unknown")
-                    : `${Math.round(remaining)}% ${t("剩余", "remaining")}`}
+                    ? t(...uiMessages.accounts_unknown_6c2018)
+                    : `${Math.round(remaining)}% ${t(...uiMessages.accounts_remaining_aceeef)}`}
                 </strong>
                 {remaining !== null && (
                   <meter
                     min="0"
                     max="100"
                     value={remaining}
-                    aria-label={`${name} ${t("剩余额度", "remaining quota")}`}
+                    aria-label={`${name} ${t(...uiMessages.accounts_remaining_quota_9eb2e7)}`}
                   />
                 )}
                 {window.reset_at && (
@@ -328,17 +324,17 @@ function AccountCard({
           })
         ) : (
           <p className="muted">
-            {t("额度暂未读取", "Quota not available yet")}
+            {t(...uiMessages.accounts_quota_not_available_yet_1f4190)}
           </p>
         )}
         {account.quota?.fetched_at && (
           <small className="muted">
-            {t("更新于", "Updated")}{" "}
+            {t(...uiMessages.accounts_updated_a4e7c7)}{" "}
             {new Date(account.quota.fetched_at).toLocaleString()}
             {account.quota.status !== "ok" &&
             account.quota.status !== "ready" &&
             account.quota.status !== "available"
-              ? ` · ${t("上次数据", "Last known data")}`
+              ? ` · ${t(...uiMessages.accounts_last_known_data_9b6576)}`
               : ""}
           </small>
         )}
@@ -354,20 +350,20 @@ function AccountCard({
       {account.usage && (
         <div
           className="account-usage"
-          aria-label={t("AgentDock 用量", "AgentDock usage")}
+          aria-label={t(...uiMessages.accounts_agentdock_usage_a4c1d9)}
         >
-          <strong>{t("AgentDock 用量", "AgentDock usage")}</strong>
+          <strong>{t(...uiMessages.accounts_agentdock_usage_a4c1d9)}</strong>
           <dl>
             <div>
-              <dt>{t("总 Token", "Total tokens")}</dt>
+              <dt>{t(...uiMessages.accounts_total_tokens_b23005)}</dt>
               <dd>{exactTokens(account.usage.total_tokens)}</dd>
             </div>
             <div>
-              <dt>{t("输入", "Input")}</dt>
+              <dt>{t(...uiMessages.accounts_input_58d1c4)}</dt>
               <dd>{exactTokens(account.usage.input_tokens)}</dd>
             </div>
             <div>
-              <dt>{t("输出", "Output")}</dt>
+              <dt>{t(...uiMessages.accounts_output_6424f4)}</dt>
               <dd>{exactTokens(account.usage.output_tokens)}</dd>
             </div>
           </dl>
@@ -393,10 +389,10 @@ function AccountCard({
           }
         >
           {remoteCodex
-            ? t("设备码登录", "Sign in with device code")
+            ? t(...uiMessages.accounts_sign_in_with_device_code_18309f)
             : account.status === "pending" || account.status === "expired"
-              ? t("登录账号", "Sign in")
-              : t("重新登录", "Sign in again")}
+              ? t(...uiMessages.accounts_sign_in_fb4d13)
+              : t(...uiMessages.accounts_sign_in_again_f7557d)}
         </button>
         {account.provider === "codex" && !remoteCodex && !login && (
           <button
@@ -405,7 +401,7 @@ function AccountCard({
             disabled={busy || active}
             onClick={() => void startLogin("device")}
           >
-            {t("使用设备码", "Use device code")}
+            {t(...uiMessages.accounts_use_device_code_2af244)}
           </button>
         )}
         <button
@@ -414,7 +410,7 @@ function AccountCard({
           disabled={busy}
           onClick={() => void mutate(`${path}/check`, {})}
         >
-          {t("检查登录", "Check sign-in")}
+          {t(...uiMessages.accounts_check_sign_in_43ef4c)}
         </button>
         <button
           type="button"
@@ -422,7 +418,7 @@ function AccountCard({
           disabled={busy || disabled}
           onClick={() => void mutate(`${path}/refresh`, {})}
         >
-          {t("刷新额度", "Refresh quota")}
+          {t(...uiMessages.accounts_refresh_quota_a4ee28)}
         </button>
         <button
           type="button"
@@ -436,7 +432,7 @@ function AccountCard({
             setEditing(!editing);
           }}
         >
-          {t("设置", "Settings")}
+          {t(...uiMessages.accounts_settings_40e3fb)}
         </button>
         {account.environment_id === "local" && (
           <button
@@ -446,7 +442,7 @@ function AccountCard({
             aria-expanded={native}
             onClick={() => setNative(!native)}
           >
-            {t("本机客户端", "Native clients")}
+            {t(...uiMessages.accounts_native_clients_f4a7c5)}
           </button>
         )}
         <button
@@ -456,7 +452,7 @@ function AccountCard({
           aria-expanded={deleting}
           onClick={() => setDeleting(!deleting)}
         >
-          {t("删除账号", "Delete account")}
+          {t(...uiMessages.accounts_delete_account_72c2b6)}
         </button>
       </div>
       {native && (
@@ -470,7 +466,7 @@ function AccountCard({
       {deleting && (
         <section
           className="account-delete"
-          aria-label={t("删除账号确认", "Confirm account removal")}
+          aria-label={t(...uiMessages.accounts_confirm_account_removal_7d5bc0)}
           onKeyDown={(event) => {
             if (event.key === "Escape") setDeleting(false);
           }}
@@ -482,7 +478,9 @@ function AccountCard({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭删除确认", "Close delete confirmation")}
+              aria-label={t(
+                ...uiMessages.accounts_close_delete_confirmation_a9887c,
+              )}
               onClick={() => setDeleting(false)}
             >
               <Icon name="close" />
@@ -490,8 +488,7 @@ function AccountCard({
           </div>
           <p>
             {t(
-              "删除此账号保存的登录凭据。已有会话和回复保留；使用此账号的会话需要重新选择账号。",
-              "Delete this saved sign-in. Existing conversations and replies remain; conversations using it will need another account.",
+              ...uiMessages.accounts_delete_this_saved_sign_in_existing_conversati_62492b,
             )}
           </p>
           <div className="button-row">
@@ -501,14 +498,14 @@ function AccountCard({
               disabled={busy || active}
               onClick={() => void mutate(`${path}/delete`, {})}
             >
-              {t("确认删除账号", "Confirm account deletion")}
+              {t(...uiMessages.accounts_confirm_account_deletion_8aea97)}
             </button>
             <button
               type="button"
               className="text-button"
               onClick={() => setDeleting(false)}
             >
-              {t("取消", "Cancel")}
+              {t(...uiMessages.accounts_cancel_68f563)}
             </button>
           </div>
         </section>
@@ -536,11 +533,13 @@ function AccountCard({
           }}
         >
           <div className="panel-heading">
-            <strong>{t("账号设置", "Account settings")}</strong>
+            <strong>{t(...uiMessages.accounts_account_settings_533cc3)}</strong>
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭账号设置", "Close account settings")}
+              aria-label={t(
+                ...uiMessages.accounts_close_account_settings_e031b9,
+              )}
               onClick={() => setEditing(false)}
             >
               <Icon name="close" />
@@ -548,7 +547,7 @@ function AccountCard({
           </div>
           <div className="form-grid">
             <label>
-              {t("名称", "Name")}
+              {t(...uiMessages.accounts_name_66f61d)}
               <input
                 required
                 maxLength={100}
@@ -557,7 +556,7 @@ function AccountCard({
               />
             </label>
             <label>
-              {t("选择优先级", "Selection priority")}
+              {t(...uiMessages.accounts_selection_priority_e32641)}
               <input
                 type="number"
                 min="-100"
@@ -569,7 +568,7 @@ function AccountCard({
           </div>
           <div className="button-row">
             <button className="primary" disabled={busy || !label.trim()}>
-              {t("保存", "Save")}
+              {t(...uiMessages.accounts_save_80b89d)}
             </button>
             <button
               type="button"
@@ -578,8 +577,8 @@ function AccountCard({
               onClick={() => void mutate(path, { enabled: disabled })}
             >
               {disabled
-                ? t("启用账号", "Enable account")
-                : t("停用账号", "Disable account")}
+                ? t(...uiMessages.accounts_enable_account_d8461d)
+                : t(...uiMessages.accounts_disable_account_610ed6)}
             </button>
           </div>
         </form>
@@ -615,7 +614,7 @@ export default function Accounts({
   const [filter, setFilter] = useState("");
   const [providerFilter, setProviderFilter] = useState("");
   const environments = [
-    { id: "local", name: t("本机", "This Mac") },
+    { id: "local", name: t(...uiMessages.accounts_this_mac_e21573) },
     ...(state.environments ?? []).filter((env) => env.id !== "local"),
   ];
   const accounts = (state.accounts ?? []).filter(
@@ -628,11 +627,10 @@ export default function Accounts({
     <div className="accounts-page">
       <div className="page-heading">
         <div>
-          <h1>{t("账号", "Accounts")}</h1>
+          <h1>{t(...uiMessages.accounts_accounts_cdc79f)}</h1>
           <p>
             {t(
-              "管理 Codex 和 Claude Code 订阅，在 Agent 或会话中选择使用。",
-              "Manage Codex and Claude Code subscriptions, then choose one for an agent or conversation.",
+              ...uiMessages.accounts_manage_codex_and_claude_code_subscriptions_th_7e4379,
             )}
           </p>
         </div>
@@ -643,16 +641,18 @@ export default function Accounts({
           onClick={() => setCreating(!creating)}
         >
           <Icon name="plus" />
-          {t("添加账号", "Add account")}
+          {t(...uiMessages.accounts_add_account_8fe0cf)}
         </button>
       </div>
       {creating && (
         <section className="panel inset-form">
           <div className="panel-heading">
-            <h2>{t("添加订阅账号", "Add subscription account")}</h2>
+            <h2>{t(...uiMessages.accounts_add_subscription_account_4f2283)}</h2>
             <button
               className="icon-button"
-              aria-label={t("取消添加账号", "Cancel adding account")}
+              aria-label={t(
+                ...uiMessages.accounts_cancel_adding_account_23dfad,
+              )}
               onClick={() => setCreating(false)}
             >
               <Icon name="close" />
@@ -675,21 +675,20 @@ export default function Accounts({
             }}
           >
             <label>
-              {t("账号名称", "Account name")}
+              {t(...uiMessages.accounts_account_name_0ebf59)}
               <input
                 required
                 value={label}
                 maxLength={100}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder={t(
-                  "例如：个人、工作",
-                  "For example: Personal, Work",
+                  ...uiMessages.accounts_for_example_personal_work_9f07fb,
                 )}
               />
             </label>
             <div className="form-grid">
               <label>
-                {t("服务", "Service")}
+                {t(...uiMessages.accounts_service_fe2e55)}
                 <select
                   value={provider}
                   onChange={(event) =>
@@ -701,7 +700,7 @@ export default function Accounts({
                 </select>
               </label>
               <label>
-                {t("设备", "Device")}
+                {t(...uiMessages.accounts_device_744986)}
                 <select
                   value={environment}
                   onChange={(event) => setEnvironment(event.target.value)}
@@ -715,19 +714,21 @@ export default function Accounts({
               </label>
             </div>
             <button className="primary" disabled={busy || !label.trim()}>
-              {t("添加", "Add")}
+              {t(...uiMessages.accounts_add_aaf69f)}
             </button>
           </form>
         </section>
       )}
       <div className="account-filters">
         <label>
-          {t("设备", "Device")}
+          {t(...uiMessages.accounts_device_744986)}
           <select
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
           >
-            <option value="">{t("全部设备", "All devices")}</option>
+            <option value="">
+              {t(...uiMessages.accounts_all_devices_9362af)}
+            </option>
             {environments.map((env) => (
               <option key={env.id} value={env.id}>
                 {env.name}
@@ -736,12 +737,14 @@ export default function Accounts({
           </select>
         </label>
         <label>
-          {t("服务", "Service")}
+          {t(...uiMessages.accounts_service_fe2e55)}
           <select
             value={providerFilter}
             onChange={(event) => setProviderFilter(event.target.value)}
           >
-            <option value="">{t("全部服务", "All services")}</option>
+            <option value="">
+              {t(...uiMessages.accounts_all_services_336e49)}
+            </option>
             <option value="codex">Codex</option>
             <option value="claude">Claude Code</option>
           </select>
@@ -765,11 +768,10 @@ export default function Accounts({
       {!accounts.length && (
         <Empty
           icon="shield"
-          title={t("暂无订阅账号", "No subscription accounts")}
+          title={t(...uiMessages.accounts_no_subscription_accounts_c1fe69)}
         >
           {t(
-            "添加账号后登录，即可在不同会话中分别使用。",
-            "Add an account and sign in to use it in your conversations.",
+            ...uiMessages.accounts_add_an_account_and_sign_in_to_use_it_in_your_03c988,
           )}
         </Empty>
       )}

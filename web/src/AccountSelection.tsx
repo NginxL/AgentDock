@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
@@ -71,7 +72,7 @@ export default function AccountSelection({
     <fieldset className="account-selection" disabled={disabled}>
       <div className="form-grid">
         <label>
-          {t("订阅账号", "Subscription account")}
+          {t(...uiMessages.accountselection_subscription_account_41185d)}
           <select
             value={value.account_id ?? ""}
             onChange={(event) =>
@@ -80,12 +81,14 @@ export default function AccountSelection({
           >
             <option value="">
               {policy === "manual"
-                ? t("沿用设备登录", "Use device login")
-                : t("自动选择可用账号", "Choose an available account")}
+                ? t(...uiMessages.accountselection_use_device_login_bc3caa)
+                : t(
+                    ...uiMessages.accountselection_choose_an_available_account_8c52e4,
+                  )}
             </option>
             {missing && (
               <option value={value.account_id!} disabled>
-                {t("账号不可用", "Account unavailable")}
+                {t(...uiMessages.accountselection_account_unavailable_addd41)}
               </option>
             )}
             {matching.map((account) => (
@@ -104,7 +107,7 @@ export default function AccountSelection({
           </select>
         </label>
         <label>
-          {t("账号使用方式", "Account selection")}
+          {t(...uiMessages.accountselection_account_selection_7f336b)}
           <select
             value={policy}
             onChange={(event) =>
@@ -115,10 +118,16 @@ export default function AccountSelection({
               })
             }
           >
-            <option value="manual">{t("固定账号", "Fixed account")}</option>
-            <option value="auto">{t("自动选择", "Automatic selection")}</option>
+            <option value="manual">
+              {t(...uiMessages.accountselection_fixed_account_0b00b2)}
+            </option>
+            <option value="auto">
+              {t(...uiMessages.accountselection_automatic_selection_f49778)}
+            </option>
             <option value="failover" disabled={!failoverEnabled}>
-              {t("限额或登录失效时切换", "Switch on quota or sign-in failure")}
+              {t(
+                ...uiMessages.accountselection_switch_on_quota_or_sign_in_failure_57df9a,
+              )}
             </option>
           </select>
         </label>
@@ -127,22 +136,21 @@ export default function AccountSelection({
         <p className="form-hint">
           {policy === "auto"
             ? t(
-                "首次运行选择可用账号，之后保持使用该账号。",
-                "Choose an available account for the first run, then keep using it.",
+                ...uiMessages.accountselection_choose_an_available_account_for_the_first_run_7d73b7,
               )
             : t(
-                "仅在明确限额或登录失效时切换；执行中的任务不会强行换号。",
-                "Switch only after a definite quota or sign-in failure; never replace an account during execution.",
+                ...uiMessages.accountselection_switch_only_after_a_definite_quota_or_sign_in_c7fa4e,
               )}
         </p>
       )}
       {policy !== "manual" && (
         <div className="account-pool">
-          <span>{t("可使用的账号", "Allowed accounts")}</span>
+          <span>
+            {t(...uiMessages.accountselection_allowed_accounts_aa8b5c)}
+          </span>
           <p className="form-hint">
             {t(
-              "不勾选时使用此设备、此服务下的全部可用账号。",
-              "Leave unchecked to use all available accounts for this device and service.",
+              ...uiMessages.accountselection_leave_unchecked_to_use_all_available_accounts_5fde72,
             )}
           </p>
           {matching.map((account) => (
@@ -173,15 +181,15 @@ export default function AccountSelection({
           {!matching.length && (
             <p className="muted">
               {t(
-                "请先在“账号”页面添加此设备的订阅账号。",
-                "Add a subscription for this device on the Accounts page first.",
+                ...uiMessages.accountselection_add_a_subscription_for_this_device_on_the_acc_9e121e,
               )}
             </p>
           )}
         </div>
       )}
       <a className="text-button account-manage-link" href="#/accounts">
-        {t("管理订阅账号", "Manage subscription accounts")} ↗
+        {t(...uiMessages.accountselection_manage_subscription_accounts_32da58)}{" "}
+        ↗
       </a>
     </fieldset>
   );
@@ -232,10 +240,10 @@ export function SessionAccountControls({
       ? `${selected.label}${selected.status !== "ready" ? ` · ${accountStatus(selected, t)}` : ""}`
       : undefined) ??
     (session.account_id
-      ? t("账号不可用", "Account unavailable")
+      ? t(...uiMessages.accountselection_account_unavailable_addd41)
       : (session.account_policy ?? "manual") !== "manual"
-        ? t("自动选择账号", "Automatic account")
-        : t("沿用设备登录", "Use device login"));
+        ? t(...uiMessages.accountselection_automatic_account_8f9e23)
+        : t(...uiMessages.accountselection_use_device_login_bc3caa));
   return (
     <div className="session-account-controls">
       <button
@@ -266,7 +274,9 @@ export function SessionAccountControls({
               className="session-account-panel"
               role="dialog"
               aria-modal="true"
-              aria-label={t("会话账号", "Conversation account")}
+              aria-label={t(
+                ...uiMessages.accountselection_conversation_account_224495,
+              )}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
                   event.stopPropagation();
@@ -297,11 +307,17 @@ export function SessionAccountControls({
               }}
             >
               <div className="panel-heading">
-                <strong>{t("会话账号", "Conversation account")}</strong>
+                <strong>
+                  {t(
+                    ...uiMessages.accountselection_conversation_account_224495,
+                  )}
+                </strong>
                 <button
                   type="button"
                   className="icon-button"
-                  aria-label={t("关闭账号设置", "Close account settings")}
+                  aria-label={t(
+                    ...uiMessages.accountselection_close_account_settings_e031b9,
+                  )}
                   onClick={() => setOpen(false)}
                 >
                   <Icon name="close" />
@@ -321,12 +337,10 @@ export function SessionAccountControls({
               <p className="form-hint">
                 {busy
                   ? t(
-                      "任务结束后可更换账号。",
-                      "Change accounts after the current task finishes.",
+                      ...uiMessages.accountselection_change_accounts_after_the_current_task_finish_44c0b1,
                     )
                   : t(
-                      "切换后将用新账号继续；已有回复保留，其他会话不受影响。",
-                      "Continue with the new account. Existing replies stay here; other conversations keep their accounts.",
+                      ...uiMessages.accountselection_continue_with_the_new_account_existing_replie_55c58e,
                     )}
               </p>
               <button
@@ -349,8 +363,10 @@ export function SessionAccountControls({
                 }}
               >
                 {saving
-                  ? t("保存中…", "Saving…")
-                  : t("保存账号设置", "Save account settings")}
+                  ? t(...uiMessages.accountselection_saving_8f287b)
+                  : t(
+                      ...uiMessages.accountselection_save_account_settings_a733d4,
+                    )}
               </button>
             </section>
           </div>,

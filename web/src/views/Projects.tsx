@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import type { DockState, Project, Translate } from "../types";
 import type { ProjectView } from "../navigation";
 import { Empty, Icon, isArchived } from "../ui";
@@ -34,18 +35,18 @@ export function ProjectHeader({
           {project && (
             <button
               className="icon-button back-to-agents"
-              aria-label={t("返回项目列表", "Back to projects")}
+              aria-label={t(...uiMessages.projects_back_to_projects_f5e01a)}
               onClick={() => onSelect("")}
             >
               <span aria-hidden="true">←</span>
             </button>
           )}
-          <h1>{project?.name ?? t("项目", "Projects")}</h1>
+          <h1>{project?.name ?? t(...uiMessages.projects_projects_23574c)}</h1>
         </div>
         {project ? (
           <select
             className="project-picker"
-            aria-label={t("切换项目", "Switch project")}
+            aria-label={t(...uiMessages.projects_switch_project_7f2ed8)}
             value={project.id}
             onChange={(e) => onSelect(e.target.value)}
           >
@@ -63,7 +64,7 @@ export function ProjectHeader({
             onClick={onCreate}
           >
             <Icon name="plus" size={18} />
-            {t("新建项目", "New project")}
+            {t(...uiMessages.projects_new_project_213635)}
           </button>
         )}
       </div>
@@ -75,13 +76,13 @@ export function ProjectHeader({
             disabled={busy}
             onChange={() => onPolicy(project)}
           />
-          {t("Agent 派工需我确认", "Ask me before agents delegate work")}
+          {t(...uiMessages.projects_ask_me_before_agents_delegate_work_16ef3f)}
         </label>
       )}
       {project && (
         <nav
           className="project-tabs"
-          aria-label={t("项目导航", "Project navigation")}
+          aria-label={t(...uiMessages.projects_project_navigation_d53bc5)}
         >
           {(
             [
@@ -125,7 +126,10 @@ export function ProjectList({
   if (!state.projects.length)
     return (
       <section className="panel">
-        <Empty icon="folder" title={t("暂无项目", "No projects yet")}>
+        <Empty
+          icon="folder"
+          title={t(...uiMessages.projects_no_projects_yet_611f30)}
+        >
           {null}
         </Empty>
         <button
@@ -134,7 +138,7 @@ export function ProjectList({
           aria-controls="project-form"
           onClick={onCreate}
         >
-          {t("创建第一个项目", "Create your first project")}
+          {t(...uiMessages.projects_create_your_first_project_41d98d)}
         </button>
       </section>
     );

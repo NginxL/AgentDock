@@ -16,7 +16,8 @@ class TaskRuntime:
                 live = self._runs.get(expected_run_id)
                 if not live or live.stop.is_set() or not live.control.available:
                     raise Conflict(
-                        "This run does not support live adjustment; queue the input or stop it first"
+                        "This run does not support live adjustment; queue the input or stop it first",
+                        code="this_run_does_not_support_live_adjustment_queue_the_input_or_stop_it_first",
                     )
             item = self.store.submit_task_input(
                 task_id,
@@ -62,7 +63,10 @@ class TaskRuntime:
             if any(
                 r.record.get("work_task_id") == task_id for r in self._runs.values()
             ):
-                raise Conflict("The previous task processes are still stopping")
+                raise Conflict(
+                    "The previous task processes are still stopping",
+                    code="the_previous_task_processes_are_still_stopping",
+                )
             detail = self.store.task_detail(task_id)
             # No new model call occurs during preflight. Old remote runs must
             # acknowledge quiescence; network uncertainty never means stopped.
@@ -91,7 +95,8 @@ class TaskRuntime:
                         )
                         if value.get("idle") is not True:
                             raise Conflict(
-                                "Remote execution is still stopping; retry after it settles"
+                                "Remote execution is still stopping; retry after it settles",
+                                code="remote_execution_is_still_stopping_retry_after_it_settles",
                             )
             self._agent_command(self.store.get_agent(owner_id or task["owner_id"]))
             result = self.store.resume_task(task_id, owner_id, intent, request_id)

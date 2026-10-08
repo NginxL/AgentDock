@@ -1,25 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { QueryClient, useQuery } from "@tanstack/react-query";
 import { request } from "./api";
 import type { Provider } from "./types";
 
 export type Model = { id: string; name: string; efforts: string[] };
-type Entry = {
-  models?: Model[];
-  expires: number;
-  pending?: Promise<Model[]>;
-};
-
-// Memory only, scoped to the connected workbench and exact provider/host/account identity.
-// Closing a menu does not cancel the shared discovery already in progress.
-const entries = new Map<string, Entry>();
+// Credentials remain in closures; keys and the memory-only cache contain no tokens.
 let credential = "";
-const MAX_AGE = 60_000;
-
+const client = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      staleTime: 60_000,
+      gcTime: 300_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 export function clearModelCatalog() {
-  entries.clear();
+  client.clear();
   credential = "";
 }
-
 function entryFor(
   token: string,
   provider: Provider,
@@ -31,20 +31,34 @@ function entryFor(
     clearModelCatalog();
     credential = token;
   }
-  const key = JSON.stringify([
+  return [
+    "models",
     provider,
     environment,
     account ?? null,
     generation ?? 0,
-  ]);
-  let entry = entries.get(key);
-  if (!entry) {
-    entry = { expires: 0 };
-    entries.set(key, entry);
-  }
-  return entry;
+  ] as const;
 }
-
+function options(
+  token: string,
+  provider: Provider,
+  environment: string,
+  account?: string | null,
+  generation?: number,
+) {
+  return {
+    queryKey: entryFor(token, provider, environment, account, generation),
+    queryFn: async () => {
+      const value = await request<{ models: Model[] }>(
+        token,
+        `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}${account ? `&account_id=${encodeURIComponent(account)}` : ""}`,
+      );
+      if (!Array.isArray(value.models))
+        throw new Error("Invalid model catalog");
+      return value.models;
+    },
+  };
+}
 function load(
   token: string,
   provider: Provider,
@@ -52,25 +66,9 @@ function load(
   account?: string | null,
   generation?: number,
 ) {
-  const entry = entryFor(token, provider, environment, account, generation);
-  if (entry.models && Date.now() < entry.expires)
-    return Promise.resolve(entry.models);
-  if (entry.pending) return entry.pending;
-  entry.pending = request<{ models: Model[] }>(
-    token,
-    `/api/models/${provider}?environment_id=${encodeURIComponent(environment)}${account ? `&account_id=${encodeURIComponent(account)}` : ""}`,
-  )
-    .then((value) => {
-      if (!Array.isArray(value.models))
-        throw new Error("Invalid model catalog");
-      entry.models = value.models;
-      entry.expires = Date.now() + MAX_AGE;
-      return entry.models;
-    })
-    .finally(() => {
-      entry.pending = undefined;
-    });
-  return entry.pending;
+  return client.fetchQuery(
+    options(token, provider, environment, account, generation),
+  );
 }
 
 /** Warm only configured connections; keep results in memory and coalesce with menus. */
@@ -134,59 +132,19 @@ export function useModelCatalog(
   account?: string | null,
   generation?: number,
 ) {
-  const key = JSON.stringify([
-    token,
-    provider,
-    environment,
-    account ?? null,
-    generation ?? 0,
-  ]);
-  const [state, setState] = useState<{
-    key: string;
-    models: Model[];
-    loading: boolean;
-    failed: boolean;
-  }>();
+  const query = useQuery(
+    { ...options(token, provider, environment, account, generation), enabled },
+    client,
+  );
   useEffect(() => {
-    if (!enabled) return;
-    let disposed = false;
-    const cached = entryFor(
-      token,
-      provider,
-      environment,
-      account,
-      generation,
-    ).models;
-    setState({ key, models: cached ?? [], loading: !cached, failed: false });
-    void load(token, provider, environment, account, generation)
-      .then((models) => {
-        if (!disposed) setState({ key, models, loading: false, failed: false });
-      })
-      .catch(() => {
-        if (!disposed)
-          setState({ key, models: cached ?? [], loading: false, failed: true });
-      });
-    return () => {
-      disposed = true;
-    };
-  }, [
-    key,
-    token,
-    provider,
-    environment,
-    enabled,
-    refreshKey,
-    account,
-    generation,
-  ]);
-  if (!enabled) return { models: [], loading: false, failed: false };
-  if (state?.key === key) return state;
-  const cached = entryFor(
-    token,
-    provider,
-    environment,
-    account,
-    generation,
-  ).models;
-  return { models: cached ?? [], loading: !cached, failed: false };
+    if (enabled)
+      void load(token, provider, environment, account, generation).catch(
+        () => {},
+      );
+  }, [token, provider, environment, enabled, refreshKey, account, generation]);
+  return {
+    models: enabled ? (query.data ?? []) : [],
+    loading: enabled && query.isPending,
+    failed: enabled && query.isError,
+  };
 }

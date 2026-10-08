@@ -1,0 +1,22 @@
+:root {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Microsoft YaHei",
+    sans-serif;
+  color: #252831;
+  background: #fff;
+  font-synthesis: none;
+  font-size: 13px;
+  line-height: 1.6;
+  --ink: #252831;
+  --muted: #777d8b;
+  --accent: #5c5acb;
+  --accent-dark: #4947b5;
+  --line: #e8e9ee;
+  --paper: #fff;
+  --soft: #f6f7f9;
+}

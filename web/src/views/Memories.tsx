@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import { useState } from "react";
 import type {
   Agent,
@@ -53,10 +54,9 @@ export default function Memories({
       <PageTitle
         headingLevel={2}
         eyebrow=""
-        title={t("项目记忆", "Project memory")}
+        title={t(...uiMessages.memories_project_memory_772393)}
         description={t(
-          "仅共享已确认的项目约定与结论。各 Agent 的原生会话历史独立保留；记忆写入需经审阅，并按版本更新。",
-          "Share reviewed project conventions and decisions. Native session histories remain private; memory changes are reviewed and versioned.",
+          ...uiMessages.memories_share_reviewed_project_conventions_and_decisi_3e9526,
         )}
         action={
           <button
@@ -72,7 +72,7 @@ export default function Memories({
             }
           >
             <Icon name="plus" size={18} />
-            {t("新增记忆", "Add memory")}
+            {t(...uiMessages.memories_add_memory_b33b9a)}
           </button>
         }
       />
@@ -80,11 +80,12 @@ export default function Memories({
         <section className="panel proposals">
           <div className="panel-heading">
             <div>
-              <h2>{t("等待审阅的提案", "Proposals awaiting review")}</h2>
+              <h2>
+                {t(...uiMessages.memories_proposals_awaiting_review_d0b5d7)}
+              </h2>
               <p>
                 {t(
-                  "批准后才进入共享上下文。",
-                  "Only approved content enters shared context.",
+                  ...uiMessages.memories_only_approved_content_enters_shared_context_da8308,
                 )}
               </p>
             </div>
@@ -110,7 +111,7 @@ export default function Memories({
                 {current && (
                   <details>
                     <summary>
-                      {t("查看当前记忆", "View current memory")}
+                      {t(...uiMessages.memories_view_current_memory_11e18a)}
                     </summary>
                     <pre>{current.content}</pre>
                   </details>
@@ -119,8 +120,7 @@ export default function Memories({
                 {conflict && (
                   <p className="inline-error">
                     {t(
-                      "原记忆版本已变化。此提案不能直接批准，请让 Agent 基于最新版本重新提案。",
-                      "The memory version changed. Ask the agent for a proposal based on the latest version before approving.",
+                      ...uiMessages.memories_the_memory_version_changed_ask_the_agent_for_fc6c2f,
                     )}
                   </p>
                 )}
@@ -135,7 +135,7 @@ export default function Memories({
                       )
                     }
                   >
-                    {t("批准写入", "Approve memory")}
+                    {t(...uiMessages.memories_approve_memory_1e414f)}
                   </button>
                   <button
                     className="secondary"
@@ -147,7 +147,7 @@ export default function Memories({
                       )
                     }
                   >
-                    {t("拒绝提案", "Reject proposal")}
+                    {t(...uiMessages.memories_reject_proposal_a285a8)}
                   </button>
                 </div>
               </article>
@@ -160,13 +160,13 @@ export default function Memories({
           <div className="panel-heading">
             <h2>
               {editor.id
-                ? t("编辑记忆", "Edit memory")
-                : t("新增已审阅记忆", "Add reviewed memory")}
+                ? t(...uiMessages.memories_edit_memory_3a725f)
+                : t(...uiMessages.memories_add_reviewed_memory_17668c)}
             </h2>
             <button
               className="icon-button"
               onClick={() => setEditor(null)}
-              aria-label={t("关闭记忆编辑器", "Close memory editor")}
+              aria-label={t(...uiMessages.memories_close_memory_editor_14546e)}
             >
               <Icon name="close" />
             </button>
@@ -187,7 +187,7 @@ export default function Memories({
             }}
           >
             <label>
-              {t("记忆键名", "Memory key")}
+              {t(...uiMessages.memories_memory_key_6c6a3a)}
               <input
                 value={editor.key}
                 onChange={(e) => setEditor({ ...editor, key: e.target.value })}
@@ -198,7 +198,7 @@ export default function Memories({
               />
             </label>
             <label>
-              {t("内容", "Content")}
+              {t(...uiMessages.memories_content_12defa)}
               <textarea
                 value={editor.content}
                 onChange={(e) =>
@@ -211,8 +211,7 @@ export default function Memories({
             </label>
             <p className="form-hint">
               {t(
-                "你提交的内容将作为已审阅记忆提供给本项目 Agent。不要存放密码或访问令牌。",
-                "Your content will become reviewed context for this project’s agents. Do not store passwords or access tokens.",
+                ...uiMessages.memories_your_content_will_become_reviewed_context_for_1e25b4,
               )}{" "}
               · v{editor.version} → v{editor.version + 1}
             </p>
@@ -220,8 +219,7 @@ export default function Memories({
               <div className="conflict-notice">
                 <p>
                   {t(
-                    "此记录已有更新。草稿保留中，请先审阅最新内容。",
-                    "This record was updated. Your draft is preserved; review the latest content first.",
+                    ...uiMessages.memories_this_record_was_updated_your_draft_is_preserv_ee0477,
                   )}
                 </p>
                 <button
@@ -237,7 +235,9 @@ export default function Memories({
                     })
                   }
                 >
-                  {t("用最新内容替换草稿", "Replace draft with latest content")}
+                  {t(
+                    ...uiMessages.memories_replace_draft_with_latest_content_554da4,
+                  )}
                 </button>
               </div>
             )}
@@ -247,7 +247,7 @@ export default function Memories({
                 busy || changed || !editor.key.trim() || !editor.content.trim()
               }
             >
-              {t("保存已审阅记忆", "Save reviewed memory")}
+              {t(...uiMessages.memories_save_reviewed_memory_e3180b)}
             </button>
           </form>
         </section>
@@ -257,13 +257,15 @@ export default function Memories({
           <label className="search-box">
             <Icon name="search" size={18} />
             <span className="sr-only">
-              {t("搜索项目记忆", "Search project memory")}
+              {t(...uiMessages.memories_search_project_memory_6517ef)}
             </span>
             <input
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("搜索键名或内容…", "Search keys or content…")}
+              placeholder={t(
+                ...uiMessages.memories_search_keys_or_content_bc81ec,
+              )}
             />
           </label>
           <label className="checkbox-label">
@@ -272,7 +274,7 @@ export default function Memories({
               checked={archived}
               onChange={(e) => setArchived(e.target.checked)}
             />
-            {t("查看已归档", "Show archived")}
+            {t(...uiMessages.memories_show_archived_b4d896)}
           </label>
         </div>
         {records.length ? (
@@ -284,8 +286,8 @@ export default function Memories({
                   <span className="pill">
                     v{memory.version} ·{" "}
                     {isArchived(memory)
-                      ? t("已归档", "Archived")
-                      : t("已审阅", "Reviewed")}
+                      ? t(...uiMessages.memories_archived_c1c10b)
+                      : t(...uiMessages.memories_reviewed_817c6b)}
                   </span>
                 </div>
                 <pre>{memory.content}</pre>
@@ -313,7 +315,7 @@ export default function Memories({
                           )
                         }
                       >
-                        {t("编辑", "Edit")}
+                        {t(...uiMessages.memories_edit_b936a3)}
                       </button>
                       <button
                         className="text-button muted"
@@ -325,7 +327,7 @@ export default function Memories({
                           )
                         }
                       >
-                        {t("归档", "Archive")}
+                        {t(...uiMessages.memories_archive_990782)}
                       </button>
                     </div>
                   )}
@@ -338,15 +340,14 @@ export default function Memories({
             icon="memory"
             title={
               query
-                ? t("没有匹配的记忆", "No matching memories")
+                ? t(...uiMessages.memories_no_matching_memories_70af51)
                 : archived
-                  ? t("没有已归档记忆", "No archived memories")
-                  : t("为协作建立共同上下文", "Build shared context")
+                  ? t(...uiMessages.memories_no_archived_memories_3ef280)
+                  : t(...uiMessages.memories_build_shared_context_13b29b)
             }
           >
             {t(
-              "保存项目约定、已确认决策和可复用结论。归档记录不会继续注入 Agent 上下文。",
-              "Store project conventions, confirmed decisions and reusable findings. Archived records are excluded from agent context.",
+              ...uiMessages.memories_store_project_conventions_confirmed_decisions_613036,
             )}
           </Empty>
         )}

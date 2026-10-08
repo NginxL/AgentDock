@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useRef, useState } from "react";
 import { request } from "./api";
 import type { Translate } from "./types";
@@ -40,8 +41,8 @@ export default function WorkspaceDirectory({
   const button = useRef<HTMLButtonElement>(null);
   const remote = environment !== "local";
   const title = remote
-    ? t("选择远端目录", "Choose a remote directory")
-    : t("选择本机目录", "Choose a local directory");
+    ? t(...uiMessages.workspacedirectory_choose_a_remote_directory_376616)
+    : t(...uiMessages.workspacedirectory_choose_a_local_directory_869c6c);
   function close() {
     setOpen(false);
     button.current?.focus();
@@ -104,10 +105,11 @@ export default function WorkspaceDirectory({
       <label>
         {required
           ? t(
-              "此项目在 Agent 设备上的目录",
-              "Project directory on the agent device",
+              ...uiMessages.workspacedirectory_project_directory_on_the_agent_device_dea251,
             )
-          : t("工作目录（可留空）", "Working directory (optional)")}
+          : t(
+              ...uiMessages.workspacedirectory_working_directory_optional_36d77f,
+            )}
         <input
           required={required}
           value={value}
@@ -116,15 +118,15 @@ export default function WorkspaceDirectory({
           spellCheck={false}
           placeholder={
             required
-              ? t("填写此项目的绝对路径", "Enter this project's absolute path")
+              ? t(
+                  ...uiMessages.workspacedirectory_enter_this_project_s_absolute_path_be8842,
+                )
               : remote
                 ? t(
-                    "留空在远端创建独立目录",
-                    "Leave blank for a private remote directory",
+                    ...uiMessages.workspacedirectory_leave_blank_for_a_private_remote_directory_32991e,
                   )
                 : t(
-                    "留空在本机创建独立目录",
-                    "Leave blank for a private local directory",
+                    ...uiMessages.workspacedirectory_leave_blank_for_a_private_local_directory_f09251,
                   )
           }
         />
@@ -154,7 +156,9 @@ export default function WorkspaceDirectory({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭目录选择", "Close directory picker")}
+              aria-label={t(
+                ...uiMessages.workspacedirectory_close_directory_picker_3f5627,
+              )}
               onClick={close}
             >
               <Icon name="close" />
@@ -164,14 +168,18 @@ export default function WorkspaceDirectory({
             <button
               type="button"
               className="icon-button"
-              aria-label={t("上一级目录", "Parent directory")}
+              aria-label={t(
+                ...uiMessages.workspacedirectory_parent_directory_8e56da,
+              )}
               disabled={loading || !listing?.parent}
               onClick={() => listing?.parent && navigate(listing.parent)}
             >
               ↑
             </button>
             <input
-              aria-label={t("目录路径", "Directory path")}
+              aria-label={t(
+                ...uiMessages.workspacedirectory_directory_path_88239c,
+              )}
               value={draftPath}
               onChange={(e) => setDraftPath(e.target.value)}
               spellCheck={false}
@@ -194,18 +202,19 @@ export default function WorkspaceDirectory({
               disabled={loading || !draftPath.trim()}
               onClick={() => navigate(draftPath.trim())}
             >
-              {t("前往", "Go")}
+              {t(...uiMessages.workspacedirectory_go_a823db)}
             </button>
           </div>
           <div className="directory-list" aria-busy={loading}>
             {loading && (
-              <p role="status">{t("正在读取目录…", "Loading directories…")}</p>
+              <p role="status">
+                {t(...uiMessages.workspacedirectory_loading_directories_9334a7)}
+              </p>
             )}
             {failed && (
               <p role="alert">
                 {t(
-                  "无法读取此目录，请检查路径或连接。",
-                  "Cannot read this directory. Check the path or connection.",
+                  ...uiMessages.workspacedirectory_cannot_read_this_directory_check_the_path_or_ca94ab,
                 )}
               </p>
             )}
@@ -222,13 +231,14 @@ export default function WorkspaceDirectory({
                 </button>
               ))}
             {!loading && listing?.directories.length === 0 && (
-              <p>{t("此目录没有子目录", "No subdirectories")}</p>
+              <p>
+                {t(...uiMessages.workspacedirectory_no_subdirectories_37fd3d)}
+              </p>
             )}
             {listing?.truncated && (
               <p>
                 {t(
-                  "目录较多，可直接输入完整路径。",
-                  "More directories available. Enter a full path to navigate.",
+                  ...uiMessages.workspacedirectory_more_directories_available_enter_a_full_path_575a48,
                 )}
               </p>
             )}
@@ -244,7 +254,7 @@ export default function WorkspaceDirectory({
               }
             }}
           >
-            {t("使用此目录", "Use this directory")}
+            {t(...uiMessages.workspacedirectory_use_this_directory_13e7d1)}
           </button>
         </div>
       )}

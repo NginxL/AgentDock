@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useState } from "react";
 import type { Agent, DockState, Mutate, Project, Translate } from "./types";
 import { Icon } from "./ui";
@@ -40,10 +41,12 @@ export default function ProjectAgentForm({
   return (
     <section className="panel inset-form" id="project-agent-form">
       <div className="panel-heading">
-        <h2>{t("添加 Agent 到项目", "Add agent to project")}</h2>
+        <h2>{t(...uiMessages.projectagentform_add_agent_to_project_34fdb2)}</h2>
         <button
           className="icon-button"
-          aria-label={t("取消添加 Agent", "Cancel adding agent")}
+          aria-label={t(
+            ...uiMessages.projectagentform_cancel_adding_agent_fe4fef,
+          )}
           onClick={onClose}
           disabled={busy}
         >
@@ -67,7 +70,7 @@ export default function ProjectAgentForm({
         }}
       >
         <label>
-          {t("使用 Agent", "Use agent")}
+          {t(...uiMessages.projectagentform_use_agent_cec758)}
           <select
             required
             value={sourceID}
@@ -82,7 +85,9 @@ export default function ProjectAgentForm({
             }}
           >
             <option value="">
-              {t("选择已配置的 Agent", "Choose a configured agent")}
+              {t(
+                ...uiMessages.projectagentform_choose_a_configured_agent_0b6742,
+              )}
             </option>
             {sources.map((agent) => (
               <option key={agent.id} value={agent.id}>
@@ -101,25 +106,26 @@ export default function ProjectAgentForm({
           </div>
         )}
         <label>
-          {t("项目内名称", "Name in this project")}
+          {t(...uiMessages.projectagentform_name_in_this_project_1b1ec4)}
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
             required
             maxLength={100}
-            placeholder={t("例如 cr、coding", "For example, cr or coding")}
+            placeholder={t(
+              ...uiMessages.projectagentform_for_example_cr_or_coding_62d484,
+            )}
           />
         </label>
         <label>
-          {t("项目职责（可选）", "Project role (optional)")}
+          {t(...uiMessages.projectagentform_project_role_optional_c8d252)}
           <textarea
             value={role}
             onChange={(event) => setRole(event.target.value)}
             maxLength={4000}
             rows={3}
             placeholder={t(
-              "例如：审阅代码，检查风险与测试覆盖",
-              "For example: review code, risks and test coverage",
+              ...uiMessages.projectagentform_for_example_review_code_risks_and_test_covera_5b7264,
             )}
           />
         </label>
@@ -150,7 +156,7 @@ export default function ProjectAgentForm({
               disabled={busy}
               onClick={onConfigure}
             >
-              {t("配置新 Agent", "Configure a new agent")}
+              {t(...uiMessages.projectagentform_configure_a_new_agent_3143bc)}
             </button>
           )}
           <button
@@ -164,7 +170,7 @@ export default function ProjectAgentForm({
               (needsDirectory && !workspace.trim())
             }
           >
-            {t("添加到项目", "Add to project")}
+            {t(...uiMessages.projectagentform_add_to_project_f76bee)}
           </button>
         </div>
       </form>

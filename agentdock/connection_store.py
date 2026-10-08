@@ -143,12 +143,18 @@ class ConnectionStore:
     def add_environment(self, name, ssh_host, python="python3"):
         host = text(ssh_host, "ssh_host", 255)
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.@:-]*", host):
-            raise Invalid("Use an SSH Host alias, without flags or shell commands")
+            raise Invalid(
+                "Use an SSH Host alias, without flags or shell commands",
+                code="use_an_ssh_host_alias_without_flags_or_shell_commands",
+            )
         python = text(python or "python3", "python", 512)
         if not re.fullmatch(
             r"(?:/[A-Za-z0-9_.+/-]+|[A-Za-z0-9][A-Za-z0-9_.+-]*)", python
         ):
-            raise Invalid("Invalid remote Python executable")
+            raise Invalid(
+                "Invalid remote Python executable",
+                code="invalid_remote_python_executable",
+            )
         item = dict(
             id=str(uuid.uuid4()),
             name=text(name, "name", 100),
@@ -198,6 +204,9 @@ class ConnectionStore:
                     (identifier, identifier, identifier, identifier),
                 ).fetchone()
             ):
-                raise Conflict("This environment is still in use")
+                raise Conflict(
+                    "This environment is still in use",
+                    code="this_environment_is_still_in_use",
+                )
             self.db.execute("DELETE FROM environments WHERE id=?", (identifier,))
             return {"ok": True}

@@ -24,7 +24,10 @@ class SessionStore:
                 raise Invalid("Choose an existing absolute workspace directory")
             path = str(path.resolve())
         elif not path.startswith("/") or any(ord(c) < 32 for c in path):
-            raise Invalid("Use an absolute directory on the remote host")
+            raise Invalid(
+                "Use an absolute directory on the remote host",
+                code="use_an_absolute_directory_on_the_remote_host",
+            )
         else:
             path = posixpath.normpath(path)
         item = dict(
@@ -189,7 +192,10 @@ class SessionStore:
                     (agent_id,),
                 ).fetchone()
             ):
-                raise Conflict("Wait for active tasks before changing agent settings")
+                raise Conflict(
+                    "Wait for active tasks before changing agent settings",
+                    code="wait_for_active_tasks_before_changing_agent_settings",
+                )
             workspace = (
                 self._workspace(project_id, workspace, agent_id, environment_id)
                 if moved or relocated
@@ -403,7 +409,9 @@ class SessionStore:
             )
             override = 1
         else:
-            raise Invalid("Invalid session model settings")
+            raise Invalid(
+                "Invalid session model settings", code="invalid_session_model_settings"
+            )
         with self.transaction():
             self._available("sessions", session_id)
             self.db.execute(

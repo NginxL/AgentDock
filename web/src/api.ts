@@ -1,3 +1,4 @@
+import { errorCopy } from "./errorMessages";
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -47,9 +48,16 @@ export async function request<T>(
         ? result.error
         : `HTTP ${response.status}`;
     const details = result as { code?: string; error_id?: string };
-    throw new ApiError(response.status,
-      details.code === "internal_error" ? `internal_error:${details.error_id ?? ""}` : message,
-      details.code, details.error_id);
+    throw new ApiError(
+      response.status,
+      details.code && errorCopy[details.code]
+        ? `error_code:${details.code}`
+        : details.code === "internal_error"
+          ? `internal_error:${details.error_id ?? ""}`
+          : message,
+      details.code,
+      details.error_id,
+    );
   }
   return result as T;
 }

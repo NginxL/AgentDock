@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { createContext, useContext, useState } from "react";
 import type { Mutate, Translate } from "./types";
 
@@ -54,7 +55,9 @@ export default function ExperimentalFeatures({
   const [acknowledged, setAcknowledged] = useState<Features>({});
   return (
     <details className="panel experimental-settings">
-      <summary>{t("实验功能", "Experimental features")}</summary>
+      <summary>
+        {t(...uiMessages.experimentalfeatures_experimental_features_4a98cf)}
+      </summary>
       {Object.entries(descriptions).map(([key, labels]) => {
         const name = key as keyof Features;
         const enabled = features[name] === true;
@@ -77,7 +80,9 @@ export default function ExperimentalFeatures({
                       })
                     }
                   />
-                  {t("我已了解此功能的限制", "I understand these limitations")}
+                  {t(
+                    ...uiMessages.experimentalfeatures_i_understand_these_limitations_9ffd3d,
+                  )}
                 </label>
               )}
               <button
@@ -90,7 +95,9 @@ export default function ExperimentalFeatures({
                   })
                 }
               >
-                {enabled ? t("停用", "Disable") : t("启用", "Enable")}
+                {enabled
+                  ? t(...uiMessages.experimentalfeatures_disable_d0c525)
+                  : t(...uiMessages.experimentalfeatures_enable_025e9d)}
               </button>
             </div>
           </section>

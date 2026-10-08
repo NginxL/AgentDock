@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import { useState } from "react";
 import { remainingPercent } from "../api";
 import type {
@@ -75,19 +76,21 @@ export default function Usage({
   return (
     <>
       <PageTitle
-        eyebrow={t("账户概览", "ACCOUNT OVERVIEW")}
-        title={t("额度与订阅", "Usage & billing")}
+        eyebrow={t(...uiMessages.usage_account_overview_d105eb)}
+        title={t(...uiMessages.usage_usage_billing_59a0e5)}
       />
       {!agents.length && (
         <section className="panel">
-          <Empty icon="dock" title={t("暂无 Agent", "No agents yet")}>
+          <Empty
+            icon="dock"
+            title={t(...uiMessages.usage_no_agents_yet_be317a)}
+          >
             {t(
-              "添加 Agent 后查看额度与订阅。",
-              "Add an agent to view usage and billing.",
+              ...uiMessages.usage_add_an_agent_to_view_usage_and_billing_a23800,
             )}
             <div>
               <button className="primary" onClick={onAddAgent}>
-                {t("添加 Agent", "Add agent")}
+                {t(...uiMessages.usage_add_agent_3bb60f)}
               </button>
             </div>
           </Empty>
@@ -96,8 +99,7 @@ export default function Usage({
       {refreshFailed && !!agents.length && (
         <p className="inline-error" role="status">
           {t(
-            "额度更新失败，稍后自动重试。",
-            "Usage update failed. Retrying automatically.",
+            ...uiMessages.usage_usage_update_failed_retrying_automatically_9e241c,
           )}
         </p>
       )}
@@ -118,13 +120,15 @@ export default function Usage({
                     label:
                       window.label ??
                       {
-                        primary: t("当前周期", "Current window"),
-                        secondary: t("额外周期", "Additional window"),
-                        session: t("会话额度", "Session limit"),
-                        weekly: t("每周额度", "Weekly limit"),
+                        primary: t(...uiMessages.usage_current_window_2bfa6f),
+                        secondary: t(
+                          ...uiMessages.usage_additional_window_8e7cb3,
+                        ),
+                        session: t(...uiMessages.usage_session_limit_3f78ff),
+                        weekly: t(...uiMessages.usage_weekly_limit_775852),
                       }[window.name ?? ""] ??
                       window.name ??
-                      t("额度", "Quota"),
+                      t(...uiMessages.usage_quota_5b9897),
                   })),
                 }
               : undefined
@@ -157,36 +161,36 @@ export default function Usage({
                     {managed
                       ? (account?.label ??
                         (target.accountID
-                          ? t("账号不可用", "Account unavailable")
-                          : t("等待选择账号", "No account selected")))
+                          ? t(...uiMessages.usage_account_unavailable_addd41)
+                          : t(...uiMessages.usage_no_account_selected_e5c4da)))
                       : agentNames}
                   </h2>
                   <small className="quota-identity">
                     {providerNames[provider]} ·{" "}
                     {environment === "local"
-                      ? t("本机", "This Mac")
+                      ? t(...uiMessages.usage_this_mac_e21573)
                       : (environments.find((e) => e.id === environment)?.name ??
-                        t("远端设备", "Remote device"))}{" "}
+                        t(...uiMessages.usage_remote_device_be5b9e))}{" "}
                     ·{" "}
                     {managed
-                      ? t("订阅账号", "Subscription account")
-                      : t("设备登录", "Device login")}
+                      ? t(...uiMessages.usage_subscription_account_41185d)
+                      : t(...uiMessages.usage_device_login_5ac5e5)}
                   </small>
                   <span>
                     {quota?.plan ||
                       (managed && account?.identity?.plan) ||
                       billing?.plan ||
-                      t("方案未知", "Plan unknown")}
+                      t(...uiMessages.usage_plan_unknown_d27bfa)}
                   </span>
                 </div>
                 <span className={`pill ${available ? "good" : ""}`}>
                   {refreshing
-                    ? t("更新中", "Updating")
+                    ? t(...uiMessages.usage_updating_246dca)
                     : available
-                      ? t("已读取", "Fetched")
+                      ? t(...uiMessages.usage_fetched_3fa906)
                       : quota?.status === "stale"
-                        ? t("待更新", "Update pending")
-                        : t("未知 / 不可用", "Unknown / unavailable")}
+                        ? t(...uiMessages.usage_update_pending_b91a30)
+                        : t(...uiMessages.usage_unknown_unavailable_125154)}
                 </span>
               </header>
               {managed && (
@@ -197,7 +201,7 @@ export default function Usage({
               )}
               {!!target.sessionNames.length && (
                 <p className="quota-binding">
-                  {t("会话", "Conversations")}:{" "}
+                  {t(...uiMessages.usage_conversations_53bf2d)}:{" "}
                   {target.sessionNames.join(" · ")}
                 </p>
               )}
@@ -214,7 +218,9 @@ export default function Usage({
                 ) : (
                   <div className="quota-unknown">
                     <strong>—</strong>
-                    <p>{t("尚无可用额度数据", "No available quota data")}</p>
+                    <p>
+                      {t(...uiMessages.usage_no_available_quota_data_1b817d)}
+                    </p>
                   </div>
                 )}
                 {quota?.error && quota.error_code !== "outdated_cache" && (
@@ -226,28 +232,32 @@ export default function Usage({
               <div className="quota-source">
                 <span>
                   {managed
-                    ? t("账号额度", "Account quota")
+                    ? t(...uiMessages.usage_account_quota_107b7b)
                     : quota?.source === "demo"
-                      ? t("演示数据", "Demo data")
+                      ? t(...uiMessages.usage_demo_data_9029c5)
                       : quota?.source === "claude-desktop-snapshot"
-                        ? t("Claude 本地快照", "Claude local snapshot")
+                        ? t(...uiMessages.usage_claude_local_snapshot_b92980)
                         : provider === "codex"
                           ? "Codex"
-                          : t("上次保存的数据", "Previously saved data")}{" "}
-                  · {t("数据更新于", "Data updated")}{" "}
+                          : t(
+                              ...uiMessages.usage_previously_saved_data_ff28d7,
+                            )}{" "}
+                  · {t(...uiMessages.usage_data_updated_1bf097)}{" "}
                   <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
               </div>
               {managed ? (
                 <div className="billing-info">
                   <a href="#/accounts" className="text-button">
-                    {t("管理账号", "Manage account")} ↗
+                    {t(...uiMessages.usage_manage_account_15a367)} ↗
                   </a>
                 </div>
               ) : (
                 <div className="billing-info">
                   <div className="record-heading">
-                    <h3>{t("手动订阅记录", "Manual billing record")}</h3>
+                    <h3>
+                      {t(...uiMessages.usage_manual_billing_record_859630)}
+                    </h3>
                     <button
                       className="text-button"
                       aria-expanded={
@@ -257,21 +267,22 @@ export default function Usage({
                       aria-controls="billing-form"
                       onClick={() => edit(provider, environment)}
                     >
-                      {t("编辑", "Edit")}
+                      {t(...uiMessages.usage_edit_b936a3)}
                     </button>
                   </div>
                   <dl>
                     <div>
-                      <dt>{t("下次续费", "Next renewal")}</dt>
+                      <dt>{t(...uiMessages.usage_next_renewal_bf5cbd)}</dt>
                       <dd>
-                        {billing?.renewal_date || t("未登记", "Not recorded")}
+                        {billing?.renewal_date ||
+                          t(...uiMessages.usage_not_recorded_8a37c3)}
                       </dd>
                     </div>
                     <div>
-                      <dt>{t("每月费用", "Monthly cost")}</dt>
+                      <dt>{t(...uiMessages.usage_monthly_cost_b8c3cd)}</dt>
                       <dd>
                         {billing?.monthly_cost == null
-                          ? t("未登记", "Not recorded")
+                          ? t(...uiMessages.usage_not_recorded_8a37c3)
                           : `${billing.currency} ${Number(billing.monthly_cost).toFixed(2)}`}
                       </dd>
                     </div>
@@ -286,7 +297,7 @@ export default function Usage({
         <section className="panel inset-form" id="billing-form">
           <div className="panel-heading">
             <h2>
-              {t("编辑订阅记录", "Edit billing record")} ·{" "}
+              {t(...uiMessages.usage_edit_billing_record_428d8b)} ·{" "}
               {targets
                 .find(
                   (target) =>
@@ -299,7 +310,7 @@ export default function Usage({
             <button
               className="icon-button"
               onClick={() => setEditing(null)}
-              aria-label={t("关闭订阅编辑器", "Close billing editor")}
+              aria-label={t(...uiMessages.usage_close_billing_editor_b77c8c)}
             >
               <Icon name="close" />
             </button>
@@ -323,7 +334,7 @@ export default function Usage({
           >
             <div className="form-grid">
               <label>
-                {t("订阅方案", "Plan")}
+                {t(...uiMessages.usage_plan_ea3c2d)}
                 <input
                   value={plan}
                   onChange={(e) => setPlan(e.target.value)}
@@ -332,7 +343,7 @@ export default function Usage({
                 />
               </label>
               <label>
-                {t("下次续费日期", "Next renewal date")}
+                {t(...uiMessages.usage_next_renewal_date_0ad1f4)}
                 <input
                   type="date"
                   value={renewal}
@@ -340,7 +351,7 @@ export default function Usage({
                 />
               </label>
               <label>
-                {t("每月费用（可留空）", "Monthly cost (optional)")}
+                {t(...uiMessages.usage_monthly_cost_optional_3bc94d)}
                 <input
                   type="number"
                   min="0"
@@ -350,7 +361,7 @@ export default function Usage({
                 />
               </label>
               <label>
-                {t("币种", "Currency")}
+                {t(...uiMessages.usage_currency_ab7a51)}
                 <select
                   value={currency}
                   onChange={(e) => setCurrency(e.target.value)}
@@ -366,12 +377,11 @@ export default function Usage({
             </div>
             <p className="form-hint">
               {t(
-                "仅登记信息，不会购买、续费或更改任何订阅。实际计费以服务商账户为准。",
-                "This records information only; it does not purchase, renew or change subscriptions. Actual billing follows your provider account.",
+                ...uiMessages.usage_this_records_information_only_it_does_not_pur_5f498f,
               )}
             </p>
             <button className="primary" disabled={busy}>
-              {t("保存记录", "Save record")}
+              {t(...uiMessages.usage_save_record_22f48a)}
             </button>
           </form>
         </section>
@@ -391,21 +401,21 @@ export function QuotaWindow({
 }) {
   const remaining = remainingPercent(window.remaining_percent);
   const labels: Record<string, string> = {
-    主要窗口: t("主要窗口", "Primary window"),
-    次要窗口: t("次要窗口", "Secondary window"),
-    "300m": t("5 小时", "5 hours"),
-    "10080m": t("7 天", "7 days"),
-    "5 小时": t("5 小时", "5 hours"),
-    "7 天": t("7 天", "7 days"),
-    Weekly: t("每周额度", "Weekly"),
-    "Weekly window": t("每周额度", "Weekly window"),
-    "5-hour window": t("5 小时额度", "5-hour window"),
-    "5 hours": t("5 小时额度", "5 hours"),
-    "5-hour": t("5 小时额度", "5-hour"),
-    Session: t("当前会话额度", "Session"),
-    Quota: t("额度", "Quota"),
-    每周额度: t("每周额度", "Weekly window"),
-    "5 小时额度": t("5 小时额度", "5-hour window"),
+    主要窗口: t(...uiMessages.usage_primary_window_399035),
+    次要窗口: t(...uiMessages.usage_secondary_window_d549c2),
+    "300m": t(...uiMessages.usage_5_hours_c6a364),
+    "10080m": t(...uiMessages.usage_7_days_98d1df),
+    "5 小时": t(...uiMessages.usage_5_hours_c6a364),
+    "7 天": t(...uiMessages.usage_7_days_98d1df),
+    Weekly: t(...uiMessages.usage_weekly_14df0d),
+    "Weekly window": t(...uiMessages.usage_weekly_window_d98769),
+    "5-hour window": t(...uiMessages.usage_5_hour_window_d8f429),
+    "5 hours": t(...uiMessages.usage_5_hours_ca0722),
+    "5-hour": t(...uiMessages.usage_5_hour_d96bae),
+    Session: t(...uiMessages.usage_session_449fbc),
+    Quota: t(...uiMessages.usage_quota_5b9897),
+    每周额度: t(...uiMessages.usage_weekly_window_d98769),
+    "5 小时额度": t(...uiMessages.usage_5_hour_window_d8f429),
   };
   const label = labels[window.label] ?? window.label;
   return (
@@ -414,9 +424,11 @@ export function QuotaWindow({
         <span>{label}</span>
         <strong>
           {remaining == null
-            ? t("未知", "Unknown")
+            ? t(...uiMessages.usage_unknown_6c2018)
             : `${Math.round(remaining * 10) / 10}%`}
-          <small>{remaining != null ? t(" 剩余", " left") : ""}</small>
+          <small>
+            {remaining != null ? t(...uiMessages.usage__left_ec8259) : ""}
+          </small>
         </strong>
       </div>
       {remaining != null ? (
@@ -433,11 +445,12 @@ export function QuotaWindow({
       ) : (
         <div
           className="meter unknown"
-          aria-label={t("剩余额度未知", "Remaining quota unknown")}
+          aria-label={t(...uiMessages.usage_remaining_quota_unknown_97a65c)}
         />
       )}
       <p>
-        {t("重置", "Resets")} <DateText date={window.reset_at} lang={lang} />
+        {t(...uiMessages.usage_resets_156b0a)}{" "}
+        <DateText date={window.reset_at} lang={lang} />
       </p>
     </div>
   );

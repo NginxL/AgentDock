@@ -1,3 +1,4 @@
+import * as uiMessages from "./messages";
 import { useEffect, useRef, useState } from "react";
 import { useModelCatalog } from "./modelCatalog";
 import type { Agent, Session, Mutate, Translate } from "./types";
@@ -75,10 +76,13 @@ export default function InferenceControls({
     : catalog.models;
   const { loading, failed } = catalog;
   const selected = models.find((item) => item.id === model);
-  const modelName = selected?.name || model || t("默认模型", "Default model");
+  const modelName =
+    selected?.name ||
+    model ||
+    t(...uiMessages.inferencecontrols_default_model_4f7962);
   const effortName = effortLabels[effort]
     ? t(...effortLabels[effort])
-    : effort || t("自动", "Auto");
+    : effort || t(...uiMessages.inferencecontrols_auto_156a8d);
 
   useEffect(() => {
     if (!open) return;
@@ -125,12 +129,15 @@ export default function InferenceControls({
   const options =
     open === "model"
       ? [
-          { id: "", name: t("默认模型", "Default model") },
+          {
+            id: "",
+            name: t(...uiMessages.inferencecontrols_default_model_4f7962),
+          },
           ...(model && !selected ? [{ id: model, name: model }] : []),
           ...models,
         ]
       : [
-          { id: "", name: t("自动", "Auto") },
+          { id: "", name: t(...uiMessages.inferencecontrols_auto_156a8d) },
           ...(effort && !selected?.efforts.includes(effort)
             ? [{ id: effort, name: effortName }]
             : []),
@@ -145,7 +152,7 @@ export default function InferenceControls({
         <button
           type="button"
           ref={modelButton}
-          aria-label={`${t("模型", "Model")}: ${modelName}`}
+          aria-label={`${t(...uiMessages.inferencecontrols_model_3fedbe)}: ${modelName}`}
           aria-haspopup="dialog"
           aria-expanded={open === "model"}
           aria-controls={`inference-${session.id}`}
@@ -159,7 +166,7 @@ export default function InferenceControls({
         <button
           type="button"
           ref={effortButton}
-          aria-label={`${t("推理等级", "Reasoning effort")}: ${effortName}`}
+          aria-label={`${t(...uiMessages.inferencecontrols_reasoning_effort_a4fdd4)}: ${effortName}`}
           aria-haspopup="dialog"
           aria-expanded={open === "effort"}
           aria-controls={`inference-${session.id}`}
@@ -177,20 +184,24 @@ export default function InferenceControls({
           role="dialog"
           aria-label={
             open === "model"
-              ? t("选择模型", "Select model")
-              : t("选择推理等级", "Select reasoning effort")
+              ? t(...uiMessages.inferencecontrols_select_model_62bf20)
+              : t(
+                  ...uiMessages.inferencecontrols_select_reasoning_effort_087bd3,
+                )
           }
         >
           <div className="inference-heading">
             <span>
               {open === "model"
-                ? t("选择模型", "Select model")
-                : t("选择推理等级", "Select reasoning effort")}
+                ? t(...uiMessages.inferencecontrols_select_model_62bf20)
+                : t(
+                    ...uiMessages.inferencecontrols_select_reasoning_effort_087bd3,
+                  )}
             </span>
             <button
               type="button"
               className="icon-button"
-              aria-label={t("关闭", "Close")}
+              aria-label={t(...uiMessages.inferencecontrols_close_f09d50)}
               onClick={() => setOpen(null)}
             >
               ×
@@ -201,8 +212,8 @@ export default function InferenceControls({
             role="menu"
             aria-label={
               open === "model"
-                ? t("模型", "Model")
-                : t("推理等级", "Reasoning effort")
+                ? t(...uiMessages.inferencecontrols_model_3fedbe)
+                : t(...uiMessages.inferencecontrols_reasoning_effort_a4fdd4)
             }
           >
             {options.map((item) => (
@@ -232,7 +243,9 @@ export default function InferenceControls({
           </div>
           {loading && (
             <p role="status">
-              {t("正在读取可用模型…", "Loading available models…")}
+              {t(
+                ...uiMessages.inferencecontrols_loading_available_models_e0bbc8,
+              )}
             </p>
           )}
           {!loading &&
@@ -240,16 +253,14 @@ export default function InferenceControls({
             (failed || !runtimeEnabled || !models.length) && (
               <p role="status">
                 {t(
-                  "模型列表暂不可用，当前设置已保留。",
-                  "Model list unavailable. Your current settings are kept.",
+                  ...uiMessages.inferencecontrols_model_list_unavailable_your_current_settings_008aad,
                 )}
               </p>
             )}
           {!loading && open === "effort" && !model && (
             <p>
               {t(
-                "选择模型后可设置推理等级。",
-                "Choose a model to select its reasoning effort.",
+                ...uiMessages.inferencecontrols_choose_a_model_to_select_its_reasoning_effort_6fe639,
               )}
             </p>
           )}
@@ -261,8 +272,10 @@ export default function InferenceControls({
               onClick={() => void choose("", "", true)}
             >
               {session.agent_defaults
-                ? t("使用会话默认设置", "Use conversation defaults")
-                : t("使用 Agent 默认设置", "Use agent defaults")}
+                ? t(
+                    ...uiMessages.inferencecontrols_use_conversation_defaults_99d4c4,
+                  )
+                : t(...uiMessages.inferencecontrols_use_agent_defaults_7cfa3d)}
             </button>
           )}
         </div>

@@ -16,3 +16,6 @@
 - Add project-level human approval for agent delegation, batch task history, scoped FTS5 memory search and completed-event compaction.
 - Separate protocol clients, native transport, immutable turn inputs, local/SSH executors and storage domains; centralize admin route execution guards.
 - Bound individual text buffers instead of failing long turns on cumulative commentary, and size capability lifetimes for configured long runs.
+- Add stable error codes and bilingual error messages independent of server wording, Ruff checks and strict types for new foundational modules.
+- Use TanStack Query for model, state and metrics requests; split workspace/task UI, related form drafts, styles and bilingual copy; lazy-load account, usage and token pages.
+- Update the source-map-js development dependency to remove its known advisory.

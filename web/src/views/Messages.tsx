@@ -1,3 +1,4 @@
+import * as uiMessages from "../messages";
 import { providerNames } from "../ProviderIcon";
 import { useEffect, useRef, useState } from "react";
 import type { Agent, DockState, Language, Mutate, Translate } from "../types";
@@ -47,37 +48,38 @@ export default function Messages({
     .reverse();
   const name = (id: string) =>
     id === "human"
-      ? t("你", "You")
+      ? t(...uiMessages.messages_you_d1c11b)
       : (agents.find((a) => a.id === id)?.name ??
-        t("已移除的 Agent", "Removed agent"));
+        t(...uiMessages.messages_removed_agent_22e81a));
   const enabled = state.runtime.enabled;
   return (
     <>
       <PageTitle
         headingLevel={2}
         eyebrow=""
-        title={t("任务派工", "Dispatch")}
+        title={t(...uiMessages.messages_dispatch_07f639)}
         description={t(
-          "将任务提交给目标 Agent 的原生会话，跟踪执行与结果回传。忙碌的会话会按顺序处理后续任务。",
-          "Submit work to an agent’s native session and follow execution and returned results. Busy sessions process subsequent tasks in order.",
+          ...uiMessages.messages_submit_work_to_an_agent_s_native_session_and_b644f9,
         )}
       />
       <div className="two-column">
         <section className="panel">
           <div className="panel-heading">
             <h2>
-              {t("派工记录", "Dispatch activity")}{" "}
+              {t(...uiMessages.messages_dispatch_activity_b03885)}{" "}
               <span className="count-badge">{messages.length}</span>
             </h2>
             <label className="compact-select">
               <span className="sr-only">
-                {t("按目标 Agent 筛选", "Filter by target agent")}
+                {t(...uiMessages.messages_filter_by_target_agent_2ca43c)}
               </span>
               <select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               >
-                <option value="all">{t("所有 Agent", "All agents")}</option>
+                <option value="all">
+                  {t(...uiMessages.messages_all_agents_bcb360)}
+                </option>
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -126,8 +128,9 @@ export default function Messages({
                     <div className="delivery-target">
                       <Icon name="work" size={14} />
                       <span>
-                        {t("目标会话", "Target session")}:{" "}
-                        {session?.title ?? t("尚未分配", "Not assigned yet")}
+                        {t(...uiMessages.messages_target_session_9cf187)}:{" "}
+                        {session?.title ??
+                          t(...uiMessages.messages_not_assigned_yet_8e05c3)}
                       </span>
                     </div>
                     {session?.native_session_id && (
@@ -139,8 +142,8 @@ export default function Messages({
                       <div className="delivery-result">
                         <strong>
                           {status === "waiting"
-                            ? t("当前进展", "Progress so far")
-                            : t("执行结果", "Result")}
+                            ? t(...uiMessages.messages_progress_so_far_f605bc)
+                            : t(...uiMessages.messages_result_860e32)}
                         </strong>
                         <pre>{message.result}</pre>
                       </div>
@@ -152,7 +155,7 @@ export default function Messages({
                     )}
                     {replyRun && (
                       <p className="form-hint">
-                        {t("回传任务", "Return task")}:{" "}
+                        {t(...uiMessages.messages_return_task_a8ebd1)}:{" "}
                         {statusLabel(replyRun.status, t)}
                         {replyRun.error && ` · ${replyRun.error}`}
                       </p>
@@ -161,7 +164,8 @@ export default function Messages({
                       <DateText date={message.created_at} lang={lang} />
                       {message.correlation_id && (
                         <span>
-                          {t("关联", "Reference")}: {message.correlation_id}
+                          {t(...uiMessages.messages_reference_173f93)}:{" "}
+                          {message.correlation_id}
                         </span>
                       )}
                       {cancellationRunID && (
@@ -175,7 +179,7 @@ export default function Messages({
                             )
                           }
                         >
-                          {t("取消任务", "Cancel task")}
+                          {t(...uiMessages.messages_cancel_task_5b5e51)}
                         </button>
                       )}
                     </footer>
@@ -186,18 +190,19 @@ export default function Messages({
           ) : (
             <Empty
               icon="message"
-              title={t("尚无派工记录", "No dispatched tasks")}
+              title={t(...uiMessages.messages_no_dispatched_tasks_902119)}
             >
               {t(
-                "选择 Agent 和目标会话，说明目标与完成标准。发送后由服务派发执行，结果保留在这里。",
-                "Choose an agent and session, then describe the goal and completion criteria. Sending dispatches the work; results appear here.",
+                ...uiMessages.messages_choose_an_agent_and_session_then_describe_the_728e88,
               )}
             </Empty>
           )}
         </section>
         <section className="panel inset-form sticky-panel">
-          <span className="eyebrow">{t("新建派工", "NEW DISPATCH")}</span>
-          <h2>{t("交给 Agent 处理", "Delegate a task")}</h2>
+          <span className="eyebrow">
+            {t(...uiMessages.messages_new_dispatch_fd708e)}
+          </span>
+          <h2>{t(...uiMessages.messages_delegate_a_task_1b4790)}</h2>
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -226,7 +231,7 @@ export default function Messages({
             }}
           >
             <label>
-              {t("目标 Agent", "Target agent")}
+              {t(...uiMessages.messages_target_agent_aaf306)}
               <select
                 value={recipient}
                 onChange={(e) => {
@@ -238,7 +243,7 @@ export default function Messages({
               >
                 {!agents.length && (
                   <option value="">
-                    {t("先添加 Agent", "Add an agent first")}
+                    {t(...uiMessages.messages_add_an_agent_first_826af7)}
                   </option>
                 )}
                 {agents.map((a) => (
@@ -249,7 +254,7 @@ export default function Messages({
               </select>
             </label>
             <label>
-              {t("目标会话", "Target session")}
+              {t(...uiMessages.messages_target_session_9cf187)}
               <select
                 value={targetSession}
                 onChange={(e) => {
@@ -258,7 +263,9 @@ export default function Messages({
                 }}
               >
                 <option value="">
-                  {t("由服务选择会话", "Let the service select a session")}
+                  {t(
+                    ...uiMessages.messages_let_the_service_select_a_session_f84266,
+                  )}
                 </option>
                 {sessions.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -268,7 +275,7 @@ export default function Messages({
               </select>
             </label>
             <label>
-              {t("任务说明", "Task description")}
+              {t(...uiMessages.messages_task_description_fb693f)}
               <textarea
                 value={body}
                 onChange={(e) => {
@@ -279,13 +286,12 @@ export default function Messages({
                 maxLength={12000}
                 required
                 placeholder={t(
-                  "描述任务、必要上下文和完成标准…",
-                  "Describe the task, relevant context and completion criteria…",
+                  ...uiMessages.messages_describe_the_task_relevant_context_and_comple_56372d,
                 )}
               />
             </label>
             <label>
-              {t("关联标识（可选）", "Reference (optional)")}
+              {t(...uiMessages.messages_reference_optional_6e8d6c)}
               <input
                 value={reference}
                 onChange={(e) => {
@@ -293,25 +299,25 @@ export default function Messages({
                   requestKey.current = null;
                 }}
                 maxLength={160}
-                placeholder={t("例如：SEARCH-24", "For example: SEARCH-24")}
+                placeholder={t(
+                  ...uiMessages.messages_for_example_search_24_9ac3f9,
+                )}
               />
             </label>
             <p className="form-hint">
               {enabled
                 ? t(
-                    "发送即派发执行，可能修改项目文件。私有会话历史不会完整复制给其他 Agent。",
-                    "Sending dispatches execution and may change project files. Private session history is not copied wholesale to other agents.",
+                    ...uiMessages.messages_sending_dispatches_execution_and_may_change_p_0dac4a,
                   )
                 : t(
-                    "执行已关闭，当前不能派发任务。",
-                    "Execution is disabled. Tasks cannot be dispatched.",
+                    ...uiMessages.messages_execution_is_disabled_tasks_cannot_be_dispatc_2c364a,
                   )}
             </p>
             <button
               className="primary full"
               disabled={busy || !enabled || !recipient || !body.trim()}
             >
-              {t("派发任务", "Dispatch task")}
+              {t(...uiMessages.messages_dispatch_task_00a9c3)}
               <Icon name="arrow" size={17} />
             </button>
           </form>

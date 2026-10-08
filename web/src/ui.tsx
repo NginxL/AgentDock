@@ -1,3 +1,5 @@
+import { errorCopy, legacyErrorCodes } from "./errorMessages";
+import * as uiMessages from "./messages";
 import type { ReactNode } from "react";
 import type {
   AgentEvent,
@@ -10,91 +12,16 @@ import type {
 
 export function errorMessage(message: string, t: Translate): string {
   if (message.startsWith("internal_error:")) {
-    return t("操作失败，请导出诊断包。错误编号：", "Operation failed. Export diagnostics. Error ID: ") + message.slice(15);
+    return (
+      t(...uiMessages.ui_operation_failed_export_diagnostics_error_id_d1917f) +
+      message.slice(15)
+    );
   }
-  const translations: Record<string, string> = {
-    "Choose an Agent in this project": "请选择当前项目中的 Agent。",
-    "Task Agents must use the project device":
-      "负责人和协作 Agent 需要使用项目所在设备。",
-    "Resume this task before submitting more work":
-      "请先接续任务，再提交执行要求。",
-    "Reopen this task before adding requirements":
-      "请先重新打开任务，再补充要求。",
-    "Wait for the current work before changing discussion or execution mode":
-      "请等待当前执行结束，或先暂停任务，再切换处理方式。",
-    "This run does not support live adjustment; queue the input or stop it first":
-      "本轮暂不支持即时调整，请选择排队处理，或先暂停。",
-    "The active task run changed": "当前执行已变化，请刷新后选择发送时机。",
-    "The previous task processes are still stopping":
-      "上一次执行仍在停止中，请稍后接续。",
-    "A previous native process still owns this task conversation":
-      "旧执行进程仍在使用会话，请等它停止后再接续。",
-    "Remote execution is still stopping; retry after it settles":
-      "远端执行尚未停止，请稍后重试。",
-    "Pause execution before changing task requirements":
-      "请先暂停执行，待进程停止后再修改任务要求。",
-    "Wait for task execution and delegated results":
-      "请等待执行结束并收回协作结果。",
-    "Answer the pending task questions first": "请先回答待确认的问题。",
-    "The task owner has not submitted a delivery": "负责人还未提交交付结果。",
-    "All acceptance checks need passing evidence":
-      "还有验收项未通过验证，请让负责人补齐证据。",
-    "An approved independent review is required before final delivery":
-      "需要另一位 Agent 审查通过后才能验收。",
-    "Request a new review after the latest delegated changes":
-      "最新协作修改尚未审查，请重新安排审查。",
-    "Reassign or cancel this Agent's project tasks before deleting it":
-      "请先更换该 Agent 的项目任务负责人，或取消相关任务后再删除。",
-    "Use the project task input to continue this conversation":
-      "请打开对应项目任务，继续补充要求。",
-    "Commit or save project changes before creating an isolated worktree":
-      "项目目录有未提交的修改，请先保存为提交，再创建独立工作区。",
-    "This CLI does not advertise a read-only planning mode. Choose another Agent for discussion or review.":
-      "该 CLI 尚未提供只读规划模式，请选择其他 Agent 进行讨论或审查。",
-    "Stop active tasks before deleting an agent":
-      "请先停止该 Agent 的未完成任务，再删除。",
-    "Wait for linked tasks before deleting an agent":
-      "请等待该 Agent 的协作任务结束后再删除。",
-    "Invalid session model settings": "请选择有效的会话模型与推理等级。",
-    "Stop active tasks before deleting a session":
-      "请先停止当前任务，再删除会话。",
-    "Wait for linked tasks before deleting a session":
-      "请等待关联的协作任务结束后再删除会话。",
-    "Enable execution to clean up a remote session":
-      "请启用执行后再删除远端会话。",
-    "Could not clean up the remote session. Check the SSH connection and retry. The session has been kept.":
-      "远端会话清理失败，请检查 SSH 连接后重试。会话记录已保留。",
-    "Could not prepare isolated Codex session storage; no prompt was sent.":
-      "无法准备独立的 Codex 会话目录，任务尚未发送。",
-    "Invalid agent permission mode": "请选择有效的 Agent 访问权限。",
-    "Wait for active tasks before changing agent settings":
-      "请等待排队或执行中的任务结束后再修改 Agent 设置。",
-    "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.":
-      "SSH 连接失败，请检查连接权限、远端 Python 3.9+ 及 CLI 安装情况。",
-    "Connect this SSH environment before starting an agent.":
-      "请先打开 Agent 设置，点击「连接 / 检查」，再重试任务。",
-    "The selected native CLI was not found on this environment.":
-      "所选环境中未找到该 Agent CLI。",
-    "Use an SSH Host alias, without flags or shell commands":
-      "请填写 SSH Host 别名或 user@host，不要附加参数或命令。",
-    "Invalid remote Python executable":
-      "请填写远端 Python 命令名或可执行文件的绝对路径。",
-    "Use an absolute directory on the remote host":
-      "请填写远端主机上的绝对目录路径。",
-    "This environment is still in use":
-      "该环境仍有关联的项目或 Agent，无法移除。",
-    "Remote operation failed. Reconnect the environment and check the remote CLI.":
-      "远端操作失败，请在 Agent 设置中检查连接及远端 CLI。",
-    "The remote working directory does not exist.":
-      "远端工作目录不存在，请检查目录设置。",
-    "Codex selected a different working directory; no prompt was sent.":
-      "Codex 返回的工作目录与设置不一致，任务尚未发送。",
-    "SSH remained disconnected. The remote task will stop when its 90-second lease expires.":
-      "SSH 持续断开，远端任务将在 90 秒连接租约到期后停止。",
-    "Remote worker stopped unexpectedly.": "远端执行进程意外退出。",
-    "Remote native CLI failed.": "远端 Agent CLI 执行失败。",
-  };
-  return translations[message] ? t(translations[message], message) : message;
+
+  const key = message.startsWith("error_code:")
+    ? message.slice(11)
+    : legacyErrorCodes[message];
+  return errorCopy[key] ? t(...errorCopy[key]) : message;
 }
 
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
@@ -259,55 +186,55 @@ export function Stat({
 export function statusLabel(status: string, t: Translate) {
   return (
     {
-      idle: t("待命", "Idle"),
-      queued: t("排队中", "Queued"),
-      waiting: t("等待协作结果", "Waiting for results"),
-      dispatched: t("已派发", "Dispatched"),
-      accepted: t("已接收", "Accepted"),
-      delivering: t("派发中", "Dispatching"),
-      reply_queued: t("回复排队中", "Reply queued"),
-      replied: t("已回传", "Replied"),
-      pending: t("待处理", "Pending"),
-      running: t("运行中", "Running"),
-      completed: t("完成", "Completed"),
-      declined: t("已拒绝", "Declined"),
-      failed: t("失败", "Failed"),
-      cancelled: t("已取消", "Cancelled"),
-      interrupted: t("已中断", "Interrupted"),
-      deleting: t("删除中，可重试", "Deleting · retry available"),
+      idle: t(...uiMessages.ui_idle_1f7cc9),
+      queued: t(...uiMessages.ui_queued_db5a74),
+      waiting: t(...uiMessages.ui_waiting_for_results_5e0b4b),
+      dispatched: t(...uiMessages.ui_dispatched_32dc8c),
+      accepted: t(...uiMessages.ui_accepted_00dcaf),
+      delivering: t(...uiMessages.ui_dispatching_7d78c8),
+      reply_queued: t(...uiMessages.ui_reply_queued_5226ff),
+      replied: t(...uiMessages.ui_replied_afe565),
+      pending: t(...uiMessages.ui_pending_7f25ba),
+      running: t(...uiMessages.ui_running_79c71e),
+      completed: t(...uiMessages.ui_completed_066012),
+      declined: t(...uiMessages.ui_declined_db04ae),
+      failed: t(...uiMessages.ui_failed_840d25),
+      cancelled: t(...uiMessages.ui_cancelled_2dbec7),
+      interrupted: t(...uiMessages.ui_interrupted_464894),
+      deleting: t(...uiMessages.ui_deleting_retry_available_a4711c),
     }[status] ?? status
   );
 }
 
 export function eventLabel(kind: string, t: Translate) {
   const labels: Record<string, string> = {
-    prompt: t("你的任务", "Your task"),
-    user_message: t("你的任务", "Your task"),
-    agent_message: t("Agent 回复", "Agent response"),
-    agent_output: t("Agent 回复", "Agent response"),
-    assistant_message: t("Agent 回复", "Agent response"),
-    assistant: t("Agent 回复", "Agent response"),
-    run_queued: t("任务已排队", "Task queued"),
-    run_started: t("开始执行", "Run started"),
-    run_completed: t("执行完成", "Run completed"),
-    run_failed: t("执行失败", "Run failed"),
-    run_cancelled: t("任务已取消", "Run cancelled"),
-    run_finished: t("执行结束", "Run finished"),
-    task_settled: t("协作任务已结束", "Collaboration settled"),
-    reply_queued: t("结果待回传", "Result queued for return"),
-    reply_not_scheduled: t("结果未回传", "Result not returned"),
-    approval_required: t("等待授权", "Approval required"),
-    approval_resolved: t("授权已处理", "Approval resolved"),
-    memory_proposed: t("记忆提案待审阅", "Memory proposal awaiting review"),
-    agent_message_chunk: t("Agent 回复", "Agent response"),
-    message_queued: t("派工已排队", "Dispatch queued"),
-    message_sent: t("任务已派发", "Task dispatched"),
-    tool_call: t("工具调用", "Tool call"),
-    tool_result: t("工具结果", "Tool result"),
-    session_bound: t("原生会话已绑定", "Native session bound"),
-    permission_request: t("等待授权", "Approval requested"),
+    prompt: t(...uiMessages.ui_your_task_c33aa7),
+    user_message: t(...uiMessages.ui_your_task_c33aa7),
+    agent_message: t(...uiMessages.ui_agent_response_54d6cb),
+    agent_output: t(...uiMessages.ui_agent_response_54d6cb),
+    assistant_message: t(...uiMessages.ui_agent_response_54d6cb),
+    assistant: t(...uiMessages.ui_agent_response_54d6cb),
+    run_queued: t(...uiMessages.ui_task_queued_958695),
+    run_started: t(...uiMessages.ui_run_started_528089),
+    run_completed: t(...uiMessages.ui_run_completed_e09737),
+    run_failed: t(...uiMessages.ui_run_failed_e49e28),
+    run_cancelled: t(...uiMessages.ui_run_cancelled_3b697c),
+    run_finished: t(...uiMessages.ui_run_finished_461742),
+    task_settled: t(...uiMessages.ui_collaboration_settled_b48558),
+    reply_queued: t(...uiMessages.ui_result_queued_for_return_33125f),
+    reply_not_scheduled: t(...uiMessages.ui_result_not_returned_05b489),
+    approval_required: t(...uiMessages.ui_approval_required_a53e84),
+    approval_resolved: t(...uiMessages.ui_approval_resolved_c6b751),
+    memory_proposed: t(...uiMessages.ui_memory_proposal_awaiting_review_d844b8),
+    agent_message_chunk: t(...uiMessages.ui_agent_response_54d6cb),
+    message_queued: t(...uiMessages.ui_dispatch_queued_163ce4),
+    message_sent: t(...uiMessages.ui_task_dispatched_d85725),
+    tool_call: t(...uiMessages.ui_tool_call_4f62df),
+    tool_result: t(...uiMessages.ui_tool_result_6f77db),
+    session_bound: t(...uiMessages.ui_native_session_bound_f1bea9),
+    permission_request: t(...uiMessages.ui_approval_requested_7e0be4),
   };
-  return labels[kind] ?? t("会话事件", "Session event");
+  return labels[kind] ?? t(...uiMessages.ui_session_event_fd5247);
 }
 
 export function eventText(payload: unknown): string {
@@ -362,39 +289,31 @@ export function eventDescription(event: AgentEvent, t: Translate): string {
   if (!payload || typeof payload !== "object") return eventText(event.payload);
   if (event.kind === "run_queued")
     return t(
-      "任务已进入此会话的执行队列。",
-      "The task joined this session’s execution queue.",
+      ...uiMessages.ui_the_task_joined_this_session_s_execution_queu_55a64a,
     );
   if (event.kind === "run_started")
-    return t(
-      "正在使用原生会话处理任务。",
-      "Processing the task in the native session.",
-    );
+    return t(...uiMessages.ui_processing_the_task_in_the_native_session_3eb07b);
   if (event.kind === "run_finished" || event.kind === "task_settled")
     return `${statusLabel(String(payload.status ?? "completed"), t)}${payload.error ? ` · ${payload.error}` : ""}`;
   if (event.kind === "message_queued")
     return t(
-      "协作任务已派发，等待目标 Agent 处理。",
-      "The delegated task is waiting for the target agent to process it.",
+      ...uiMessages.ui_the_delegated_task_is_waiting_for_the_target_155f49,
     );
   if (event.kind === "reply_queued")
     return t(
-      "协作结果将提交给原会话，继续原任务。",
-      "The result will return to the original session to continue the task.",
+      ...uiMessages.ui_the_result_will_return_to_the_original_sessio_e6a107,
     );
   if (event.kind === "reply_not_scheduled")
     return t(
-      "原任务已停止或达到协作限制，结果未自动提交给原会话。",
-      "The original task stopped or reached a collaboration limit; the result was not automatically submitted.",
+      ...uiMessages.ui_the_original_task_stopped_or_reached_a_collab_13f914,
     );
   if (event.kind === "approval_required")
-    return t("请核对下面的操作请求。", "Review the requested action below.");
+    return t(...uiMessages.ui_review_the_requested_action_below_a9ed7d);
   if (event.kind === "approval_resolved")
-    return t("你的授权选择已提交。", "Your approval decision was submitted.");
+    return t(...uiMessages.ui_your_approval_decision_was_submitted_0a1365);
   if (event.kind === "memory_proposed")
     return t(
-      "请在共享记忆中审阅 Agent 的提案。",
-      "Review the agent’s proposal in Shared memory.",
+      ...uiMessages.ui_review_the_agent_s_proposal_in_shared_memory_1a801e,
     );
   return eventText(event.payload);
 }
@@ -414,12 +333,11 @@ export function ApprovalCard({
     <section className="approval-card">
       <h3>
         <Icon name="shield" size={18} />
-        {t("此操作需要你的授权", "Your approval is required")}
+        {t(...uiMessages.ui_your_approval_is_required_1e515c)}
       </h3>
       <p>
         {t(
-          "以下内容由 Agent 提供。核对实际命令和作用范围后再选择；超时将拒绝。",
-          "The agent supplied this request. Review its command and scope before deciding. Requests are denied on timeout.",
+          ...uiMessages.ui_the_agent_supplied_this_request_review_its_co_1eaed4,
         )}
       </p>
       <pre>{eventText(approval.request)}</pre>
@@ -438,15 +356,15 @@ export function ApprovalCard({
             }
           >
             {option.name === "Allow once"
-              ? t("仅允许这一次", "Allow once")
+              ? t(...uiMessages.ui_allow_once_8cb57a)
               : option.name === "Deny"
-                ? t("拒绝", "Deny")
+                ? t(...uiMessages.ui_deny_b2d888)
                 : option.name}
             <small>
               {option.kind === "allow_once"
-                ? t("单次授权", "One-time permission")
+                ? t(...uiMessages.ui_one_time_permission_b78090)
                 : option.kind === "reject_once"
-                  ? t("不执行此操作", "Do not execute")
+                  ? t(...uiMessages.ui_do_not_execute_9ddfc9)
                   : option.kind}
             </small>
           </button>

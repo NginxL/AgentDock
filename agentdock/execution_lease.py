@@ -41,7 +41,8 @@ def assert_idle(home):
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise Conflict(
-                    "A previous native process still owns this task conversation"
+                    "A previous native process still owns this task conversation",
+                    code="a_previous_native_process_still_owns_this_task_conversation",
                 ) from None
         finally:
             os.close(descriptor)

@@ -70,7 +70,7 @@ it("shares one in-flight read across menus and conversations", async () => {
   );
   expect(fetch).toHaveBeenCalledTimes(1);
   await act(async () => finish(response()));
-  expect(second.result.current.models).toEqual(models);
+  await waitFor(() => expect(second.result.current.models).toEqual(models));
   const reopened = renderHook(() =>
     useModelCatalog("token", "codex", "remote", true),
   );

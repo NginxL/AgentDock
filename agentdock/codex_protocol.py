@@ -311,7 +311,8 @@ class _Codex:
             response["cwd"]
         ) != os.path.realpath(cwd):
             raise ProviderError(
-                "Codex selected a different working directory; no prompt was sent."
+                "Codex selected a different working directory; no prompt was sent.",
+                code="codex_selected_a_different_working_directory_no_prompt_was_sent",
             )
         thread = response.get("thread")
         if not isinstance(thread, dict) or not _identifier(thread.get("id")):

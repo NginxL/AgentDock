@@ -1,10 +1,21 @@
 /** Global notifications contain only a version, authenticated without URL tokens. */
-export async function watchState(token: string, signal: AbortSignal, changed: (version: string) => void) {
+export async function watchState(
+  token: string,
+  signal: AbortSignal,
+  changed: (version: string) => void,
+) {
   const response = await fetch("/api/state/stream", {
     headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
-    credentials: "omit", cache: "no-store", redirect: "error", signal,
+    credentials: "omit",
+    cache: "no-store",
+    redirect: "error",
+    signal,
   });
-  if (!response.ok || !response.body || !response.headers.get("Content-Type")?.startsWith("text/event-stream")) {
+  if (
+    !response.ok ||
+    !response.body ||
+    !response.headers.get("Content-Type")?.startsWith("text/event-stream")
+  ) {
     throw new Error("State notifications unavailable");
   }
   const reader = response.body.getReader();
@@ -20,11 +31,16 @@ export async function watchState(token: string, signal: AbortSignal, changed: (v
       while ((end = buffer.indexOf("\n\n")) >= 0) {
         const frame = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        const line = frame.split("\n").find((value) => value.startsWith("data: "));
+        const line = frame
+          .split("\n")
+          .find((value) => value.startsWith("data: "));
         if (!line) continue;
         const payload = JSON.parse(line.slice(6));
         if (typeof payload.version === "string") changed(payload.version);
       }
     }
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
