@@ -17,38 +17,21 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-class Invalid(ValueError): pass
-class Missing(KeyError): pass
-class Conflict(ValueError): pass
-class Forbidden(PermissionError): pass
-
-
-def now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def text(value, field, limit=16000, empty=False):
-    if not isinstance(value, str) or len(value) > limit or "\x00" in value or (not empty and not value.strip()):
-        raise Invalid("Invalid " + field)
-    return value.strip()
-
-
-def version(value):
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise Invalid("expected_version must be a nonnegative integer")
-    return value
+from .errors import Invalid, Missing, Conflict, Forbidden, now, text, version
 
 
 from .account_store import AccountStore
 from .task_store import TaskStore
+from .deletions import DeletionStore
 
 
-class Store(AccountStore, TaskStore):
+class Store(AccountStore, TaskStore, DeletionStore):
     def __init__(self, path):
         self._existing_db = str(path) != ":memory:" and Path(path).expanduser().exists()
         self.lock = threading.RLock()
         self.changed = threading.Condition(self.lock)
         self.closed = False
+        self._deletion_locks = {}
         self._file_lock = None
         self.workspaces = (Path(path).expanduser().resolve().parent if str(path) != ":memory:" else Path(tempfile.gettempdir()) / "agentdock-tests") / "workspaces"
         if str(path) != ":memory:":
@@ -92,6 +75,7 @@ class Store(AccountStore, TaskStore):
         self._migrate_accounts()
         self._migrate_tasks()
         self._migrate_read_indexes()
+        self._migrate_deletions()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -191,7 +175,7 @@ class Store(AccountStore, TaskStore):
             raise Invalid('Invalid project agent settings')
         with self.transaction():
             project = self._one('projects', project_id)
-            source = self._one('agents', text(changes.get('source_agent_id'), 'source_agent_id', 160))
+            source = self._available('agents', text(changes.get('source_agent_id'), 'source_agent_id', 160))
             workspace = changes.get('workspace')
             if project['environment_id'] != source['environment_id'] and not workspace:
                 raise Invalid('Choose this project\'s working directory on the agent device')
@@ -228,7 +212,7 @@ class Store(AccountStore, TaskStore):
         else:
             raise Invalid('Invalid session model settings')
         with self.transaction():
-            self._one('sessions', session_id)
+            self._available('sessions', session_id)
             self.db.execute('UPDATE sessions SET model=?,effort=?,model_override=?,updated_at=? WHERE id=?',
                             (model, effort, override, now(), session_id))
             return self._one('sessions', session_id)
@@ -440,7 +424,7 @@ class Store(AccountStore, TaskStore):
         permission_mode = self._permission_mode(permission_mode)
         environment_id=environment_id or 'local'
         self.get_environment(environment_id)
-        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None)
+        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None,deleting=0)
         with self.transaction():
             item.update(self._account_settings(provider, environment_id, account_id, account_policy, account_ids))
             item["workspace"] = self._workspace(project_id, workspace, item["id"],environment_id)
@@ -452,7 +436,7 @@ class Store(AccountStore, TaskStore):
         if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id", "account_id", "account_policy", "account_ids"}:
             raise Invalid("Only agent settings can be updated")
         with self.transaction():
-            agent = self._one("agents", agent_id)
+            agent = self._available("agents", agent_id)
             environment_id = text(changes.get('environment_id', agent['environment_id']), 'environment_id', 160)
             self._one('environments', environment_id)
             relocated = environment_id != agent['environment_id']
@@ -479,7 +463,7 @@ class Store(AccountStore, TaskStore):
             return self._one("agents", agent_id)
 
     def _add_session(self, agent_id, title, account_settings=None):
-        agent = self._one("agents",agent_id)
+        agent = self._available("agents",agent_id)
         if account_settings is not None:
             if not isinstance(account_settings, dict) or set(account_settings) - {'account_id','account_policy','account_ids'}:
                 raise Invalid('Invalid session account settings')
@@ -525,79 +509,6 @@ class Store(AccountStore, TaskStore):
                     shutil.copytree(old, destination, dirs_exist_ok=True, symlinks=True)
                 self.db.execute('UPDATE sessions SET workspace=?,legacy_workspace=? WHERE id=?', (destination,old,row['id']))
 
-    def delete_session(self, session_id, cleanup):
-        with self.transaction():
-            session = self._one('sessions', session_id)
-            self._check_session_deletion(session_id)
-            runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session_id,))]
-            cleanup(session, runs)  # Failure keeps the record available for retry.
-            self._delete_session_records(session)
-        return {'ok': True}
-
-    def _check_session_deletion(self, session_id):
-        session=self._one('sessions',session_id)
-        if session.get('work_task_id'):
-            task=self._one('tasks',session['work_task_id'])
-            if task['status'] not in ('completed','cancelled','archived'):
-                raise Conflict('Finish or cancel the project task before deleting its conversation')
-        if self.db.execute("SELECT 1 FROM runs WHERE session_id=? AND status IN ('queued','running')", (session_id,)).fetchone():
-            raise Conflict('Stop active tasks before deleting a session')
-        if self.cancellable_tasks(session_id) or self.db.execute("SELECT 1 FROM messages WHERE (sender_session_id=? OR recipient_session_id=?) AND status IN ('queued','running','waiting')", (session_id,session_id)).fetchone():
-            raise Conflict('Wait for linked tasks before deleting a session')
-        # Returned results remain ancestors of the requesting task's later turns.
-        # Keep the whole collaboration chain until it has settled, including the
-        # gap between a child finishing and its result being queued for return.
-        roots = {row[0] for row in self.db.execute('SELECT DISTINCT root_run_id FROM runs WHERE session_id=?', (session_id,))}
-        related = self.db.execute('''SELECT DISTINCT related.session_id FROM runs AS owned
-            JOIN runs AS related ON related.root_run_id=owned.root_run_id
-            WHERE owned.session_id=?''', (session_id,)).fetchall()
-        if any(task['root_run_id'] in roots for row in related for task in self.cancellable_tasks(row[0])):
-            raise Conflict('Wait for linked tasks before deleting a session')
-
-    def _delete_session_records(self, session):
-        session_id = session['id']
-        # Task journals/deliveries outlive disposable native histories.
-        self.db.execute('UPDATE tasks SET session_id=NULL WHERE session_id=?',(session_id,))
-        natives = {row[0] for row in self.db.execute('SELECT native_session_id FROM session_account_branches WHERE session_id=? AND native_session_id IS NOT NULL',(session_id,))}
-        if session.get('native_session_id'): natives.add(session['native_session_id'])
-        provider = self._one('agents',session['agent_id'])['provider']
-        for native in natives:
-            identity = self.metric_identity(session['environment_id'], native)
-            for table in ('token_records','token_spans'):
-                self.db.execute('DELETE FROM '+table+' WHERE provider=? AND native_id=?',(provider,identity))
-            self.db.execute('DELETE FROM token_activity_days WHERE native_id=?',(identity,))
-        for table in ('capabilities','proposals'):
-            self.db.execute('DELETE FROM '+table+' WHERE run_id IN (SELECT id FROM runs WHERE session_id=?)',(session_id,))
-        self.db.execute('DELETE FROM approvals WHERE session_id=?',(session_id,))
-        self.db.execute('DELETE FROM events WHERE session_id=?',(session_id,))
-        self.db.execute('DELETE FROM messages WHERE sender_session_id=? OR recipient_session_id=?',(session_id,session_id))
-        self.db.execute('DELETE FROM runs WHERE session_id=?',(session_id,))
-        self.db.execute('DELETE FROM sessions WHERE id=?',(session_id,))
-
-    def delete_agent(self, agent_id, cleanup):
-        with self.transaction():
-            self._one('agents', agent_id)
-            if self.db.execute("SELECT 1 FROM tasks WHERE owner_id=? AND status NOT IN ('completed','cancelled','archived')",(agent_id,)).fetchone():
-                raise Conflict('Reassign or cancel this Agent\'s project tasks before deleting it')
-            sessions = self._all('SELECT * FROM sessions WHERE agent_id=?', (agent_id,))
-            if self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone():
-                raise Conflict('Stop active tasks before deleting an agent')
-            if self.db.execute("SELECT 1 FROM messages WHERE (sender_id=? OR recipient_id=?) AND status IN ('queued','running','waiting')", (agent_id,agent_id)).fetchone():
-                raise Conflict('Wait for linked tasks before deleting an agent')
-            # Check every session before touching files; retain all records if
-            # cleanup fails. File removal is idempotent so the user can retry.
-            for session in sessions:
-                self._check_session_deletion(session['id'])
-            for session in sessions:
-                runs = [row['id'] for row in self.db.execute('SELECT id FROM runs WHERE session_id=?', (session['id'],))]
-                cleanup(session, runs)
-            for session in sessions:
-                self._delete_session_records(session)
-            self.db.execute('DELETE FROM messages WHERE sender_id=? OR recipient_id=?', (agent_id,agent_id))
-            self.db.execute('DELETE FROM proposals WHERE agent_id=?', (agent_id,))
-            self.db.execute('DELETE FROM agents WHERE id=?', (agent_id,))
-        return {'ok': True}
-
     def bind_native_session(self, session_id, native_session_id, run_id=None):
         """Called only by the trusted adapter after a provider creates a session."""
         native_session_id = text(native_session_id, "native_session_id", 512)
@@ -621,7 +532,8 @@ class Store(AccountStore, TaskStore):
     def _enqueue_run(self, session_id, prompt, origin="human", parent_run_id=None, root_run_id=None, depth=None, delivery_id=None):
         prompt = text(prompt,"prompt",24000)
         if origin not in ("human", "delegate", "reply"): raise Invalid("Invalid run origin")
-        session = self._one("sessions",session_id)
+        session = self._available("sessions",session_id)
+        self._available("agents", session["agent_id"])
         parent = self._one("runs", parent_run_id) if parent_run_id else None
         work_task_id=session.get('work_task_id')
         if work_task_id:
@@ -870,12 +782,12 @@ class Store(AccountStore, TaskStore):
         if idempotency_key is not None: idempotency_key=text(idempotency_key,"idempotency_key",128)
         with self.transaction():
             self._one("projects",project_id)
-            recipient=self._one("agents",recipient_id)
+            recipient=self._available("agents",recipient_id)
             if recipient["project_id"]!=project_id: raise Forbidden("Recipient belongs to another project")
             if sender_id == "human":
                 if sender_session_id or parent_run_id: raise Forbidden("Human dispatch cannot claim an agent session")
             else:
-                sender = self._one("agents",sender_id)
+                sender = self._available("agents",sender_id)
                 if sender["project_id"] != project_id: raise Forbidden("Sender belongs to another project")
                 if not parent_run_id: raise Invalid("Agent dispatch requires an active parent run")
                 parent = self._one("runs", parent_run_id)

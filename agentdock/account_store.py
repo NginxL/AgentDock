@@ -333,7 +333,7 @@ class AccountStore:
 
     def switch_session_account(self, session_id, account_id, account_policy='manual', account_ids=None):
         with self.transaction():
-            session = self._one('sessions', session_id)
+            session = self._available('sessions', session_id)
             self._check_session_deletion(session_id)  # Also guards outstanding delegated replies.
             provider = self._one('agents', session['agent_id'])['provider']
             settings = self._account_settings(provider, session['environment_id'], account_id, account_policy, account_ids)

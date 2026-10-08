@@ -271,6 +271,7 @@ export function statusLabel(status: string, t: Translate) {
       failed: t("失败", "Failed"),
       cancelled: t("已取消", "Cancelled"),
       interrupted: t("已中断", "Interrupted"),
+      deleting: t("删除中，可重试", "Deleting · retry available"),
     }[status] ?? status
   );
 }

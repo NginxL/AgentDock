@@ -74,7 +74,7 @@ class TaskStore:
 
     def _task_owner(self, task, agent_id):
         from .store import Forbidden
-        agent = self._one('agents',agent_id)
+        agent = self._available('agents',agent_id)
         if agent['project_id'] != task['project_id']: raise Forbidden('Choose an Agent in this project')
         project = self._one('projects',task['project_id'])
         if agent['environment_id'] != project['environment_id']:
