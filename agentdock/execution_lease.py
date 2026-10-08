@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 
 
+from .errors import Conflict
+
 @contextmanager
 def lease(home):
     path=Path(home)
@@ -14,14 +16,12 @@ def lease(home):
     try:
         try: fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:
-            from .store import Conflict
             raise Conflict('The previous native session process is still running') from None
         yield descriptor
     finally: os.close(descriptor)
 
 
 def assert_idle(home):
-    from .store import Conflict
     home=Path(home)
     paths=[home/'execution.lock',*home.glob('branches/*/execution.lock')]
     for path in paths:

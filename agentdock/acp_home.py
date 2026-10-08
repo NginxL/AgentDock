@@ -46,7 +46,6 @@ def seed_origin(relative, environment):
 
 def prepare(provider, directory, environment):
     env = dict(environment)
-    source = Path(env.get('HOME') or Path.home()).expanduser()
     target = _private(Path(directory))
     marker = target/'.agentdock-settings-copied'
     if marker.is_symlink(): raise ValueError('Invalid isolated CLI marker')

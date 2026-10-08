@@ -100,8 +100,7 @@ def retire_legacy(command, environment, native_id, *, stop=None):
     pipe = _Pipe(list(command) + ['--listen', 'stdio://'], str(Path.home()), environment, stop if stop is not None else threading.Event(), 25)
     try:
         adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
-        adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
-        pipe.send({'method': 'initialized', 'params': {}})
+        adapter.initialize()
         adapter.request('thread/delete', {'threadId': native_id})
     finally:
         pipe.close()

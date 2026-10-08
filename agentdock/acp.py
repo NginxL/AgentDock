@@ -2,7 +2,8 @@
 import time
 import uuid
 
-from .providers import ProviderError, ProviderCancelled, _MAX_RESULT
+from .text_buffer import TextBuffer
+from .provider_common import ProviderError, ProviderCancelled
 
 
 def identifier(value):
@@ -31,6 +32,7 @@ class ACP:
         self.settings = {}
         self.running = False
         self.texts = {}
+        self.message_number = 0
         self.text_bytes = 0
         self.message = None
         self.last_kind = None
@@ -162,16 +164,16 @@ class ACP:
                 if supplied_id:
                     self.message = supplied_id
                 elif self.last_kind != kind or self.message is None:
-                    self.message = self.turn + '-' + str(len(self.texts))
-                self.texts[self.message] = self.texts.get(self.message, '') + text
-                self.text_bytes += len(text.encode())
-                if self.text_bytes > _MAX_RESULT:
-                    raise ProviderError('ACP response exceeded the text limit.')
+                    self.message_number += 1
+                    self.message = self.turn + '-' + str(self.message_number)
+                self.texts.setdefault(self.message, TextBuffer()).append(text)
+                while len(self.texts) > 8:
+                    self.texts.pop(next(iter(self.texts)))
                 self.cb.text(text, item_id=self.message, provider=self.provider)
             self.last_kind = kind
         elif kind in ('tool_call', 'tool_call_update'):
             if self.message and self.last_kind == 'agent_message_chunk':
-                self.cb.text(self.texts[self.message], item_id=self.message, provider=self.provider, phase='commentary', complete=True)
+                self.cb.text(self.texts[self.message].text(), item_id=self.message, provider=self.provider, phase='commentary', complete=True)
             self.last_kind = 'tool'
             item = {k: update[k] for k in ('toolCallId', 'title', 'kind', 'status', 'content', 'rawInput', 'rawOutput') if k in update}
             item['id'] = item.pop('toolCallId', '')
@@ -220,7 +222,7 @@ class ACP:
         if reason != 'end_turn':
             reason = reason if reason in ('max_tokens', 'max_turn_requests', 'refusal') else 'unknown stop reason'
             raise ProviderError('The CLI stopped before completing the turn (' + reason + ').')
-        final = self.texts.get(self.message, '') if self.last_kind == 'agent_message_chunk' else ''
+        final = self.texts.get(self.message, TextBuffer()).text() if self.last_kind == 'agent_message_chunk' else ''
         if final: self.cb.text(final, item_id=self.message, provider=self.provider, phase='final_answer', complete=True)
         return self.cb.clean(final)
 

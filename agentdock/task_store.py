@@ -7,6 +7,8 @@ import json
 import uuid
 
 
+from .errors import Conflict, Forbidden, Invalid, Missing, now, text
+
 class TaskStore:
     def _migrate_tasks(self):
         with self.transaction():
@@ -52,7 +54,6 @@ class TaskStore:
             self.db.execute('CREATE INDEX IF NOT EXISTS task_journal_order ON task_journal(task_id,seq)')
 
     def _task_event(self, task_id, kind, payload):
-        from .store import now
         self.db.execute('INSERT INTO task_journal(task_id,kind,payload,created_at) VALUES(?,?,?,?)',
                         (task_id,kind,json.dumps(payload,ensure_ascii=False),now()))
         self.db.execute('UPDATE tasks SET updated_at=? WHERE id=?', (now(),task_id))
@@ -73,7 +74,6 @@ class TaskStore:
             return result
 
     def _task_owner(self, task, agent_id):
-        from .store import Forbidden
         agent = self._available('agents',agent_id)
         if agent['project_id'] != task['project_id']: raise Forbidden('Choose an Agent in this project')
         project = self._one('projects',task['project_id'])
@@ -83,7 +83,6 @@ class TaskStore:
 
     def create_task(self, project_id, title, goal, criteria, owner_id, *, acceptance_policy='owner',
                     review_required=False, workspace_mode='shared', source_session_id=None):
-        from .store import Invalid, Forbidden, text, now
         if acceptance_policy not in ('owner','human'): raise Invalid('Invalid acceptance policy')
         if type(review_required) is not bool: raise Invalid('Invalid review requirement')
         if workspace_mode not in ('shared','worktree'): raise Invalid('Invalid workspace mode')
@@ -118,7 +117,6 @@ class TaskStore:
         return self.db.execute("SELECT 1 FROM runs WHERE work_task_id=? AND status IN ('queued','running')",(task_id,)).fetchone() is not None
 
     def update_task(self, task_id, title, goal, criteria, acceptance_policy, review_required):
-        from .store import Conflict, Invalid, text
         title,goal=text(title,'title',160),text(goal,'goal',16000)
         criteria='\n'.join(dict.fromkeys(x.strip() for x in text(criteria,'criteria',8000).splitlines() if x.strip()))
         if len(criteria.splitlines())>30: raise Invalid('Use at most 30 acceptance criteria')
@@ -159,7 +157,6 @@ class TaskStore:
         return self._one('sessions',session['id'])
 
     def submit_task_input(self, task_id, body, intent, request_id, *, action='queue', expected_run_id=None):
-        from .store import text, Invalid, Conflict, now
         body, request_id = text(body,'body',24000), text(request_id,'request_id',128)
         if intent not in ('record','discuss','develop'): raise Invalid('Invalid task intent')
         if action not in ('queue','steer'): raise Invalid('Invalid input action')
@@ -198,7 +195,6 @@ class TaskStore:
             return self._one('task_inputs',identifier)
 
     def task_input_receipt(self, input_id, status):
-        from .store import Invalid
         if status not in ('accepted','rejected','unknown'): raise Invalid('Invalid receipt')
         with self.transaction():
             item=self._one('task_inputs',input_id)
@@ -210,7 +206,6 @@ class TaskStore:
             return self._one('task_inputs',input_id)
 
     def task_question(self, run, question, options=None):
-        from .store import text, Invalid, now
         question=text(question,'question',4000)
         options=[] if options is None else options
         if not isinstance(options,list) or len(options)>8: raise Invalid('Use at most 8 answer choices')
@@ -225,7 +220,6 @@ class TaskStore:
             return self._one('task_questions',identifier)
 
     def answer_task_question(self, task_id, question_id, answer):
-        from .store import text, Conflict, Forbidden, now
         answer=text(answer,'answer',8000)
         with self.transaction():
             question=self._one('task_questions',question_id)
@@ -246,7 +240,6 @@ class TaskStore:
             return self._one('task_questions',question_id)
 
     def _task_run_authority(self, run, owner=False):
-        from .store import Forbidden
         current=self._one('runs',run['id'])
         if not current.get('work_task_id') or current['status'] != 'running': raise Forbidden('An active project task is required')
         task=self._one('tasks',current['work_task_id'])
@@ -256,7 +249,6 @@ class TaskStore:
         return task
 
     def task_delivery(self, run, summary, checks, artifacts=None, risks=''):
-        from .store import text, Invalid, Conflict, now
         summary,risks=text(summary,'summary',24000),text(risks,'risks',8000,True)
         if not isinstance(checks,list) or not 1<=len(checks)<=30: raise Invalid('Provide acceptance checks')
         cleaned=[]
@@ -281,7 +273,6 @@ class TaskStore:
             return self._one('task_deliveries',identifier)
 
     def task_review(self, run, verdict, summary):
-        from .store import Forbidden, Invalid, Conflict, text, now
         if verdict not in ('approved','changes_requested','unverified'): raise Invalid('Invalid review verdict')
         summary=text(summary,'summary',16000)
         with self.transaction():
@@ -296,7 +287,6 @@ class TaskStore:
             return self._one('task_reviews',identifier)
 
     def _task_can_accept(self, task):
-        from .store import Conflict
         if self._task_live(task['id']): raise Conflict('Wait for task execution and delegated results')
         if self.db.execute("SELECT 1 FROM task_questions WHERE task_id=? AND status='open'",(task['id'],)).fetchone():
             raise Conflict('Answer the pending task questions first')
@@ -321,7 +311,6 @@ class TaskStore:
     def accept_task(self, task_id):
         with self.transaction():
             task=self._one('tasks',task_id)
-            from .store import Conflict
             if task['status']=='completed': return task
             if task['status']!='review': raise Conflict('Task is not ready for acceptance')
             delivery=self._task_can_accept(task)
@@ -332,7 +321,6 @@ class TaskStore:
 
     def _refresh_work_task(self, run):
         """Called after delivery return scheduling, never before child replies exist."""
-        from .store import Conflict, Missing
         task_id=run.get('work_task_id')
         if not task_id: return
         task=self._one('tasks',task_id)
@@ -357,7 +345,6 @@ class TaskStore:
         with self.transaction(): self._refresh_work_task(self._one('runs',run_id))
 
     def task_transition(self, task_id, action):
-        from .store import Conflict, Invalid
         with self.transaction():
             task=self._one('tasks',task_id)
             if action in ('pause','cancel'):
@@ -377,7 +364,6 @@ class TaskStore:
             return self._one('tasks',task_id)
 
     def task_recovery(self, task_id, owner_id, intent, request_id):
-        from .store import Conflict, text
         if request_id is None: return None
         request_id=text(request_id,'request_id',128)
         with self.lock:
@@ -390,7 +376,6 @@ class TaskStore:
             return task
 
     def resume_task(self, task_id, owner_id=None, intent='develop', request_id=None):
-        from .store import Conflict, Invalid
         if intent not in ('discuss','develop'): raise Invalid('Choose discussion or execution')
         with self.transaction():
             previous=self.task_recovery(task_id,owner_id,intent,request_id)
@@ -456,7 +441,6 @@ class TaskStore:
             return result
 
     def task_result(self, run, result_run_id, offset=0):
-        from .store import Forbidden, Invalid, Missing
         with self.lock:
             task=self._task_run_authority(run)
             try: other=self._one('runs',result_run_id)

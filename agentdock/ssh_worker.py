@@ -22,6 +22,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from .providers import execute, ProviderError, ProviderCancelled
 from .session_storage import session_directory, remove_session_directory
 
+from .errors import Conflict
+
 ROOT = Path.home() / '.local/share/agentdock/ssh'
 LEASE_SECONDS = 90
 MAX_JSON = 2 * 1024 * 1024
@@ -82,8 +84,7 @@ def quota(provider, stop=None):
                  stop if stop is not None else threading.Event(), 25)
     try:
         adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
-        adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
-        pipe.send({'method': 'initialized', 'params': {}})
+        adapter.initialize()
         response = adapter.request('account/rateLimits/read', {})
         rate = response.get('rateLimits', {})
         buckets = response.get('rateLimitsByLimitId')
@@ -136,7 +137,6 @@ def rpc(request, *, stop=None, catalog=None):
         return prepare(parent/'tasks',request['task_id'],request['agent_id'],request['source'])
     if operation=='recovery_status':
         from .execution_lease import assert_idle
-        from .store import Conflict
         parent=run_path(request['controller'],request['session_id']).parent
         idle=True
         for identifier in request.get('run_ids',[]):

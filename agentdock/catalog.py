@@ -5,9 +5,10 @@ import time
 from pathlib import Path
 import tempfile
 from .providers import _Pipe, _Codex, _Callbacks, ProviderError
-from .store import Forbidden
 from .registry import PROVIDERS, ACP_PROVIDERS, commands
 
+
+from .errors import Forbidden
 
 class Catalog:
     def __init__(self, config, *, stop=None):
@@ -54,8 +55,7 @@ class Catalog:
             try:
                 if provider == 'codex':
                     adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
-                    adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
-                    pipe.send({'method': 'initialized', 'params': {}})
+                    adapter.initialize()
                     raw, cursor = [], None
                     for _ in range(5):
                         result = adapter.request('model/list', {'limit': 100, 'includeHidden': False, **({'cursor': cursor} if cursor else {})})

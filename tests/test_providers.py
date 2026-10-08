@@ -36,6 +36,11 @@ class NativeProvidersTest(unittest.TestCase):
             self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
             approve or permission, timeout=timeout, permission_mode=permission_mode)
 
+    def test_final_reply_survives_large_cumulative_commentary(self):
+        for provider in ('codex', 'claude'):
+            with self.subTest(provider=provider):
+                self.assertEqual(self.run_provider(provider, 'long_commentary', timeout=6), 'hello world')
+
     def test_full_access_is_explicit_and_can_be_revoked_on_native_resume(self):
         for provider in ('codex', 'claude'):
             with self.subTest(provider=provider):

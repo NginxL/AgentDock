@@ -4,8 +4,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
-import json
-import os
 import re
 import shlex
 import threading
@@ -13,13 +11,14 @@ import time
 import zipfile
 from pathlib import Path
 
-from .providers import ProviderCancelled, ProviderError
+from .provider_common import ProviderCancelled, ProviderError
 from .ssh_transport import Channel, TransportError
-from .store import Conflict, Forbidden
 
 
 # This fixed bootstrap receives data on stdin. Prompts, directories, and tokens
 # are never interpolated into a shell command. No root, service or shell changes.
+from .errors import Conflict, Forbidden
+
 BOOTSTRAP = r'''
 import base64,hashlib,io,json,os,pathlib,re,shutil,sys,tempfile,zipfile
 os.umask(0o077)

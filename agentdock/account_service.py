@@ -5,8 +5,9 @@ import threading
 import time
 
 from .accounts import AccountManager, AccountError
-from .store import Conflict, Forbidden, Invalid
 
+
+from .errors import Conflict, Forbidden, Invalid
 
 def account_usage(store, accounts):
     """Attribute all native branches to their account without mixing logins."""

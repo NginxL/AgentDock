@@ -1,5 +1,4 @@
 """Private, disposable CLI state for one AgentDock conversation."""
-import os
 from pathlib import Path
 import shutil
 import uuid

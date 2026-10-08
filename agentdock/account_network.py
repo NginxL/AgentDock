@@ -1,6 +1,5 @@
 """Read the CLI's network settings without changing them or executing shell code."""
 import json
-import os
 from pathlib import Path
 import re
 import shlex

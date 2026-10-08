@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 
-from .accounts import AccountError, _directory, _identity, _now, _read, _safe_label, _write
+from .accounts import AccountError, _directory, _identity, _now
 from .account_keychain import Keychain, KeychainError, claude_service
 from . import credential_broker
 from .account_network import claude_network, claude_get, NetworkError

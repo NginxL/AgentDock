@@ -11,7 +11,8 @@ import time
 from datetime import datetime, timezone
 
 from .processes import stop_group as _kill_group
-from .store import Forbidden
+
+from .errors import Forbidden
 
 ERRORS = {
     "authorization_required": "This legacy quota source is unavailable. Refresh to read the local snapshot.",

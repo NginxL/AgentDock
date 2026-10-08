@@ -1,5 +1,5 @@
 """Local token accounting. No prompts, credentials or provider requests are stored here."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 import json
 from .registry import PROVIDERS
 import math

@@ -1,7 +1,8 @@
 """Task orchestration reuses the native dispatcher and its project fences."""
+from .errors import Conflict, Invalid
+
 class TaskRuntime:
     def submit_task(self, task_id, body, intent, request_id, action='queue', expected_run_id=None):
-        from .store import Conflict
         with self._lock:
             task=self.store.get_task(task_id)
             if intent!='record':
@@ -36,7 +37,6 @@ class TaskRuntime:
             return result
 
     def recover_task(self, task_id, owner_id=None, intent='develop', request_id=None):
-        from .store import Conflict
         from .execution_lease import assert_idle
         with self._lock:
             self._check_enabled()
@@ -87,7 +87,6 @@ class TaskRuntime:
         return value['path']
 
     def _task_tool(self, caller, name, arguments):
-        from .store import Invalid
         if name=='task_context': return self.store.task_context(caller)
         if name=='task_history': return self.store.task_history(caller,arguments.get('after',0),arguments.get('offset',0),arguments.get('limit',20))
         if name=='task_result': return self.store.task_result(caller,arguments.get('run_id'),arguments.get('offset',0))

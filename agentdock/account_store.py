@@ -6,6 +6,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 
+from .errors import Conflict, Invalid, text
+
 class AccountStore:
     def _migrate_accounts(self):
         with self.transaction():
@@ -50,14 +52,12 @@ class AccountStore:
 
     @staticmethod
     def _account_error(code):
-        from .store import Invalid
         if code is not None and (not isinstance(code, str) or not re.fullmatch(r'[a-z][a-z0-9_.:-]{0,79}', code)):
             raise Invalid('Use a public account error code, never credential or CLI output')
         return code
 
     @staticmethod
     def _account_date(value):
-        from .store import Invalid
         if value is None: return None
         try:
             if not isinstance(value, str) or len(value) > 64: raise ValueError()
@@ -84,7 +84,6 @@ class AccountStore:
                 WHERE branch.session_id=? ORDER BY accounts.id''', (session_id,))
 
     def add_account(self, provider, label, environment_id='local', priority=0):
-        from .store import Invalid, text
         if provider not in ('codex', 'claude'): raise Invalid('Managed accounts support Codex and Claude Code')
         if isinstance(priority, bool) or not isinstance(priority, int) or not -100 <= priority <= 100:
             raise Invalid('Account priority must be between -100 and 100')
@@ -101,7 +100,6 @@ class AccountStore:
         return self.db.execute("SELECT 1 FROM runs WHERE account_id=? AND status IN ('queued','running')", (account_id,)).fetchone() is not None
 
     def update_account(self, account_id, changes):
-        from .store import Invalid, Conflict, text
         if not isinstance(changes, dict) or not changes or set(changes) - {'label', 'priority', 'status', 'enabled'}:
             raise Invalid('Only account label, priority and enabled status can be changed')
         changes = dict(changes)
@@ -128,7 +126,6 @@ class AccountStore:
             return self._one('accounts', account_id)
 
     def set_account_status(self, account_id, status, error=None, cooldown_until=None, quota=None):
-        from .store import Invalid, Conflict
         if status not in ('pending', 'ready', 'expired', 'cooldown', 'disabled'): raise Invalid('Invalid account status')
         error = self._account_error(error)
         cooldown_until = self._account_date(cooldown_until)
@@ -145,7 +142,6 @@ class AccountStore:
             return self._one('accounts', account_id)
 
     def complete_account_login(self, account_id):
-        from .store import Conflict
         with self.transaction():
             account = self._one('accounts', account_id)
             if account['status'] == 'removed': raise Conflict('This account was removed')
@@ -155,7 +151,6 @@ class AccountStore:
             return self._one('accounts', account_id)
 
     def remove_account(self, account_id, cleanup=None):
-        from .store import Conflict
         with self.transaction():
             account = self._one('accounts', account_id)
             if account['status'] == 'removed': return {'ok': True}
@@ -167,7 +162,6 @@ class AccountStore:
         return {'ok': True}
 
     def _clean_account_quota(self, quota):
-        from .store import Invalid
         if not isinstance(quota, dict): raise Invalid('Invalid account quota')
         output = {}
         if 'fetched_at' in quota: output['fetched_at'] = self._account_date(quota['fetched_at'])
@@ -200,7 +194,6 @@ class AccountStore:
         return output
 
     def set_account_quota(self, account_id, quota):
-        from .store import Conflict
         clean = self._clean_account_quota(quota)
         with self.transaction():
             account = self._one('accounts', account_id)
@@ -210,7 +203,6 @@ class AccountStore:
 
     def set_account_identity(self, account_id, identity):
         """Save only bounded display metadata returned by the native login check."""
-        from .store import Invalid, Conflict
         if not isinstance(identity, dict): raise Invalid('Invalid account identity metadata')
         clean = {}
         email = identity.get('email')
@@ -230,7 +222,6 @@ class AccountStore:
             return self._one('accounts', account_id)
 
     def _account_settings(self, provider, environment_id, account_id=None, account_policy='manual', account_ids=None):
-        from .store import Invalid
         if account_policy not in ('manual', 'auto', 'failover'): raise Invalid('Invalid account policy')
         if account_policy == 'failover': self.require_feature('automatic_failover')
         account_ids = [] if account_ids is None else account_ids
@@ -283,7 +274,6 @@ class AccountStore:
         return remaining is None or remaining > 0
 
     def _choose_account(self, provider, environment_id, settings, excluded=()):
-        from .store import Conflict
         policy, chosen, pool = settings['account_policy'], settings['account_id'], settings['account_ids']
         if policy == 'failover': self.require_feature('automatic_failover')
         if policy == 'manual' or (policy == 'auto' and chosen is not None):
@@ -313,7 +303,6 @@ class AccountStore:
         return branch
 
     def _freeze_run_account(self, session, run):
-        from .store import Conflict
         provider = self._one('agents', session['agent_id'])['provider']
         try:
             account = self._choose_account(provider, session['environment_id'], session)
@@ -353,7 +342,6 @@ class AccountStore:
             return self._all('SELECT * FROM run_attempts WHERE run_id=? ORDER BY number', (run_id,))
 
     def reserve_run_account(self, run_id, *, fallback=False):
-        from .store import Conflict
         with self.transaction():
             run = self._one('runs', run_id)
             if run['status'] != 'running': raise Conflict('Account execution requires an active run')
@@ -413,7 +401,6 @@ class AccountStore:
 
     def reject_unavailable_run_account(self, run_id, error_code='account_unavailable'):
         """Record a preflight rejection without starting a native CLI or sending a prompt."""
-        from .store import Conflict
         error_code = self._account_error(error_code)
         with self.transaction():
             run = self._one('runs', run_id)
@@ -462,7 +449,6 @@ class AccountStore:
             return min(dates).isoformat() if dates else None
 
     def requeue_account_run(self, run_id, retry_at):
-        from .store import Conflict, Invalid
         retry_at = self._account_date(retry_at)
         if retry_at is None or datetime.fromisoformat(retry_at) <= datetime.now(timezone.utc): raise Invalid('Account retry must be in the future')
         with self.transaction():
@@ -484,7 +470,6 @@ class AccountStore:
                         JOIN agents ON agents.id=sessions.agent_id WHERE branch.native_session_id IS NOT NULL''')}
 
     def mark_account_attempt_progress(self, attempt_id):
-        from .store import Conflict
         with self.transaction():
             attempt = self._one('run_attempts', attempt_id)
             if attempt['status'] != 'running': raise Conflict('Account attempt is no longer active')
@@ -492,7 +477,6 @@ class AccountStore:
             return self._one('run_attempts', attempt_id)
 
     def finish_account_attempt(self, attempt_id, status, error_code=None, progress=False):
-        from .store import Invalid, Conflict
         if status not in ('completed', 'rejected', 'failed', 'cancelled', 'interrupted'): raise Invalid('Invalid account attempt status')
         if not isinstance(progress, bool): raise Invalid('Invalid account progress flag')
         error_code = self._account_error(error_code)

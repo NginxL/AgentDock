@@ -60,7 +60,7 @@ def acp_command(provider, command, cwd, env, stop):
     argv = list(command)
     if provider == 'trae' and argv[1:] == ['acp']:
         from .processes import stop_group
-        from .providers import ProviderError, ProviderCancelled
+        from .provider_common import ProviderError, ProviderCancelled
         import subprocess
         try:
             process = subprocess.Popen(argv + ['--help'], cwd=cwd, env=env, stdin=subprocess.DEVNULL,

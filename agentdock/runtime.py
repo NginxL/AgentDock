@@ -5,18 +5,18 @@ import json
 import os
 import threading
 import time
-from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .store import Conflict, Forbidden, Invalid
 from .providers import execute, ProviderError, ProviderCancelled
 from .mcp import TOOLS
 from .registry import PROVIDERS, commands
 from .task_runtime import TaskRuntime
 from .input_control import InputControl
 
+
+from .errors import Conflict, Forbidden, Invalid
 
 class RuntimeFailure(Conflict):
     pass
@@ -220,8 +220,12 @@ class Runtime(TaskRuntime):
                     if record is None:
                         break
                     try:
-                        self._agent_command(self.store.session_agent(record["session_id"]))
-                        capability = self.store.issue_capability(record["id"])
+                        agent = self.store.session_agent(record['session_id'])
+                        self._agent_command(agent)
+                        # Protocol approvals are separately bounded (64 x 120s).
+                        # Long configured turns must not lose their tools after 1h.
+                        lifetime = max(3600, (agent.get('run_timeout') or self.config.get('run_timeout', 900)) + 64 * 120 + 60)
+                        capability = self.store.issue_capability(record['id'], lifetime=lifetime)
                         run = _Run(record, capability)
                         run.thread = threading.Thread(target=self._worker, args=(run,), daemon=True,
                                                       name="agentdock-native")
@@ -451,34 +455,22 @@ class Runtime(TaskRuntime):
                     'env': {'AGENTDOCK_URL': self.config['base_url'], 'AGENTDOCK_CAPABILITY': run.capability,
                             'PYTHONPATH': self.config['package_root']}}
                 try:
-                    remaining = max(.1, deadline - time.monotonic())
-                    if agent['environment_id'] != 'local':
-                        spec = {'provider': agent['provider'], 'cwd': workspace, 'prompt': prompt,
-                            'session_id': session['id'], 'legacy_workspace': session.get('legacy_workspace'),
-                            'native_session_id': session.get('native_session_id'), 'model': record.get('model'),
-                            'effort': record.get('effort'), 'permission_mode': permission_mode, 'timeout': remaining}
-                        if record.get('account_branch'): spec['account_branch'] = record['account_branch']
-                        if account: spec['account'] = {key: account[key] for key in ('id','provider','generation')}
-                        result = self.remote.run(agent['environment_id'], run.attempt['id'] if account else record['id'],
-                            spec, run.stop, lambda kind, payload: self._event(run, kind, payload),
-                            lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
-                            lambda request, options: self._request_approval(run, request, options),
-                            lambda name, arguments: self.respond_tool(run.capability, name, arguments),
-                            **({'control':run.control} if record.get('work_task_id') else {}))
-                    else:
-                        home = self.store.session_directory(session['id'])
-                        if record.get('account_branch'): home = home / 'branches' / str(record['account_branch'])
-                        lease = self.accounts.credentials(account, str(home), run.stop) if account else nullcontext(None)
-                        with lease as account_env:
-                            result = self._execute(agent['provider'], self._command(agent['provider']), workspace, prompt,
-                                session.get('native_session_id'), mcp_config, run.stop,
-                                lambda kind, payload: self._event(run, kind, payload),
-                                lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
-                                lambda request, options: self._request_approval(run, request, options),
-                                timeout=max(.1, deadline-time.monotonic()), permission_mode=permission_mode, session_home=str(home),
-                                **({'control':run.control} if record.get('work_task_id') else {}),
-                                **({'model': record['model'], 'effort': record['effort']} if record.get('model') or record.get('effort') else {}),
-                                **({'base_environment': account_env, 'managed_account': True} if account else {}))
+                    from .executors import ExecutionRequest, LocalExecutor, SSHExecutor
+                    from .turn import NativeTurn
+                    home = self.store.session_directory(session['id'])
+                    if record.get('account_branch'): home = home / 'branches' / str(record['account_branch'])
+                    turn = NativeTurn(agent['provider'], self._command(agent['provider']) if agent['environment_id'] == 'local' else [],
+                        workspace, prompt, session.get('native_session_id'), mcp_config, run.stop,
+                        lambda kind, payload: self._event(run, kind, payload),
+                        lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
+                        lambda request, options: self._request_approval(run, request, options),
+                        timeout=max(.1, deadline-time.monotonic()), permission_mode=permission_mode, session_home=str(home),
+                        control=run.control if record.get('work_task_id') else None, model=record.get('model'), effort=record.get('effort'))
+                    request = ExecutionRequest(turn, agent['environment_id'], run.attempt['id'] if account else record['id'],
+                        session['id'], session.get('legacy_workspace'), account, record.get('account_branch'),
+                        lambda name, arguments: self.respond_tool(run.capability, name, arguments))
+                    executor = LocalExecutor(self.accounts, self._execute) if request.environment_id == 'local' else SSHExecutor(self.remote)
+                    result = executor.run(request)
                     break
                 except ProviderError as exc:
                     self._account_failure(record.get('account_id'), exc, record.get('account_generation'))

@@ -4,7 +4,6 @@ import argparse
 import hmac
 import json
 import os
-import re
 import secrets
 import signal
 import sys
@@ -12,9 +11,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
-from . import __version__
 from .store import Store, Invalid, Missing, Conflict, Forbidden
-from .registry import ACP_PROVIDERS, PROVIDERS, commands as resolve_commands, availability
+from .registry import availability as availability
+from .registry import commands as resolve_commands
 
 MAX_BODY = 262144
 
@@ -53,192 +52,9 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
-            if method == 'POST' and re.fullmatch(r'/api/projects/[^/]+/policy', parsed.path):
-                payload = self._json(headers, body)
-                return 200, self.store.update_project_policy(parsed.path.split('/')[3], payload.get('confirm_dispatch'))
-            if method == 'POST' and parsed.path == '/api/features':
-                payload = self._json(headers, body)
-                return 200, self.store.set_feature(payload.get('name'), payload.get('enabled'), payload.get('acknowledged'))
-            if method == 'GET' and parsed.path == '/api/state/version':
-                return 200, {'version': self.store.state_version()}
-            if method == 'GET' and parsed.path == '/api/diagnostics':
-                from .diagnostics import export
-                return 200, export(self.store)
-            if method=="GET" and parsed.path=="/api/providers":
-                environment=self.store.get_environment(parse_qs(parsed.query).get('environment_id',['local'])[0])
-                if environment['kind']=='local':
-                    return 200,{'environment_id':'local','providers':availability(self.runtime.config.get('commands', {}))}
-                ready=environment['status']=='connected' and environment['payload'].get('digest')==self.runtime.remote.digest
-                saved=environment['payload'].get('providers', {}) if ready else {}
-                providers={}
-                for key,entry in PROVIDERS.items():
-                    available=saved.get(key,{}).get('available') is True
-                    reason=None if available else saved.get(key,{}).get('reason') or ('not_installed' if ready else 'connect_required')
-                    providers[key]={'name':entry[0], 'available':available, 'supports_ask':key!='pi', 'reason':reason}
-                return 200,{'environment_id':environment['id'],'providers':providers}
-            if method=="GET" and parsed.path=="/api/directories":
-                query=parse_qs(parsed.query)
-                environment=self.store.get_environment(query.get('environment_id',['local'])[0])
-                path=query.get('path',['~'])[0]
-                if environment['kind']=='ssh':
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    if environment['payload'].get('digest') != self.runtime.remote.digest:
-                        raise Conflict('Connect this SSH environment before browsing directories.')
-                    return 200,self.runtime.remote.rpc(environment['id'], {'op':'directories','path':path})
-                from .directories import list_directories
-                return 200,list_directories(path)
-            if method=="GET" and parsed.path=="/api/metrics":
-                from .metrics import snapshot
-                with self.store.reader() as reader:
-                    result=snapshot(reader, cache_activity=True)
-                result["scan_status"]=self.usage.status if self.usage else "disabled"
-                result["activity"]["status"]=self.usage.activity_status if self.usage else "disabled"
-                return 200,result
-            if method=="GET" and parsed.path=="/api/quotas":
-                quotas=[]
-                for provider,env in self.store.configured_connections():
-                    value=self._quota(provider,env) or {"provider":provider,"status":"unknown","windows":[]}
-                    if env!='local': value={**value,'environment_id':env,'environment_name':self.store.get_environment(env)['name']}
-                    quotas.append({**value, 'agent_names': self.store.connection_agent_names(provider, env)})
-                return 200,{'quotas':quotas}
-            if method=="GET" and parsed.path=="/api/state":
-                since = parse_qs(parsed.query).get('since', [None])[0]
-                state=self.store.state(since)
-                from .account_service import account_usage
-                if 'accounts' in state:
-                    with self.store.reader() as reader:
-                        state['accounts']=account_usage(reader,state['accounts'])
-                connections=set(self.store.configured_connections())
-                if 'quotas' in state:
-                    state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
-                if 'subscriptions' in state:
-                    state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
-                state["runtime"]={"enabled":self.execution_enabled,"version":__version__,"features":self.store.features()}
-                return 200,state
-            parts=parsed.path.strip("/").split("/")
-            if method=='GET' and len(parts)==3 and parts[:2]==['api','tasks']:
-                result=self.store.task_detail(parts[2])
-                result['can_steer_run_id']=next((r.record['id'] for r in getattr(self.runtime,'_runs',{}).copy().values()
-                    if r.record.get('work_task_id')==parts[2] and r.record.get('task_role')=='owner' and r.control.available and not r.stop.is_set()),None)
-                return 200,result
-            if method=='GET' and parsed.path=='/api/accounts':
-                from .account_service import account_usage
-                return 200, {'accounts': account_usage(self.store,self.store.accounts())}
-            if method=='GET' and len(parts)==4 and parts[:2]==['api','accounts'] and parts[3]=='login':
-                return 200, self.runtime.accounts.login_status(parts[2])
-            if method=='GET' and len(parts)==4 and parts[:2]==['api','accounts'] and parts[3]=='native':
-                if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                return 200, self.runtime.accounts.native_status(parts[2])
-            if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
-                if parts[2] in ACP_PROVIDERS: self.store.require_feature('acp_agents')
-                query=parse_qs(parsed.query)
-                environment_id=query.get('environment_id',['local'])[0]
-                account_id=query.get('account_id',[None])[0]
-                if account_id:
-                    account=self.store.get_account(account_id)
-                    if account['provider'] != parts[2] or account['environment_id'] != environment_id:
-                        raise Invalid('Account must match this service and device')
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    return 200,self.runtime.accounts.models(account,self.catalog)
-                if environment_id!='local':
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    return 200,self.runtime.remote.models(environment_id,parts[2])
-                return 200,self.catalog.read(parts[2])
-            if method=="GET" and len(parts)==4 and parts[:2]==["api","sessions"] and parts[3]=="events":
-                query=parse_qs(parsed.query)
-                return 200,{"events":self.store.session_events(parts[2],int(query.get("after",[0])[0]))}
-            if method!="POST": return 404,{"error":"Route not found"}
-            p=self._json(headers,body)
-            if parsed.path=='/api/tasks':
-                result=self.store.create_task(p.get('project_id'),p.get('title'),p.get('goal'),p.get('criteria'),p.get('owner_id'),
-                    acceptance_policy=p.get('acceptance_policy','owner'),review_required=p.get('review_required',False),
-                    workspace_mode=p.get('workspace_mode','shared'),source_session_id=p.get('source_session_id'))
-            elif len(parts)>=4 and parts[:2]==['api','tasks']:
-                task_id,action=parts[2:4]
-                if len(parts)==6 and action=='questions' and parts[5]=='answer':
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    result=self.runtime.answer_task(task_id,parts[4],p.get('answer'))
-                elif len(parts)!=4: raise Missing('Route not found')
-                elif action=='inputs':
-                    if p.get('intent')!='record' and not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    result=self.runtime.submit_task(task_id,p.get('body'),p.get('intent'),p.get('request_id'),p.get('action','queue'),p.get('expected_run_id'))
-                elif action=='resume':
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    result=self.runtime.recover_task(task_id,p.get('owner_id'),p.get('intent','develop'),p.get('request_id'))
-                elif action in ('pause','cancel'):
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    result=self.runtime.stop_task(task_id,action)
-                elif action=='accept': result=self.store.accept_task(task_id)
-                elif action=='settings': result=self.store.update_task(task_id,p.get('title'),p.get('goal'),p.get('criteria'),p.get('acceptance_policy'),p.get('review_required'))
-                elif action in ('archive','reopen'): result=self.store.task_transition(task_id,action)
-                else: raise Missing('Route not found')
-            elif parsed.path=='/api/accounts':
-                result=self.store.add_account(p.get('provider'),p.get('label'),p.get('environment_id','local'),p.get('priority',0))
-            elif len(parts)==3 and parts[:2]==['api','accounts']:
-                result=self.store.update_account(parts[2],p)
-                if p.get('enabled') is True and self.execution_enabled:
-                    self.runtime.accounts.check(parts[2])
-                    result=self.store.get_account(parts[2])
-            elif len(parts)==4 and parts[:2]==['api','accounts']:
-                if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                account_id=parts[2]
-                if parts[3]=='login': result=self.runtime.accounts.start_login(account_id,p.get('method'))
-                elif parts[3]=='check': result=self.runtime.accounts.check(account_id)
-                elif parts[3]=='refresh': result=self.runtime.accounts.refresh(account_id, force=True)
-                elif parts[3]=='cancel': result=self.runtime.accounts.cancel(account_id)
-                elif parts[3]=='input': result=self.runtime.accounts.submit(account_id,p.get('code'))
-                elif parts[3]=='delete': result=self.runtime.accounts.remove(account_id)
-                elif parts[3]=='native': result=self.runtime.accounts.native_action(account_id,p.get('operation'),p.get('client'))
-                else: raise Missing('Route not found')
-            elif parsed.path=="/api/environments": result=self.store.add_environment(p.get('name'),p.get('ssh_host'),p.get('python','python3'))
-            elif len(parts)==4 and parts[:2]==['api','environments']:
-                if parts[3]=='connect':
-                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
-                    result=self.runtime.remote.connect(parts[2])
-                elif parts[3]=='remove': self.store.remove_environment(parts[2]); result={'ok':True}
-                else: raise Missing('Route not found')
-            elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
-            elif len(parts)==4 and parts[:2]==['api','projects'] and parts[3]=='agents': result=self.store.add_project_agent(parts[2],p)
-            elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'),
-                account_id=p.get('account_id'),account_policy=p.get('account_policy','manual'),account_ids=p.get('account_ids'),run_timeout=p.get('run_timeout'))
-            elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
-            elif len(parts)==4 and parts[:2]==["api","agents"] and parts[3]=='delete': return 200,self.runtime.delete_agent(parts[2])
-            elif parsed.path=="/api/sessions":
-                fields={k:p[k] for k in ('account_id','account_policy','account_ids') if k in p}
-                result=self.store.add_session(p.get("agent_id"),p.get("title"), **({'account_settings':fields} if fields else {}))
-            elif parsed.path=="/api/messages":
-                if p.get("sender_id","human")!="human": raise Forbidden("Human endpoint cannot impersonate an agent")
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                result=self.runtime.send_message(p.get("project_id"),p.get("recipient_id"),p.get("body"),p.get("correlation_id"),p.get("idempotency_key"),p.get("recipient_session_id"))
-            elif parsed.path=="/api/memories": result=self.store.put_memory(p.get("project_id"),p.get("key"),p.get("content"),p.get("expected_version"))
-            elif parsed.path=="/api/subscriptions": result=self.store.save_subscription(p.get("provider"),p.get("plan",""),p.get("renewal_date"),p.get("monthly_cost"),p.get("currency","USD"),p.get('environment_id','local'))
-            elif parsed.path=="/api/quotas/refresh":
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                if p.get('environment_id','local')=='local': result=self.quota.refresh(p.get("provider"))
-                else: result=self.quota.refresh(p.get("provider"),environment_id=p['environment_id'])
-            elif len(parts)==4 and parts[:2]==["api","sessions"]:
-                if parts[3]=='delete': return 200,self.runtime.delete_session(parts[2])
-                if parts[3]=='settings': return 200,self.store.update_session_settings(parts[2],p)
-                if parts[3]=='account':
-                    if set(p)-{'account_id','account_policy','account_ids'}: raise Invalid('Invalid account settings')
-                    return 200,self.store.switch_session_account(parts[2],p.get('account_id'),p.get('account_policy','manual'),p.get('account_ids'))
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                if parts[3]=="run": result=self.runtime.start(parts[2],p.get("prompt"))
-                elif parts[3]=="cancel": self.runtime.cancel(parts[2]); result={"ok":True}
-                else: raise Missing("Route not found")
-            elif len(parts)==4 and parts[:2]==["api","runs"] and parts[3]=="cancel":
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                self.runtime.cancel_run(parts[2]); result={"ok":True}
-            elif len(parts)==4 and parts[:2]==["api","memories"] and parts[3]=="archive": result=self.store.archive_memory(parts[2],p.get("expected_version"))
-            elif len(parts)==4 and parts[:2]==["api","proposals"]:
-                if parts[3]=="approve": result=self.store.approve_proposal(parts[2],p.get("expected_version"))
-                elif parts[3]=="reject": result=self.store.reject_proposal(parts[2])
-                else: raise Missing("Route not found")
-            elif len(parts)==3 and parts[:2]==["api","approvals"]:
-                if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
-                self.runtime.approve(parts[2],p.get("option_id")); result={"ok":True}
-            else: raise Missing("Route not found")
-            return 200,result
+            from .routes import dispatch_admin
+            payload = self._json(headers, body) if method == 'POST' else {}
+            return 200, dispatch_admin(self, method, parsed, payload)
         except Forbidden as error: return 403,{'error':str(error), 'code':getattr(error, 'code', 'forbidden')}
         except Missing: return 404,{'error':'Resource not found', 'code':'not_found'}
         except Conflict as error: return 409,{'error':str(error), 'code':getattr(error, 'code', 'state_conflict')}

@@ -4,7 +4,6 @@ from . import credential_broker
 import getpass
 import hashlib
 import json
-import os
 from pathlib import Path
 import sys
 import unicodedata

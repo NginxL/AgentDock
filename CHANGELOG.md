@@ -14,3 +14,5 @@
 - Gate automatic failover, native client switching, ACP integrations and undocumented Claude quota reads behind separate default-off experiments.
 - Lease ACP credentials only while running/discovering, preserve interrupted refreshes, and reject concurrent or divergent legacy credentials without overwriting either side.
 - Add project-level human approval for agent delegation, batch task history, scoped FTS5 memory search and completed-event compaction.
+- Separate protocol clients, native transport, immutable turn inputs, local/SSH executors and storage domains; centralize admin route execution guards.
+- Bound individual text buffers instead of failing long turns on cumulative commentary, and size capability lifetimes for configured long runs.

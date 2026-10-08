@@ -9,7 +9,7 @@ import time
 import uuid
 
 from .processes import stop_group
-from .providers import ProviderCancelled, ProviderError
+from .provider_common import ProviderCancelled, ProviderError
 
 PREFIX = b'AGENTDOCK_FRAME '
 MAX_FRAME = 2097152

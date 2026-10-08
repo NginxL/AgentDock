@@ -424,8 +424,7 @@ class AccountManager:
                      self.stop, 25)
         try:
             adapter = _Codex(pipe, _Callbacks(pipe, lambda *a: None, lambda *a: None, lambda *a: None, {}))
-            adapter.request('initialize', {'clientInfo': {'name': 'agentdock', 'version': '0.3.0'}})
-            pipe.send({'method': 'initialized', 'params': {}})
+            adapter.initialize()
             return adapter.request(method, params)
         except ProviderError:
             raise AccountError('Native account status is unavailable. Check the CLI and login.') from None

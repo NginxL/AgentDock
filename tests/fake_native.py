@@ -134,6 +134,12 @@ if provider == "codex":
         send({"method":"item/completed","params":{**base,"item":{"type":"commandExecution","id":"tool-1","command":"pwd","status":"completed","exitCode":0,"aggregatedOutput":"/fixture/workspace"}}})
         send({"method":"item/completed","params":{**base,"item":{"type":"agentMessage","id":"commentary-1","text":"Working on the task",
             **({} if scenario == "unphased" else {"phase":"commentary"})}}})
+    if scenario == 'long_commentary':
+        for i in range(320):
+            send({'method': 'item/agentMessage/delta', 'params': {'threadId': native_id, 'turnId': 'turn-1',
+                  'itemId': 'long-progress', 'delta': 'x' * 1200}})
+        send({'method': 'item/completed', 'params': {'threadId': native_id, 'turnId': 'turn-1',
+              'item': {'id': 'long-progress', 'type': 'agentMessage', 'phase': 'commentary', 'text': 'Progress complete'}}})
     params = {"threadId": "wrong-thread" if scenario == "wrong_session" else native_id,
               "turnId": "wrong-turn" if scenario == "wrong_turn" else "turn-1", "itemId": "answer-1", "delta": "hello "}
     phase = {} if scenario == "unphased" else {"phase": "commentary" if scenario == "commentary_only" else "final_answer"}
@@ -192,6 +198,10 @@ else:
         send({"type":"stream_event","session_id":native_id,"event":{"type":"content_block_start","content_block":tool}})
         send({"type":"assistant","session_id":native_id,"message":{"content":[tool]}})
         send({"type":"user","session_id":native_id,"message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":"fixture content"}]}})
+    if scenario == 'long_commentary':
+        for i in range(80):
+            send({'type': 'assistant', 'session_id': native_id, 'message': {'id': 'progress-' + str(i),
+                  'content': [{'type': 'text', 'text': 'x' * 5000}]}})
     for text in ("hello ", os.environ.get("AGENTDOCK_CAPABILITY", "missing") if scenario == "redact" else "world"):
         send({"type": "stream_event", "session_id": native_id, "event": {
             "type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}})
