@@ -59,6 +59,9 @@ export interface Account extends AccountSettings {
     source?: string;
     status?: string;
     fetched_at?: string;
+    checked_at?: string;
+    retry_at?: string;
+    error_code?: string;
   } | null;
   created_at?: string;
   updated_at?: string;

@@ -4,7 +4,8 @@ import { request, remainingPercent } from "../api";
 import { accountStatus } from "../AccountSelection";
 import ProviderIcon from "../ProviderIcon";
 import { Empty, Icon } from "../ui";
-import { accountError, resetCountdown } from "../accountDisplay";
+import { accountError, resetCountdown, quotaWindow } from "../accountDisplay";
+import NativeAccounts from "../NativeAccounts";
 import { exactTokens } from "../metrics";
 import { clearModelCatalog } from "../modelCatalog";
 
@@ -238,6 +239,7 @@ function AccountCard({
   const [loginVersion, setLoginVersion] = useState(0);
   const [loginStarted, setLoginStarted] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [native, setNative] = useState(false);
   const env = state.environments?.find(
     (environment) => environment.id === account.environment_id,
   );
@@ -286,42 +288,16 @@ function AccountCard({
           {accountError(account.error, t)}
         </p>
       )}
-      {account.usage && (
-        <div
-          className="account-usage"
-          aria-label={t("AgentDock 用量", "AgentDock usage")}
-        >
-          <strong>{t("AgentDock 用量", "AgentDock usage")}</strong>
-          <dl>
-            <div>
-              <dt>{t("总 Token", "Total tokens")}</dt>
-              <dd>{exactTokens(account.usage.total_tokens)}</dd>
-            </div>
-            <div>
-              <dt>{t("输入", "Input")}</dt>
-              <dd>{exactTokens(account.usage.input_tokens)}</dd>
-            </div>
-            <div>
-              <dt>{t("输出", "Output")}</dt>
-              <dd>{exactTokens(account.usage.output_tokens)}</dd>
-            </div>
-          </dl>
-        </div>
-      )}
       <div className="account-quota">
+        {account.quota?.error_code && (
+          <p className="muted" role="status">
+            {accountError(account.quota.error_code, t)}
+          </p>
+        )}
         {account.quota?.windows?.length ? (
           account.quota.windows.map((window, index) => {
             const remaining = remainingPercent(window.remaining_percent);
-            const name =
-              window.label ??
-              {
-                primary: t("当前周期", "Current window"),
-                secondary: t("额外周期", "Additional window"),
-                session: t("会话额度", "Session limit"),
-                weekly: t("每周额度", "Weekly limit"),
-              }[window.name ?? ""] ??
-              window.name ??
-              t("额度", "Quota");
+            const name = quotaWindow(window, t);
             return (
               <div key={`${name}-${index}`}>
                 <span>{name}</span>
@@ -373,6 +349,28 @@ function AccountCard({
           </p>
         )}
       </div>
+      {account.usage && (
+        <div
+          className="account-usage"
+          aria-label={t("AgentDock 用量", "AgentDock usage")}
+        >
+          <strong>{t("AgentDock 用量", "AgentDock usage")}</strong>
+          <dl>
+            <div>
+              <dt>{t("总 Token", "Total tokens")}</dt>
+              <dd>{exactTokens(account.usage.total_tokens)}</dd>
+            </div>
+            <div>
+              <dt>{t("输入", "Input")}</dt>
+              <dd>{exactTokens(account.usage.input_tokens)}</dd>
+            </div>
+            <div>
+              <dt>{t("输出", "Output")}</dt>
+              <dd>{exactTokens(account.usage.output_tokens)}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
       <div className="button-row account-actions">
         <button
           type="button"
@@ -438,6 +436,17 @@ function AccountCard({
         >
           {t("设置", "Settings")}
         </button>
+        {account.environment_id === "local" && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || disabled || active}
+            aria-expanded={native}
+            onClick={() => setNative(!native)}
+          >
+            {t("本机客户端", "Native clients")}
+          </button>
+        )}
         <button
           type="button"
           className="text-button danger-text"
@@ -448,6 +457,14 @@ function AccountCard({
           {t("删除账号", "Delete account")}
         </button>
       </div>
+      {native && (
+        <NativeAccounts
+          account={account}
+          token={token}
+          close={() => setNative(false)}
+          t={t}
+        />
+      )}
       {deleting && (
         <section
           className="account-delete"

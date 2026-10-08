@@ -36,6 +36,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_native_accounts.py' -v
       - run: swift build --package-path native -c release
       - run: swift run --package-path native MeterChecks
       - run: swift run --package-path native MeterProviderChecks

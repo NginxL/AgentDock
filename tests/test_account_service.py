@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 from unittest.mock import Mock, patch
 
@@ -59,7 +61,7 @@ class AccountServiceTests(unittest.TestCase):
         self.assertEqual(first['quota']['windows'][0]['remaining_percent'], 75)
         self.assertEqual(first['quota']['windows'][0]['duration_minutes'], 300)
         self.service.manager.refresh.return_value = {'logged_in':True, 'windows':[], 'error_code':'quota_unavailable'}
-        second = self.service.refresh(self.account['id'])
+        second = self.service.refresh(self.account['id'], force=True)
         self.assertEqual(second['quota']['windows'], first['quota']['windows'])
         self.assertEqual(second['quota']['status'], 'stale')
 
@@ -75,6 +77,48 @@ class AccountServiceTests(unittest.TestCase):
         self.assertEqual(result['status'], 'disabled')
         self.assertEqual(result['identity'], {})
         self.assertEqual(result['quota'], {})
+
+    def test_concurrent_refreshes_share_one_native_read(self):
+        self.store.complete_account_login(self.account['id'])
+        started, release = threading.Event(), threading.Event()
+        def read(_):
+            started.set(); release.wait(3)
+            return {'logged_in': True, 'windows': [{'name': 'primary', 'used_percent': 10, 'duration_mins': 300}]}
+        self.service.manager.refresh.side_effect = read
+        with ThreadPoolExecutor(2) as pool:
+            first = pool.submit(self.service.refresh, self.account['id'])
+            self.assertTrue(started.wait(1))
+            second = pool.submit(self.service.refresh, self.account['id'])
+            release.set()
+            self.assertEqual(first.result()['quota']['windows'], second.result()['quota']['windows'])
+        self.service.manager.refresh.assert_called_once()
+
+    def test_rate_limit_preserves_last_good_data_and_manual_refresh_respects_retry(self):
+        self.store.complete_account_login(self.account['id'])
+        self.store.set_account_identity(self.account['id'], {'email': 'keep@example.test'})
+        self.store.set_account_quota(self.account['id'], {'status': 'ok', 'fetched_at': '2026-09-01T00:00:00+00:00',
+            'windows': [{'name': 'primary', 'remaining_percent': 60}]})
+        self.service.manager.refresh.return_value = {'windows': [], 'error_code': 'rate_limited', 'retry_after': 120}
+        value = self.service.refresh(self.account['id'])
+        self.assertEqual(value['quota']['status'], 'stale')
+        self.assertEqual(value['quota']['fetched_at'], '2026-09-01T00:00:00+00:00')
+        self.assertEqual(value['identity']['email'], 'keep@example.test')
+        self.service.refresh(self.account['id'], force=True)
+        self.service.manager.refresh.assert_called_once()
+
+    def test_native_endpoints_require_execution_and_do_not_route_to_ssh(self):
+        self.service.native = Mock()
+        self.api.execution_enabled = False
+        path = '/api/accounts/' + self.account['id'] + '/native'
+        self.assertEqual(self.call('GET', path)[0], 403)
+        self.assertEqual(self.call('POST', path, {'operation': 'switch', 'client': 'codex'})[0], 403)
+        self.service.native.switch.assert_not_called()
+        self.api.execution_enabled = True
+        device = self.store.add_environment('Remote', 'fixture-box')
+        remote = self.store.add_account('codex', 'Remote', device['id'])
+        self.assertEqual(self.call('POST', '/api/accounts/' + remote['id'] + '/native',
+                                  {'operation': 'capture', 'client': 'codex'})[0], 409)
+        self.runtime.remote.rpc.assert_not_called()
 
     def test_refresh_failure_does_not_expire_newer_login_generation(self):
         self.store.complete_account_login(self.account['id'])

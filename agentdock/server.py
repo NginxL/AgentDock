@@ -105,6 +105,9 @@ class API:
                 return 200, {'accounts': account_usage(self.store,self.store.accounts())}
             if method=='GET' and len(parts)==4 and parts[:2]==['api','accounts'] and parts[3]=='login':
                 return 200, self.runtime.accounts.login_status(parts[2])
+            if method=='GET' and len(parts)==4 and parts[:2]==['api','accounts'] and parts[3]=='native':
+                if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                return 200, self.runtime.accounts.native_status(parts[2])
             if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
                 query=parse_qs(parsed.query)
                 environment_id=query.get('environment_id',['local'])[0]
@@ -159,10 +162,11 @@ class API:
                 account_id=parts[2]
                 if parts[3]=='login': result=self.runtime.accounts.start_login(account_id,p.get('method'))
                 elif parts[3]=='check': result=self.runtime.accounts.check(account_id)
-                elif parts[3]=='refresh': result=self.runtime.accounts.refresh(account_id)
+                elif parts[3]=='refresh': result=self.runtime.accounts.refresh(account_id, force=True)
                 elif parts[3]=='cancel': result=self.runtime.accounts.cancel(account_id)
                 elif parts[3]=='input': result=self.runtime.accounts.submit(account_id,p.get('code'))
                 elif parts[3]=='delete': result=self.runtime.accounts.remove(account_id)
+                elif parts[3]=='native': result=self.runtime.accounts.native_action(account_id,p.get('operation'),p.get('client'))
                 else: raise Missing('Route not found')
             elif parsed.path=="/api/environments": result=self.store.add_environment(p.get('name'),p.get('ssh_host'),p.get('python','python3'))
             elif len(parts)==4 and parts[:2]==['api','environments']:

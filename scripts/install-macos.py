@@ -73,9 +73,10 @@ def main():
             info = {
                 "CFBundleExecutable": "AgentDock", "CFBundleIdentifier": "io.github.nginxl.AgentDock",
                 "CFBundleName": "AgentDock", "CFBundleDisplayName": "AgentDock", "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "34", "LSMinimumSystemVersion": "14.0",
+                "CFBundleShortVersionString": "0.3.0", "CFBundleVersion": "35", "LSMinimumSystemVersion": "14.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
                 "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
+                "NSAppleEventsUsageDescription": "AgentDock quits and reopens a native client only when you choose to save, switch or recover its account login.",
                 "NSHumanReadableCopyright": "Copyright © 2026 NginxL. MIT License.",
             }
             (contents / "Info.plist").write_bytes(plistlib.dumps(info))

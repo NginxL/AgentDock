@@ -21,7 +21,7 @@ export const supportsAccounts = (provider: Provider) =>
 export function accountStatus(account: Account, t: Translate) {
   const labels = {
     pending: ["待登录", "Not signed in"],
-    ready: ["可用", "Ready"],
+    ready: ["已登录", "Signed in"],
     expired: ["需重新登录", "Sign in again"],
     cooldown: ["等待额度恢复", "Waiting for quota"],
     disabled: ["已停用", "Disabled"],

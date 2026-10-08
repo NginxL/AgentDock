@@ -27,6 +27,7 @@ import threading
 import time
 from urllib.parse import urlsplit, parse_qs
 import uuid
+from .account_network import NETWORK_ENV as _NETWORK_ENV, claude_network, claude_get, NetworkError
 
 
 class AccountError(ValueError):
@@ -38,8 +39,6 @@ _PUBLIC_JOB = ('id', 'status', 'method', 'url', 'device_code', 'error_code', 'cr
 _AUTH_HOSTS = {'auth.openai.com', 'chatgpt.com', 'claude.ai', 'console.anthropic.com', 'platform.claude.com'}
 _CREDENTIALS = {'codex': ('auth.json',), 'claude': ('.credentials.json',)}
 _MAX_FILE = 1024 * 1024
-_NETWORK_ENV = {'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy',
-                'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR'}
 
 
 def _identity(value):
@@ -158,23 +157,12 @@ class AccountManager:
         environment = dict(os.environ if base_env is None else base_env)
         environment.pop('AGENTDOCK_ACCOUNT_LOCK_FD', None)
         if profile['provider'] == 'claude':
-            source = Path(environment.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')
-            # Only explicit network fields are inherited. Never copy a native
-            # settings document, apiKeyHelper, endpoint, API key, or auth file.
-            for name in ('settings.json', 'settings.local.json'):
-                try:
-                    settings = _read(source / name, {})
-                    inherited = settings.get('env', {}) if isinstance(settings, dict) else {}
-                    if isinstance(inherited, dict):
-                        for key in _NETWORK_ENV:
-                            value = inherited.get(key)
-                            if key not in environment and isinstance(value, str) and '\x00' not in value:
-                                environment[key] = value
-                except (OSError, AccountError): pass
+            from .registry import commands
+            environment.update(claude_network(environment, commands(self.commands_config).get('claude', ())))
         # Proxy variables deliberately survive. Endpoint/key overrides must not
         # send a subscription credential to a previously configured Relay.
         for key in list(environment):
-            if (key.startswith(('OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_', 'CLAUDECODE'))
+            if key not in _NETWORK_ENV and (key.startswith(('OPENAI_', 'ANTHROPIC_', 'CODEX_', 'CLAUDE_', 'CLAUDECODE'))
                     or key in ('AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT')):
                 environment.pop(key, None)
         environment['AGENTDOCK_ACCOUNT_HOME'] = str(native)
@@ -462,7 +450,25 @@ class AccountManager:
             result.update(provider=account['provider'], fetched_at=_now(), windows=[])
             if not result['logged_in']: return result
             if account['provider'] != 'codex':
-                return dict(result, error_code='quota_unavailable')
+                from .account_keychain import claude_credentials, KeychainError
+                from .registry import commands
+                try:
+                    network = claude_network(os.environ, commands(self.commands_config).get('claude', ()), strict=True)
+                    credentials = claude_credentials(self.environment(account))
+                    token = credentials.get('claudeAiOauth', {}).get('accessToken')
+                    if not isinstance(token, str) or not token: return dict(result, error_code='quota_unavailable')
+                    raw = claude_get('usage', token, network)
+                    for key, name, minutes in (('five_hour', 'session', 300), ('seven_day', 'weekly', 10080),
+                                               ('seven_day_sonnet', 'weekly_sonnet', 10080), ('seven_day_opus', 'weekly_opus', 10080)):
+                        window = raw.get(key)
+                        if isinstance(window, dict) and _number(window.get('utilization'), 0, 100) is not None:
+                            result['windows'].append({'name': name, 'used_percent': window['utilization'],
+                                                      'duration_mins': minutes, 'resets_at': window.get('resets_at')})
+                    return result
+                except NetworkError as error:
+                    return dict(result, error_code=error.code, retry_after=error.retry_after)
+                except (KeychainError, OSError, ValueError, AttributeError):
+                    return dict(result, error_code='quota_unavailable')
             raw = self._codex(account, 'account/rateLimits/read', {})
             buckets = raw.get('rateLimitsByLimitId')
             rate = raw.get('rateLimits', {})

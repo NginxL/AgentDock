@@ -89,6 +89,7 @@ class AccountStoreTests(unittest.TestCase):
         run_two = self.store.enqueue_run(two['id'], 'Two')
         self.assertNotEqual(run_one['account_id'], run_two['account_id'])
         self.store.set_account_quota(first['id'], {'windows': [{'used_percent': 90}]})
+        self.store.set_account_quota(second['id'], {'windows': [{'used_percent': 50}]})
         third = self.session(policy='auto')
         self.assertEqual(self.store.enqueue_run(third['id'], 'Three')['account_id'], second['id'])
         self.store.update_account(first['id'], {'priority': 10})
@@ -101,6 +102,18 @@ class AccountStoreTests(unittest.TestCase):
         run = self.store.enqueue_run(session['id'], 'Select')
         self.assertEqual(run['account_id'], second['id'])
         self.assertNotEqual(run['account_id'], outside['id'])
+
+    def test_unknown_and_stale_quota_are_not_ranked_as_full(self):
+        unknown, known = self.account('Unknown'), self.account('Known')
+        self.store.set_account_quota(known['id'], {'status': 'ok', 'windows': [{'remaining_percent': 5}]})
+        self.assertIsNone(self.store._account_remaining(unknown))
+        selected = self.store._choose_account('codex', 'local', {'account_policy': 'auto', 'account_id': None, 'account_ids': []})
+        self.assertEqual(selected['id'], known['id'])
+        stale = self.store.set_account_quota(unknown['id'], {'status': 'stale', 'windows': [{'remaining_percent': 99}]})
+        self.assertIsNone(self.store._account_remaining(stale))
+        self.assertTrue(self.store._account_available(stale))
+        exhausted = self.store.set_account_quota(unknown['id'], {'status': 'stale', 'windows': [{'remaining_percent': 0, 'reset_at': self.future()}]})
+        self.assertFalse(self.store._account_available(exhausted))
 
     def test_concurrent_reservation_is_idempotent_and_generation_fixed(self):
         account = self.account()

@@ -294,7 +294,9 @@ except AccountError: print('busy')
         self.assertNotIn('must-not-leak',json.dumps(result))
 
     def test_claude_status_quota_unknown_does_not_guess(self):
-        result=self.manager.refresh(self.claude)
+        with patch('agentdock.accounts.claude_network', return_value={}), \
+             patch('agentdock.account_keychain.claude_credentials', return_value={}):
+            result=self.manager.refresh(self.claude)
         self.assertEqual(result['status'],'ready')
         self.assertEqual(result['error_code'],'quota_unavailable')
         self.assertEqual(result['windows'],[])
@@ -396,6 +398,17 @@ except AccountError: print('busy')
                 self.manager.remove(dict(self.claude, generation=1))
             command.assert_called_once()
         self.assertTrue((self.manager.root/self.claude['id']).exists())
+
+    def test_claude_quota_reads_own_oauth_and_reports_actual_windows(self):
+        self.manager.environment(self.claude, {})
+        with patch('agentdock.accounts.claude_network', return_value={'HTTPS_PROXY': 'http://existing-proxy'}), \
+             patch('agentdock.account_keychain.claude_credentials', return_value={'claudeAiOauth': {'accessToken': 'private'}}), \
+             patch('agentdock.accounts.claude_get', return_value={'five_hour': {'utilization': 15, 'resets_at': '2030-01-01T00:00:00Z'},
+                 'seven_day': {'utilization': 40}, 'seven_day_sonnet': {'utilization': None}}) as query:
+            value = self.manager.refresh(self.claude)
+        self.assertEqual([w['duration_mins'] for w in value['windows']], [300, 10080])
+        query.assert_called_once_with('usage', 'private', {'HTTPS_PROXY': 'http://existing-proxy'})
+        self.assertNotIn('private', json.dumps(value))
 
     def test_failed_native_logout_retains_account_and_safe_error(self):
         own=Path(self.manager.environment(self.claude,{})['CLAUDE_CONFIG_DIR'])

@@ -115,7 +115,7 @@ python3 -m agentdock --config config.local.json --enable-execution
 
 服务菜单包含 **Codex、Claude Code、Trae CLI、Pi、Cursor CLI、Antigravity、Grok Build、OpenCode、Gemini CLI、Qwen Code**，使用随应用打包的图标，并按所选设备检测可用性。缺少 CLI 或适配器的条目不可选；Pi 需要 `pi-acp` 和明确选择完全访问，Antigravity 需要 ACP 服务程序。[接入与兼容性](docs/PROVIDERS.zh-CN.md)说明认证、续聊、MCP 及用量边界。
 
-**多个订阅账号：**进入 **账号 → 添加账号**，选择服务和设备，由用户完成官方 CLI 登录。在 **添加 Agent／Agent 设置**、创建会话时或空闲会话的账号控件中选择账号。托管登录使用独立存储，不替换桌面版或终端登录。已知恢复时间可以等待；自动切换仅限明确的执行前拒绝，每次运行最多尝试 3 个不同账号。Claude 未报告额度时保持未知。详见[账号配置、策略与隔离](docs/ACCOUNTS.zh-CN.md)。
+**多个订阅账号：**进入 **账号 → 添加账号**，选择服务和设备并完成官方 CLI 授权。AgentDock 会话的登录与历史保持独立。Codex、Claude 分别读取自己账号的额度，Claude 沿用现有 CLI 网络设置。**本机客户端**另提供 Codex CLI／macOS、Claude Code CLI 和 Claude macOS 的显式保存、切换及恢复入口；首次各自登记原生登录，真实换号待用户验收。不新增或修改代理配置。详见[账号配置、换号与隔离](docs/ACCOUNTS.zh-CN.md)。
 
 名称仍由用户定义，不自动附加设备标签。两个 Agent 可以使用相同的服务与名称；各自会话仍按独立标识管理。同一连接可被多个 Agent 复用；沿用设备登录的额度卡片合并展示其名称，托管订阅额度按账号展示。目前官方额度读取及实测 Token/TPS 覆盖 Codex、Claude；ACP 上下文占用不计入 Token 消耗。
 
@@ -220,7 +220,7 @@ sequenceDiagram
 
 当前版本管理**由 AgentDock 创建的本机和 SSH 会话**，尚未接入已有桌面或终端会话及多用户访问。“需要确认”模式下，提供方权限请求会显示在界面中；工作台本身不提供操作系统沙箱。凭据保留在所选设备上，每次执行的 MCP 令牌会过期，并在执行结束后撤销。
 
-远端 Token 统计来自 AgentDock 托管任务的用量事件，不扫描远端其他历史会话。设备登录的额度与订阅记录按环境和提供方分开保存；托管订阅的额度与实测 Token 按账号展示。远端 Codex 查询自己的 App Server；Claude 订阅限额使用原生运行中的可用报告，未报告时保持未知，不使用其他设备的快照代替。
+远端 Token 统计来自 AgentDock 托管任务的用量事件，不扫描其他历史。设备登录额度和账单按环境／提供方区分，托管订阅额度和实测 Token 按账号展示。远端 Codex 查询自己的 App Server；托管 Claude 查询自己的 OAuth 额度，沿用设备登录时使用原生报告。没有读数时保持未知，不使用其他设备的快照代替。
 
 从 0.1 升级时，需要将 ACP 命令改为上述原生命令。历史消息保留为旧版记录，不会自动派发。尚无原生绑定的会话会建立新的提供方会话，旧存储文本不会被静默重放为原生历史。
 

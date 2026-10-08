@@ -1,6 +1,6 @@
 """Account control plane: public metadata stays here, credentials stay on their device."""
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import threading
 import time
 
@@ -27,10 +27,14 @@ class AccountService:
     def __init__(self, store, runtime):
         self.store, self.runtime = store, runtime
         self.manager = AccountManager(store.workspaces.parent / 'accounts', runtime.config.get('commands', {}))
+        from .native_accounts import NativeAccounts
+        self.native = NativeAccounts(self.manager)
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = None
-        self._last_refresh = {}
+        self._refreshing = {}
+        self._refresh_after = {}
+        self._failures = {}
 
     def _enabled(self):
         if not self.runtime.enabled or self._stop.is_set():
@@ -61,7 +65,7 @@ class AccountService:
                 if self._stop.is_set(): return
                 try:
                     if account['status'] == 'pending': self.login_status(account['id'])
-                    elif account['status'] in ('ready', 'cooldown') and time.monotonic() - self._last_refresh.get(account['id'], 0) >= 600:
+                    elif account['status'] in ('ready', 'cooldown') and time.monotonic() >= self._refresh_after.get(account['id'], 0):
                         self.refresh(account['id'])
                 except Exception:
                     # Login/transport diagnostics are intentionally not logged.
@@ -97,7 +101,7 @@ class AccountService:
                 if self._unchanged(account, current) and current['status'] == 'pending':
                     self.check(identifier)
                     if self.store.get_account(identifier)['status'] == 'ready':
-                        self._last_refresh.pop(identifier, None)
+                        self._refresh_after.pop(identifier, None)
                         self.runtime._wake.set()
         elif job.get('status') in ('failed', 'cancelled'):
             with self._lock, self.store.lock:
@@ -131,6 +135,8 @@ class AccountService:
                     self.store.set_account_identity(identifier, {'email': value.get('email'), 'plan': value.get('plan')})
                 if current['generation'] == 0 or current['status'] in ('pending', 'expired'):
                     self.store.complete_account_login(identifier)
+                    self._refresh_after.pop(identifier, None)
+                    self._failures.pop(identifier, None)
                 elif current['status'] != 'cooldown': self.store.set_account_status(identifier, 'ready')
             else: self.store.set_account_status(identifier, 'expired', error='login_required')
         return value
@@ -154,10 +160,33 @@ class AccountService:
         return {'windows': windows, 'status': 'ok' if windows else 'unknown',
                 'fetched_at': value.get('fetched_at') or datetime.now(timezone.utc).isoformat()}
 
-    def refresh(self, identifier):
+    def refresh(self, identifier, force=False):
+        """Coalesce simultaneous readers and respect vendor retry times."""
+        with self._lock:
+            now = time.monotonic()
+            current = self.store.get_account(identifier)
+            retry = current['quota'].get('retry_at')
+            if retry and datetime.fromisoformat(retry) > datetime.now(timezone.utc): return current
+            if not force and now < self._refresh_after.get(identifier, 0): return current
+            pending = self._refreshing.get(identifier)
+            owner = pending is None
+            if owner:
+                pending = self._refreshing[identifier] = threading.Event()
+        if not owner:
+            if not pending.wait(30): raise AccountError('Quota refresh is still running. Try again shortly.')
+            return self.store.get_account(identifier)
+        try: return self._refresh(identifier)
+        finally:
+            with self._lock:
+                self._refreshing.pop(identifier, None)
+                pending.set()
+
+    def _refresh(self, identifier):
         account = self.store.get_account(identifier)
-        self._last_refresh[identifier] = time.monotonic()
-        value = self._call(account, 'refresh')
+        self._enabled()
+        try: value = self._call(account, 'refresh')
+        except (AccountError, OSError, TimeoutError):
+            value = {'windows': [], 'error_code': 'quota_unavailable'}
         with self._lock, self.store.lock:
             current = self.store.get_account(identifier)
             if not self._unchanged(account, current) or current['status'] in ('disabled', 'removed'):
@@ -166,16 +195,26 @@ class AccountService:
                 return self.store.set_account_status(identifier, 'expired', error='login_required')
             quota = self._quota(value)
             if not quota['windows'] and current['quota'].get('windows'):
-                # Some Claude versions only report subscription limits during a
-                # normal turn. Keep that observation rather than invent a reading.
                 quota = {**current['quota'], 'status': 'stale'}
-            if hasattr(self.store, 'set_account_identity'):
+            error = value.get('error_code') or (None if quota['status'] == 'ok' else 'quota_unavailable')
+            quota['checked_at'] = datetime.now(timezone.utc).isoformat()
+            if error:
+                self._failures[identifier] = min(6, self._failures.get(identifier, 0) + 1)
+                seconds = max(60 * 2 ** (self._failures[identifier] - 1), value.get('retry_after', 0))
+                quota.update(error_code=error, retry_at=(datetime.now(timezone.utc) + timedelta(seconds=min(86400, seconds))).isoformat())
+                if not quota['windows']: quota['status'] = 'error'
+            else:
+                self._failures.pop(identifier, None)
+                seconds = 600
+            self._refresh_after[identifier] = time.monotonic() + seconds
+            if hasattr(self.store, 'set_account_identity') and value.get('email'):
                 self.store.set_account_identity(identifier, {'email': value.get('email'), 'plan': value.get('plan')})
             result = self.store.set_account_quota(identifier, quota)
-            resets = [w.get('reset_at') for w in quota['windows'] if w['remaining_percent'] <= 0 and w.get('reset_at')]
+            resets = [w.get('reset_at') for w in quota['windows'] if w['remaining_percent'] <= 0 and w.get('reset_at')
+                      and w.get('name') not in ('weekly_sonnet', 'weekly_opus')]
             if resets and current['status'] in ('ready', 'cooldown'):
                 result = self.store.set_account_status(identifier, 'cooldown', cooldown_until=max(resets))
-            elif quota['windows'] and current['status'] == 'cooldown':
+            elif quota['status'] == 'ok' and quota['windows'] and current['status'] == 'cooldown':
                 result = self.store.set_account_status(identifier, 'ready')
             return result
 
@@ -183,7 +222,27 @@ class AccountService:
         self._enabled()
         with self._lock:
             account = self.store.get_account(identifier)
-            return self.store.remove_account(identifier, cleanup=lambda _: self._call(account, 'remove'))
+            def cleanup(_):
+                if account['environment_id'] == 'local':
+                    with self.native.removing(account): self._call(account, 'remove')
+                else: self._call(account, 'remove')
+            return self.store.remove_account(identifier, cleanup=cleanup)
+
+    def native_status(self, identifier):
+        self._enabled()
+        return self.native.status(self.store.get_account(identifier))
+
+    def native_action(self, identifier, operation, client):
+        self._enabled()
+        if operation not in ('capture', 'switch', 'recover'): raise Invalid('Invalid native account operation')
+        with self._lock:
+            account = self.store.get_account(identifier)
+            if account['environment_id'] != 'local' or account['status'] in ('disabled', 'removed'):
+                raise Conflict('Choose an enabled local account')
+            with self.manager.lease(account, timeout=0):
+                # Account task credentials and native credentials never overlap;
+                # the lease prevents deletion/re-login of the selected card.
+                return getattr(self.native, operation)(account, client)
 
     @contextmanager
     def credentials(self, account, session_home, stop):

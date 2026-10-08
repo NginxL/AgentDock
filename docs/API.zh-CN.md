@@ -81,6 +81,8 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `POST /api/accounts/{id}/check` | 空对象；检查原生登录，返回白名单登录元信息。新登录或恢复登录成功后递增 `generation`。 |
 | `POST /api/accounts/{id}/refresh` | 空对象；刷新原生登录与额度元信息，不发送模型提示词，返回账号记录。 |
 | `POST /api/accounts/{id}/delete` | 空对象；有排队或执行任务使用此账号时拒绝。清理设备上的托管登录后保留 `removed` 历史标记；清理失败可重试。已有会话保留。 |
+| `GET /api/accounts/{id}/native` | 仅读取已保存的本机客户端元数据；要求启用执行。不读取当前原生凭据。 |
+| `POST /api/accounts/{id}/native` | `operation` 为 `capture`、`switch` 或 `recover`；`client` 为匹配账号服务的 `codex`、`claude_code` 或 `claude_desktop`。仅本机 macOS。明确退出／重开相关桌面应用，仍有 CLI 运行时拒绝。先保存原生登录并核对邮箱，再切换。仅返回公开状态，不返回凭据。 |
 
 所有带账号操作后缀的 POST 接口要求启用执行。元数据接口不接受凭据、任意 CLI 命令、额度读数或登录版本更新。公开登录任务只允许 `id`、`status`、`method`、`url`、`device_code`、`error_code`、`created_at`、`updated_at`；CLI 尚未提供的字段可以缺省。官方授权由用户完成；排队或执行中的任务已固定登录时，不允许替换凭据。
 
@@ -93,7 +95,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `quota`、`cooldown_until` | 标准化快照与已知重试时间。`quota` 含 `status`、可选 `fetched_at`、`windows`；窗口可含 `name`、`used_percent`、`remaining_percent`、`duration_minutes`／`window_minutes`、`resets_at`／`reset_at`，未知值缺省。 |
 | `usage`、时间戳 | 此账号保留的原生会话分支所产生的 `input_tokens`、`output_tokens`、`total_tokens` 只读总和；`created_at`、`updated_at`。删除会话也会移除对应统计记录。 |
 
-Codex 从账号专属 App Server 读取额度；Claude 使用兼容 CLI 在正常任务中报告的额度事件，未报告时显示未知，旧记录刷新后没有新样本则标为过期。未知不等于不限量。这些读数与 `/api/quotas` 的设备快照、`/api/subscriptions` 人工记录的续费日期和费用分开。启用执行后，服务在后台检查待登录任务，并定期刷新可用／冷却账号。
+Codex 从账号专属 App Server 读取额度；托管 Claude 账号沿用现有 CLI 网络设置查询 OAuth 额度接口，不发送模型提示词、不自行续期令牌。查询失败保留最后成功样本并标记过期，更新 checked_at、error_code 与 retry_at。并发读取合并，正常刷新间隔为 10 分钟；失败退避和服务端 Retry-After 同样约束手动刷新。未知／过期不按满额处理，设备登录和人工账单记录保持独立。
 
 Agent 和会话可接受 `account_id`（可空）、`account_policy`（默认 `manual`，另有 `auto`、`failover`）以及 `account_ids`（有序、不重复的账号池，默认 `[]`，最多 100 项）。所有引用必须与服务／设备一致，已删除账号不可选。固定账号策略不能包含账号池；非空池必须包含所选默认账号。
 

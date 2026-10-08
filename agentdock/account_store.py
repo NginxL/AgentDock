@@ -171,6 +171,10 @@ class AccountStore:
         if not isinstance(quota, dict): raise Invalid('Invalid account quota')
         output = {}
         if 'fetched_at' in quota: output['fetched_at'] = self._account_date(quota['fetched_at'])
+        for key in ('checked_at', 'retry_at'):
+            if key in quota: output[key] = self._account_date(quota[key])
+        if quota.get('error_code') in ('auth_expired', 'rate_limited', 'quota_unavailable', 'network_unavailable', 'network_configuration_unavailable'):
+            output['error_code'] = quota['error_code']
         if 'status' in quota:
             if quota['status'] not in ('ok', 'ready', 'unknown', 'stale', 'error', 'exhausted'): raise Invalid('Invalid quota status')
             output['status'] = quota['status']
@@ -190,7 +194,7 @@ class AccountStore:
             for key in ('resets_at', 'reset_at'):
                 if key in window: clean[key] = self._account_date(window[key])
             # Native text and arbitrary metadata can contain credentials; never persist them.
-            if 'name' in window and window['name'] in ('primary', 'secondary', 'session', 'weekly', 'daily'):
+            if 'name' in window and window['name'] in ('primary', 'secondary', 'session', 'weekly', 'daily', 'weekly_sonnet', 'weekly_opus'):
                 clean['name'] = window['name']
             output['windows'].append(clean)
         return output
@@ -256,17 +260,26 @@ class AccountStore:
     def _account_remaining(self, account):
         remaining = []
         for window in account['quota'].get('windows', []):
+            if window.get('name') in ('weekly_sonnet', 'weekly_opus'): continue
             reset = self._account_window_reset(account, window)
             if reset and datetime.fromisoformat(reset) <= datetime.now(timezone.utc): continue
             if 'remaining_percent' in window: remaining.append(window['remaining_percent'])
             elif 'used_percent' in window: remaining.append(100 - window['used_percent'])
-        return min(remaining) if remaining else 100
+        value = min(remaining) if remaining else None
+        fetched = account['quota'].get('fetched_at')
+        old = fetched and (datetime.now(timezone.utc) - datetime.fromisoformat(fetched)).total_seconds() > 900
+        # Failed/stale readings are not evidence of capacity. Still respect a
+        # known exhausted limit until its reset, even when refresh is offline.
+        if value is not None and value > 0 and (old or account['quota'].get('status') in ('stale', 'error', 'unknown')):
+            return None
+        return value
 
     def _account_available(self, account):
         if account['status'] not in ('ready', 'cooldown') or account['generation'] < 1: return False
         if account['status'] == 'cooldown':
             if not account['cooldown_until'] or datetime.fromisoformat(account['cooldown_until']) > datetime.now(timezone.utc): return False
-        return self._account_remaining(account) > 0
+        remaining = self._account_remaining(account)
+        return remaining is None or remaining > 0
 
     def _choose_account(self, provider, environment_id, settings, excluded=()):
         from .store import Conflict
@@ -281,7 +294,8 @@ class AccountStore:
         # Preserve a healthy conversation identity. Rank new choices by explicit pool,
         # priority, remaining quota, then least recent use for equally healthy accounts.
         candidates.sort(key=lambda a: (a['id'] != chosen, pool.index(a['id']) if pool else 0,
-                                       -a['priority'], -self._account_remaining(a), a['last_used_at'] or '', a['id']))
+                                       -a['priority'], -(self._account_remaining(a) if self._account_remaining(a) is not None else -1),
+                                       a['last_used_at'] or '', a['id']))
         if not candidates: raise Conflict('No ready account is available for this service and device')
         return candidates[0]
 

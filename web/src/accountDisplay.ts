@@ -44,6 +44,14 @@ export function accountError(code: string | null | undefined, t: Translate) {
       "当前无法读取订阅额度。",
       "Subscription quota is currently unavailable.",
     ],
+    network_unavailable: [
+      "无法通过现有网络配置读取额度，请检查代理连接。",
+      "Cannot read quota through the existing network configuration. Check the proxy connection.",
+    ],
+    network_configuration_unavailable: [
+      "无法确认 CLI 的网络配置，额度查询已停止；现有 CLI 不受影响。",
+      "Could not establish the CLI network configuration. Quota queries are stopped; the existing CLI is unaffected.",
+    ],
   };
   const label = labels[code];
   return label
@@ -75,4 +83,33 @@ export function resetCountdown(value: string, now: number, t: Translate) {
     .filter(Boolean)
     .join(" ");
   return t(`${duration}后恢复`, `Resets in ${duration}`);
+}
+
+export function quotaWindow(
+  window: { name?: string; label?: string; duration_minutes?: number },
+  t: Translate,
+) {
+  if (window.name === "weekly_sonnet")
+    return t("Sonnet · 7 天额度", "Sonnet · 7-day limit");
+  if (window.name === "weekly_opus")
+    return t("Opus · 7 天额度", "Opus · 7-day limit");
+  const minutes = window.duration_minutes;
+  if (minutes && minutes > 0) {
+    if (minutes % 1440 === 0)
+      return t(`${minutes / 1440} 天额度`, `${minutes / 1440}-day limit`);
+    if (minutes % 60 === 0)
+      return t(`${minutes / 60} 小时额度`, `${minutes / 60}-hour limit`);
+    return t(`${minutes} 分钟额度`, `${minutes}-minute limit`);
+  }
+  return (
+    window.label ??
+    (
+      {
+        session: t("5 小时额度", "5-hour limit"),
+        weekly: t("7 天额度", "7-day limit"),
+        daily: t("每日额度", "Daily limit"),
+      } as Record<string, string>
+    )[window.name ?? ""] ??
+    t("周期额度", "Usage limit")
+  );
 }
