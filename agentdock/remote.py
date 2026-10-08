@@ -175,7 +175,7 @@ class RemoteManager:
                     self._model_cache[key] = (time.monotonic(), value)
             return value
 
-    def run(self, environment_id, run_id, spec, stop, emit, bind, approve, tool):
+    def run(self, environment_id, run_id, spec, stop, emit, bind, approve, tool, control=None):
         identity = {'controller': self.store.controller_id, 'run_id': run_id}
         cursor, disconnected = 0, None
         pending, completed = {}, {}
@@ -201,6 +201,9 @@ class RemoteManager:
                     if not started:
                         call({'op': 'start', 'spec': spec})
                         started = True
+                    if control:
+                        for item in control.take():
+                            call({'op':'steer','input':item})
                     if self.streaming:
                         if subscription is None:
                             subscription = self._watch(environment_id, {**identity, 'after': cursor}, stop)

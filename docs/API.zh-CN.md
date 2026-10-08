@@ -175,6 +175,26 @@ Agent 间委派必须等接收方的逻辑任务结算后，才向**确切的原
 
 `idempotency_key` 按项目与发送者划分作用域。使用相同键重试相同任务会返回原投递记录；改变接收者、正文、关联标识、发送方运行或会话，或显式指定不同目标会话，会返回冲突。它用于同一次发送运行中的重试去重，不用于合并无关任务。
 
+## 项目任务
+
+详见[任务流程与保留规则](TASKS.zh-CN.md)。这些接口要求管理员令牌。`GET /api/state` 增加 `tasks` 和未回答的 `task_questions`；原会话、派工接口保持兼容。
+
+| 接口 | 参数 / 结果 |
+| --- | --- |
+| `POST /api/tasks` | `project_id`, `title`, `goal`, `criteria`（每行一项）, `owner_id`；可选 `acceptance_policy: owner/human`、`review_required`、`workspace_mode: shared/worktree`、`source_session_id`。只保存任务。 |
+| `GET /api/tasks/{id}` | 任务及 inputs、questions、deliveries、reviews、journal、runs、sessions、workspaces；`can_steer_run_id` 表示可即时调整的活动轮次。 |
+| `POST /api/tasks/{id}/inputs` | `body`, `intent: record/discuss/develop`, `request_id`；可选 `action: queue/steer`、`expected_run_id`（steer 必填）。相同请求标识与内容幂等，改变内容返回冲突。仅 record 无需启用执行。 |
+| `POST /api/tasks/{id}/questions/{question_id}/answer` | `answer`。相同答案重试幂等；不能修改已确认答案。保存后按任务状态决定是否继续负责人。 |
+| `POST /api/tasks/{id}/settings` | `title`, `goal`, `criteria`, `acceptance_policy`, `review_required`。等待执行结束或暂停后编辑；修改使旧交付失效。 |
+| `POST /api/tasks/{id}/pause`、`cancel` | 空对象；停止整个任务的活动及排队运行。 |
+| `POST /api/tasks/{id}/resume` | 可选 `owner_id`、`intent: develop/discuss`、用于恢复去重的 `request_id`；先核对旧执行停止，再创建新原生会话继续。 |
+| `POST /api/tasks/{id}/accept` | 空对象；所有验收条件成立后完成。 |
+| `POST /api/tasks/{id}/reopen`、`archive` | 空对象；只接受已完成或已取消且执行已结束的任务。 |
+
+任务状态为 `draft/active/waiting_input/review/completed/paused/interrupted/cancelled/archived`。`review` 表示执行已结束、尚未验收，也可能尚无正式交付；接口仍验证全部验收条件。任务、输入、问题与报告跨会话持久化。`work_task_id` 与现有派工链的 `task_run_id` 是不同标识。
+
+即时调整使用 Codex `turn/steer` 与 `expectedTurnId`；`accepted/rejected/unknown` 区分回执，最终运行结束后已接收的输入成为 `processed`。未知回执不重试，不会偷偷转入队列。只有选中任务及角色匹配的活动能力令牌才能读取任务上下文或写入问题/报告。
+
 ## MCP 工具
 
 `python3 -m agentdock.mcp` 通过标准输入与标准输出传输以换行分隔的 JSON-RPC 消息，实现 `initialize`、`ping`、`tools/list` 和 `tools/call`，通知消息不返回响应。支持协议版本 `2025-11-25`、`2025-06-18`、`2025-03-26` 和 `2024-11-05`。
@@ -184,10 +204,16 @@ Agent 间委派必须等接收方的逻辑任务结算后，才向**确切的原
 | 工具 | 参数 | 作用 |
 | --- | --- | --- |
 | `agent_list` | 无 | 列出当前项目中的 Agent，包含调用者；不会启动它们。 |
-| `message_send` | `recipient_id`、`body`；可选 `recipient_session_id`、`correlation_id`、`idempotency_key` | 创建可执行投递，返回其标识与状态；接收方满足执行条件后运行，结果会触发发送方会话继续处理。 |
+| `message_send` | `recipient_id`、`body`；可选 `recipient_session_id`、`correlation_id`、`idempotency_key`、`task_role: worker/reviewer` | 创建可执行投递，返回其标识与状态；接收方满足执行条件后运行，结果会触发发送方会话继续处理。 |
 | `task_status` | `message_id` | 查看当前项目内调用者发送或接收的投递状态与结果；返回快照，不阻塞等待。 |
 | `memory_search` | 可选 `query` | 按字面关键词检索，最多返回 20 条已批准、未归档的项目记忆。 |
 | `memory_propose` | `key`、`content`、`expected_version` | 创建待人工审核的提议，不能直接覆盖已批准记忆。 |
+| `task_context` | 无 | 当前任务的有界摘要、目标、要求、输入、问题、结果与工作区。 |
+| `task_history` | 可选 `after`, `offset` | 顺序分页读取完整持久记录；按返回的 `next_after/next_offset` 接续，直到 `record: null`。JSON 文本可跨页。 |
+| `task_result` | `run_id`，可选 `offset` | 当前任务的完整最终报告，按 `next_offset` 继续；删除执行会话后仍可从持久记录读取。 |
+| `task_ask` | `question`，可选 `options` | 保存待确认问题；之后结束当前轮次。 |
+| `task_deliver` | `summary`, `checks`，可选 `artifacts`, `risks` | 仅负责人提交；checks 每项包含 criterion、status、evidence。 |
+| `task_review` | `verdict: approved/changes_requested/unverified`, `summary` | 仅独立审查者为当前版本提交报告。 |
 
 0.2 协议不再提供旧的 `inbox_read` 和 `inbox_ack`。MCP 工具不能授予提供商执行权限；原生工具审批通过经过身份认证的工作台审批流程处理。
 

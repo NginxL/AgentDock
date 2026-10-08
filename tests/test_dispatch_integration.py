@@ -75,6 +75,25 @@ class DispatchIntegrationTests(unittest.TestCase):
         path = self.directory / 'native-transcript.jsonl'
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+    def test_project_goal_question_review_and_delivery_over_native_mcp(self):
+        runtime=self.start_runtime('project_task')
+        task=self.store.create_task(self.project['id'],'Feature','Implement JSON output','Outputs JSON',self.a['id'],review_required=True)
+        runtime.submit_task(task['id'],'Please start','develop','start-task')
+        self.wait_for(lambda: self.store.get_task(task['id'])['status']=='waiting_input' and not self.store.pending_runs())
+        detail=self.store.task_detail(task['id'])
+        self.assertIsNone(detail['delivery_id'])
+        question=detail['questions'][0]
+        runtime.answer_task(task['id'],question['id'],'JSON')
+        self.wait_for(lambda: self.store.get_task(task['id'])['status']=='completed')
+        detail=self.store.task_detail(task['id'])
+        self.assertEqual([r['task_role'] for r in detail['runs']],['owner','owner','reviewer','owner'])
+        self.assertEqual(detail['reviews'][0]['verdict'],'approved')
+        self.assertEqual(detail['deliveries'][0]['status'],'accepted')
+        self.assertEqual(detail['questions'][0]['answer'],'JSON')
+        self.assertIsNone(self.store.get_session(self.sa['id'])['native_session_id'])
+        self.assertIsNone(self.store.get_session(self.sb['id'])['native_session_id'])
+        self.assertEqual(len({r['session_id'] for r in detail['runs'] if r['task_role']=='owner'}),1)
+
     def test_codex_to_claude_to_same_codex_session_over_real_bridge(self):
         self.store.put_memory(self.project['id'], 'Project rule', 'Use the reviewed contract.', 0)
         other = self.store.add_project('Foreign project', str(self.directory))

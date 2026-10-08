@@ -122,6 +122,11 @@ class _Pipe:
                 # The native process retains the account lock if the controller
                 # dies, so a restarted controller cannot overwrite a refresh.
                 descriptors['pass_fds'] = (fd,)
+            execution_fd=native_env.pop('AGENTDOCK_EXECUTION_LOCK_FD',None)
+            if execution_fd is not None:
+                fd=int(execution_fd)
+                os.fstat(fd)
+                descriptors['pass_fds']=(*descriptors.get('pass_fds',()),fd)
             self.process = subprocess.Popen(command, cwd=cwd, env=native_env, stdin=subprocess.PIPE,
                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                             start_new_session=True, bufsize=0, **descriptors)
@@ -149,11 +154,13 @@ class _Pipe:
         except KeyError:
             self.selector.register(self.process.stdin, selectors.EVENT_WRITE, "stdin")
 
-    def next(self):
+    def next(self, timeout=None):
+        until=time.monotonic()+timeout if timeout is not None else None
         while True:
             self.check()
             if self.messages:
                 return self.messages.popleft()
+            if until is not None and time.monotonic()>=until: return None
             if not self.stdout_open:
                 raise ProviderError("Native CLI exited before the turn completed. Check CLI login and compatibility.")
             for key, _ in self.selector.select(timeout=0.05):
@@ -296,7 +303,7 @@ class _Codex:
         self.usage_output = None
         self.usage_at = None
 
-    def request(self, method, params):
+    def request(self, method, params, allow_rejection=False):
         self.request_id += 1
         request_id = self.request_id
         self.pipe.send({"id": request_id, "method": method, "params": params})
@@ -306,6 +313,7 @@ class _Codex:
                 if message.get("id") != request_id:
                     raise ProviderError("Codex returned an unexpected response.")
                 if "error" in message:
+                    if allow_rejection: return {'rejected':True}
                     raise account_error(message['error'], "Codex rejected a protocol request. Check CLI login and compatibility.")
                 if not isinstance(message.get("result"), dict):
                     raise ProviderError("Codex returned an invalid response.")
@@ -412,12 +420,12 @@ class _Codex:
         elif method == "error" and not params.get("willRetry", False):
             raise account_error(params, "Codex reported a run failure; private error details were omitted.")
 
-    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_ready=None):
+    def run(self, cwd, prompt, native_session_id, mcp, env, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_ready=None, control=None):
         self.request("initialize", {"clientInfo": {"name": "agentdock", "title": "AgentDock", "version": "0.3.0"},
                                     "capabilities": {"experimentalApi": False}})
         self.pipe.send({"method": "initialized", "params": {}})
-        approval_policy = "never" if permission_mode == "full_access" else "untrusted"
-        sandbox = "danger-full-access" if permission_mode == "full_access" else "workspace-write"
+        approval_policy = "untrusted" if permission_mode == "ask" else "never"
+        sandbox = {'full_access':'danger-full-access','read_only':'read-only','ask':'workspace-write'}[permission_mode]
         params = {"cwd": cwd, "approvalPolicy": approval_policy, "sandbox": sandbox,
                   "approvalsReviewer": "user", "config": {
                       "mcp_servers": {"agentdock": {**mcp, "env_vars": list(env), "required": True}}}}
@@ -458,8 +466,21 @@ class _Codex:
         if not isinstance(turn, dict) or not _identifier(turn.get("id")):
             raise ProviderError("Codex did not return a valid turn.")
         self.turn_id = turn["id"]
+        if control:
+            control.attach(self.turn_id)
+            self.cb.emit('input_control',{'turn_id':self.turn_id,'steer':True})
         while self.finished is None:
-            self.handle(self.pipe.next())
+            if control:
+                for item in control.take():
+                    status='rejected'
+                    if item['turn_id']==self.turn_id and self.finished is None:
+                        response=self.request('turn/steer',{'threadId':self.thread_id,'expectedTurnId':self.turn_id,
+                            'input':[{'type':'text','text':item['body']}]},allow_rejection=True)
+                        status='rejected' if response.get('rejected') else ('accepted' if response.get('turnId')==self.turn_id else 'unknown')
+                    self.cb.emit('input_receipt',{'input_id':item['id'],'status':status})
+                if self.finished is not None: break
+            message=self.pipe.next(timeout=.05) if control else self.pipe.next()
+            if message is not None: self.handle(message)
         if self.finished["id"] != self.turn_id:
             raise ProviderError("Codex completed a different turn.")
         status = self.finished.get("status")
@@ -666,9 +687,20 @@ class _Claude:
                                  "request": {"subtype": "interrupt"}})
 
 
-def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
+def execute(*args, **kwargs):
+    home=kwargs.get('session_home')
+    if home is None: return _execute(*args,**kwargs)
+    from .execution_lease import lease
+    try:
+        with lease(home) as descriptor:
+            return _execute(*args,**kwargs,execution_fd=descriptor)
+    except BlockingIOError:
+        raise ProviderError('A previous native process still owns this conversation; wait before resuming.') from None
+
+
+def _execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
             emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_home=None,
-            base_environment=None, managed_account=False):
+            base_environment=None, managed_account=False, control=None, execution_fd=None):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -679,7 +711,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     """
     if provider not in PROVIDERS:
         raise ProviderError("Unsupported native agent provider.")
-    if permission_mode not in ("ask", "full_access"):
+    if permission_mode not in ("ask", "full_access", "read_only"):
         raise ProviderError("Invalid agent permission mode")
     if (not isinstance(command, list) or not command or any(not isinstance(v, str) or not v
             or "\x00" in v for v in command)):
@@ -697,6 +729,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     for key in ('CODEX_APP_TOOLS_PIPE_PATH', 'CODEX_THREAD_ID', 'CODEX_SESSION_ID', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE'):
         env.pop(key, None)
     env.update(additions)
+    if execution_fd is not None: env['AGENTDOCK_EXECUTION_LOCK_FD']=str(execution_fd)
     argv = list(command)
     native_id = native_session_id
     session_ready = None
@@ -732,7 +765,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
             native_id = str(uuid.uuid4())
         argv += ["--print", "--output-format", "stream-json", "--verbose", "--input-format", "stream-json",
                  "--include-partial-messages", "--permission-prompt-tool", "stdio",
-                 "--permission-mode", "bypassPermissions" if permission_mode == "full_access" else "manual", "--strict-mcp-config",
+                 "--permission-mode", {'full_access':'bypassPermissions','read_only':'plan','ask':'manual'}[permission_mode], "--strict-mcp-config",
                  "--mcp-config", json.dumps({"mcpServers": {"agentdock": {"type": "stdio", **mcp}}})]
         if managed_account:
             # Keep project apiKeyHelper/env settings from silently replacing the
@@ -761,7 +794,7 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
         if provider == "codex":
             adapter = _Codex(pipe, callbacks)
-            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode, session_ready)
+            return adapter.run(cwd, prompt, native_session_id, mcp, additions, model, effort, inherit_process_cwd, permission_mode, session_ready, control)
         if provider in ACP_PROVIDERS:
             adapter = ACP(pipe, callbacks, provider, permission_mode)
             return adapter.run(os.path.realpath(cwd), prompt, native_session_id, mcp, additions, model, effort)
@@ -778,5 +811,6 @@ def execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
     except Exception:
         raise ProviderError("Native agent run failed; private process details were omitted.") from None
     finally:
+        if control: control.close()
         if pipe:
             pipe.close()

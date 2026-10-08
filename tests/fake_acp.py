@@ -44,11 +44,16 @@ for line in sys.stdin:
                 'toolCall': {'title': 'old permission'}, 'options': [{'optionId': 'allow', 'name': 'Allow', 'kind': 'allow_once'}]}})
             assert read()['result']['outcome']['outcome'] == 'cancelled'
         result = {'sessionId': session, 'configOptions': config}
+        if scenario=='read_only': result['modes']={'availableModes':[{'id':'plan','name':'Plan'}]}
         (Path.home()/'private-session.json').write_text(session)
+    elif method=='session/set_mode':
+        assert scenario=='read_only' and params['modeId']=='plan'
+        (Path.home()/'plan-mode').write_text('enabled')
     elif method == 'session/set_config_option':
         assert params['value'] in ('fixture-model', 'high')
         result = {'configOptions': config}
     elif method == 'session/prompt':
+        if scenario=='read_only': assert (Path.home()/'plan-mode').exists()
         if scenario == 'hang': time.sleep(30)
         if scenario == 'foreign':
             send({'method': 'session/update', 'params': {'sessionId': 'other-session', 'update': {'sessionUpdate': 'agent_message_chunk', 'content': {'type': 'text', 'text': 'wrong'}}}})

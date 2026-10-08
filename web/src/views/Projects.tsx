@@ -70,8 +70,8 @@ export function ProjectHeader({
         >
           {(
             [
-              ["agents", "Agent", "Agents"],
               ["tasks", "任务", "Tasks"],
+              ["agents", "Agent", "Agents"],
               ["memory", "记忆", "Memory"],
             ] as const
           ).map(([key, zh, en]) => (

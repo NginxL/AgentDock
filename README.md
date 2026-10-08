@@ -10,7 +10,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 > **Developer preview.** Execution is off by default. Automated checks cover native and ACP protocols and task handoffs. Live two-turn conversations passed for Codex, Claude Code and Trae; other ACP services, additional accounts and long-running collaboration require acceptance testing. See [provider compatibility](docs/PROVIDERS.md).
 
-[Subscription accounts](docs/ACCOUNTS.md) · [Supported agents](docs/PROVIDERS.md) · [SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
+[Project tasks](docs/TASKS.md) · [Subscription accounts](docs/ACCOUNTS.md) · [Supported agents](docs/PROVIDERS.md) · [SSH setup](docs/SSH.md) · [Architecture](docs/ARCHITECTURE.md) · [API](docs/API.md) · [Validation](docs/REVIEW.md) · [Report an issue](https://github.com/NginxL/AgentDock/issues)
 
 ## Workspace
 
@@ -18,7 +18,7 @@ The interface defaults to Chinese and supports English throughout. A Python stan
 
 *Actual interface capture in offline demo mode. All projects, conversations, and usage readings shown are fictional. Agent A/B are example names with no preset roles; users define their names and responsibilities.*
 
-Open **Projects** in the sidebar to create or select a project, then switch between **Agents / Tasks / Memory**. Project memory is shared within that project. Independent agents remain available directly from Workspace.
+Open **Projects** in the sidebar to create or select a project, then start in **Tasks**, or switch to **Agents / Memory**. Project memory is shared within that project. Independent agents remain available directly from Workspace.
 
 ![Project list, fictional demo data](docs/images/projects.en.png)
 
@@ -37,7 +37,9 @@ Configuration and context are isolated; using the same CLI account still shares 
 
 ![Agent settings: name, role, model and effort](docs/images/roles.en.jpg)
 
-**Projects → Tasks:** inspect the target conversation, execution result and return status.
+**Projects → Tasks:** retain goals, acceptance criteria and owners; answer pending decisions, coordinate optional workers/reviewers and inspect delivery evidence. Expand execution to follow progress.
+
+**Dispatch history:** retains existing conversation handoffs and returned results.
 
 ![Task dispatch and returned results](docs/images/dispatch.en.png)
 
@@ -61,6 +63,7 @@ Configuration and context are isolated; using the same CLI account still shares 
 | TPS & tokens | Total and per-agent output throughput over three minutes. A dedicated page shows input, output and cache counters for registered agents’ conversations, deduplicated by native identity. |
 | Custom roles | Define agent names and responsibilities independently of the provider, then edit or clear roles at any time. |
 | Native conversations | Connects ten CLI services through native or ACP transports, retaining the native session ID for continuation. Shows live progress, tool execution, final replies and permission requests according to CLI capabilities. |
+| Project tasks | Durable goals independent of native sessions: notes, discussion, execution, queued/steered input, decisions, owner recovery, independent review, acceptance and archive. Shared files by default, optional Git worktrees. |
 | Task handoffs | Sends work to a named agent and conversation. Busy workspaces queue automatically; completed or failed tasks return their result to the requesting conversation. Tracks execution, deduplication, cancellation, and return runs. |
 | Project memory | Keeps project knowledge separate from private conversations. Supports source attribution, versions, keyword search, reviewed agent proposals, and archive history. |
 | Usage & subscriptions | Remaining quotas and reset times follow configured agents, with automatic updates and stale/error states. Renewal dates and subscription costs are recorded separately. |

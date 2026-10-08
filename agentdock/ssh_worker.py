@@ -130,6 +130,27 @@ def rpc(request, *, stop=None, catalog=None):
         if action == 'submit': return manager.submit(account, request.get('code'))
         return getattr(manager, action)(account)
     if operation == 'quota': return quota(request['provider'], stop=stop)
+    if operation=='task_workspace':
+        from .task_workspace import prepare
+        parent=run_path(request['controller'],request['task_id']).parent
+        return prepare(parent/'tasks',request['task_id'],request['agent_id'],request['source'])
+    if operation=='recovery_status':
+        from .execution_lease import assert_idle
+        from .store import Conflict
+        parent=run_path(request['controller'],request['session_id']).parent
+        idle=True
+        for identifier in request.get('run_ids',[]):
+            item=run_path(request['controller'],identifier)
+            if not item.exists(): continue
+            saved=read(item/'request.json',{}).get('spec',{})
+            if saved.get('session_id')!=request['session_id']: raise ValueError('Recovery run belongs to another session')
+            (item/'cancel').touch(mode=0o600)
+            with (item/'worker.lock').open('a') as lock:
+                try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except BlockingIOError: idle=False
+        try: assert_idle(parent/'sessions'/request['session_id'])
+        except Conflict: idle=False
+        return {'idle':idle}
     if operation == 'delete_session':
         from .accounts import AccountManager
         parent = run_path(request['controller'], request['session_id']).parent
@@ -178,6 +199,20 @@ def rpc(request, *, stop=None, catalog=None):
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         return {'accepted': True}
     if not path.is_dir(): raise ValueError('Remote run does not exist')
+    if operation=='steer':
+        item=request['input']
+        if (not isinstance(item,dict) or set(item)!={'id','body','turn_id'}
+                or str(uuid.UUID(item['id']))!=item['id'] or not isinstance(item['body'],str)
+                or not item['body'].strip() or len(item['body'])>24000
+                or not isinstance(item['turn_id'],str) or len(item['turn_id'])>256): raise ValueError('Invalid adjustment')
+        directory=private(path/'inputs')
+        target=directory/(item['id']+'.json')
+        with (directory/'input.lock').open('a') as lock:
+            fcntl.flock(lock,fcntl.LOCK_EX)
+            old=read(target)
+            if old is not None and old!=item: raise ValueError('Adjustment identity conflict')
+            if old is None: atomic(target,item)
+        return {'accepted':True}
     if operation == 'poll':
         (path / 'lease').touch(mode=0o600)
         after = request.get('after', 0)
@@ -227,6 +262,9 @@ def work(path):
     event_lock = threading.Lock()
     sequence, total = 0, 0
     spec = read(path / 'request.json')['spec']
+    if (path/'cancel').exists() or time.time()-(path/'lease').stat().st_mtime>LEASE_SECONDS:
+        atomic(path/'state.json',{'status':'cancelled','last_seq':0,'updated_at':time.time()})
+        return
     active = True
     token = secrets.token_urlsafe(32)
 
@@ -329,11 +367,21 @@ def work(path):
                 'account': spec['account'], 'provider': spec['provider']})
             lease = manager.credential_session(account, str(home), stop=stop)
         with lease as account_env:
+            from .input_control import InputControl
+            class RemoteInput(InputControl):
+                def take(self):
+                    pending=[]
+                    for file in sorted((path/'inputs').glob('*.json')):
+                        item=read(file)
+                        if item['id'] in self.seen: continue
+                        self.seen.add(item['id']); pending.append(item)
+                    return pending
             result = execute(spec['provider'], command, cwd, spec['prompt'], spec.get('native_session_id'), mcp, stop,
                 emit, lambda native_id: control('remote_bind', {'native_id': native_id}),
                 lambda request, options: control('remote_approval', {'request': request, 'options': options}),
                 timeout=spec.get('timeout', 900), model=spec.get('model'), effort=spec.get('effort'),
                 permission_mode=spec.get('permission_mode', 'ask'), session_home=str(home),
+                control=RemoteInput(),
                 **({'base_environment': account_env, 'managed_account': True} if managed else {}))
         state = {'status': 'completed', 'result': result}
     except ProviderCancelled:

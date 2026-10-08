@@ -70,7 +70,26 @@ def run_codex():
             turn_id = str(uuid.uuid4())
             emit({'id': request['id'], 'result': {'turn': {'id': turn_id}}})
             result = 'Codex reviewed the implementation.'
-            if mode in ('delegate', 'nested', 'fanout', 'nestedcancel', 'fanoutfail') and '<fixture-delegate>' in prompt:
+            if mode=='project_task':
+                bridge=MCP(mcp_config)
+                try:
+                    task=bridge.tool('task_context',{})
+                    if not task['questions']:
+                        bridge.tool('task_ask',{'question':'Choose output format','options':['JSON','CSV']})
+                        result='Waiting for your format choice.'
+                    elif not any(r['task_role']=='reviewer' and r['status']=='completed' for r in task['recent_work']):
+                        target=next(a for a in bridge.tool('agent_list',{}) if a['provider']=='claude')
+                        bridge.tool('message_send',{'recipient_id':target['id'],'body':'Review the integrated feature.','task_role':'reviewer','idempotency_key':'project-review'})
+                        result='Review requested.'
+                    else:
+                        review=next(r for r in task['recent_work'] if r['task_role']=='reviewer')
+                        bridge.tool('task_result',{'run_id':review['id']})
+                        bridge.tool('task_deliver',{'summary':'Feature delivered in JSON.',
+                            'checks':[{'criterion':c,'status':'passed','evidence':'Native fixture verification'} for c in task['criteria'].splitlines()],
+                            'artifacts':['feature.json'],'risks':''})
+                        result='Final task report.'
+                finally: bridge.close()
+            elif mode in ('delegate', 'nested', 'fanout', 'nestedcancel', 'fanoutfail') and '<fixture-delegate>' in prompt:
                 bridge = MCP(mcp_config)
                 try:
                     agents = bridge.tool('agent_list', {})
@@ -128,7 +147,10 @@ def run_claude():
             try:
                 memories = bridge.tool('memory_search', {'query': 'Project rule'})
                 fact = memories[0]['content'] if memories else 'No shared rule'
-                bridge.tool('memory_propose', {'key': 'Implementation note', 'content': 'Test-only proposal', 'expected_version': 0})
+                if mode=='project_task':
+                    bridge.tool('task_review',{'verdict':'approved','summary':'Independently verified JSON output.'})
+                else:
+                    bridge.tool('memory_propose', {'key': 'Implementation note', 'content': 'Test-only proposal', 'expected_version': 0})
                 delegated = False
                 if mode in ('nested', 'fanout', 'nestedcancel', 'fanoutfail') and '<teammate-result>' not in prompt:
                     agents = bridge.tool('agent_list', {})

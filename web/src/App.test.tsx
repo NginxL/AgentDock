@@ -477,6 +477,7 @@ describe("selection after delayed mutation refresh", () => {
     render(<App />);
     await connect();
     openProject();
+    fireEvent.click(screen.getByRole("button", { name: "Agent" }));
     fireEvent.click(screen.getByRole("button", { name: "添加 Agent" }));
     fireEvent.change(screen.getByLabelText("项目内名称"), {
       target: { value: agent.name },
@@ -682,6 +683,7 @@ describe("reviewed memory and messages", () => {
       window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
     );
     fireEvent.click(screen.getByRole("button", { name: "任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "派工记录" }));
     fireEvent.change(screen.getByLabelText("任务说明"), {
       target: { value: "Review the change" },
     });
@@ -708,6 +710,7 @@ describe("reviewed memory and messages", () => {
       window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
     );
     fireEvent.click(screen.getByRole("button", { name: "任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "派工记录" }));
     fireEvent.change(screen.getByLabelText("目标会话"), {
       target: { value: "session-a" },
     });
@@ -1399,6 +1402,7 @@ describe("native session workflow", () => {
       window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
     );
     fireEvent.click(screen.getByRole("button", { name: "任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "派工记录" }));
     expect(screen.getByText("等待协作结果")).toBeTruthy();
     expect(screen.queryByText("已回传")).toBeNull();
     expect(screen.getByText("当前进展")).toBeTruthy();
@@ -1433,6 +1437,7 @@ describe("offline demonstration", () => {
       window.location.search.includes("demo=1") ? "Orbit" : "Demo project",
     );
     fireEvent.click(screen.getByRole("button", { name: "任务" }));
+    fireEvent.click(screen.getByRole("button", { name: "派工记录" }));
     expect(screen.getByText(/目标会话: 审阅搜索变更/)).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "派发任务" }) as HTMLButtonElement)

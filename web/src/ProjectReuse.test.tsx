@@ -150,7 +150,7 @@ async function setup(hash = "#/conversations") {
 }
 
 it("reuses one configured agent with separate names and roles in two projects", async () => {
-  const { state, writes } = await setup("#/projects?project=A");
+  const { state, writes } = await setup("#/projects?project=A&view=agents");
   for (const [project, name, role] of [
     ["A", "reviewer", "Review A"],
     ["B", "builder", "Build B"],
@@ -183,7 +183,7 @@ it("reuses one configured agent with separate names and roles in two projects", 
 });
 
 it("toggles the project picker closed and keeps the close button", async () => {
-  await setup("#/projects?project=A");
+  await setup("#/projects?project=A&view=agents");
   const add = screen.getByRole("button", { name: "添加 Agent" });
   fireEvent.click(add);
   expect(screen.getByLabelText("使用 Agent")).toBeTruthy();

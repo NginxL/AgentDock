@@ -16,10 +16,19 @@ def tool(name, description, properties, required=()):
 S = {"type":"string"}
 TOOLS = [
     tool("agent_list","List teammates in this run's project. Does not start them.",{}),
-    tool("message_send","Dispatch a task to another agent's native session. It runs automatically when available, and its result resumes this conversation. Finish your current turn after delegating; do not wait or poll. Use idempotency_key for retries.",{"recipient_id":S,"recipient_session_id":S,"body":S,"correlation_id":S,"idempotency_key":S},("recipient_id","body")),
+    tool("message_send","Dispatch bounded work to a teammate. In a project task only the owner can dispatch, into task-scoped conversations. Choose worker or reviewer. Finish this turn; results return automatically. Use idempotency_key for retries.",{"recipient_id":S,"recipient_session_id":S,"body":S,"correlation_id":S,"idempotency_key":S,"task_role":{"type":"string","enum":["worker","reviewer"]}},("recipient_id","body")),
     tool("task_status","Inspect the execution state and result of a task you sent or received. This does not wait for completion.",{"message_id":S},("message_id",)),
     tool("memory_search","Search approved, non-archived project memory using literal keywords.",{"query":S}),
     tool("memory_propose","Propose a memory update for human review. Cannot overwrite approved memory. expected_version is zero for a new key.",{"key":S,"content":S,"expected_version":{"type":"integer","minimum":0}},("key","content","expected_version")),
+    tool('task_context','Read this project task: goal, exact acceptance criteria, saved inputs/decisions, workspaces and previous results. No access to other tasks.',{}),
+    tool('task_history','Read durable task records in order, including full requirements, inputs, decisions and prior reports. Start after=0,offset=0; continue with returned next_after and next_offset until record=null. Pages can split JSON text.',{'after':{'type':'integer','minimum':0},'offset':{'type':'integer','minimum':0}}),
+    tool('task_result','Read a full raw result in this task in pages. Check next_offset; never rely only on truncated handoff text.',{'run_id':S,'offset':{'type':'integer','minimum':0}},('run_id',)),
+    tool('task_ask','Save a question that needs a human decision. Finish your turn after asking. Answers persist and resume the task owner automatically.',{'question':S,'options':{'type':'array','items':S,'maxItems':8}},('question',)),
+    tool('task_deliver','Task owner submits a delivery. Cover every exact acceptance criterion once, with honest validation evidence. Finishing a native turn alone does not accept the task.',
+        {'summary':S,'checks':{'type':'array','minItems':1,'maxItems':30,'items':{'type':'object','properties':{'criterion':S,'status':{'type':'string','enum':['passed','failed','unverified']},'evidence':S},'required':['criterion','status','evidence'],'additionalProperties':False}},
+         'artifacts':{'type':'array','items':S,'maxItems':30},'risks':S},('summary','checks')),
+    tool('task_review','Independent reviewer records its verdict on the owner workspace and current requirements. Report findings honestly; unverified or changes_requested blocks required review acceptance.',
+         {'verdict':{'type':'string','enum':['approved','changes_requested','unverified']},'summary':S},('verdict','summary')),
 ]
 
 

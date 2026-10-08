@@ -137,11 +137,13 @@ it("switches project memories, proposals and task recipients without crossing sc
   expect(screen.getByText("Proposed beta rule")).toBeTruthy();
   expect(screen.queryByText("alpha conventions")).toBeNull();
   fireEvent.click(projectNav().getByRole("button", { name: "任务" }));
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
   expect(screen.getByRole("option", { name: "Beta agent" })).toBeTruthy();
   expect(screen.queryByRole("option", { name: "Alpha agent" })).toBeNull();
   fireEvent.change(screen.getByLabelText("切换项目"), {
     target: { value: "alpha" },
   });
+  fireEvent.click(screen.getByRole("button", { name: "新建任务" }));
   expect(screen.getByRole("option", { name: "Alpha agent" })).toBeTruthy();
   expect(screen.queryByRole("option", { name: "Beta agent" })).toBeNull();
 });
@@ -149,6 +151,7 @@ it("switches project memories, proposals and task recipients without crossing sc
 it("returns from an agent to its project and restores project tabs through browser history", async () => {
   await setup();
   openAlpha();
+  fireEvent.click(projectNav().getByRole("button", { name: "Agent" }));
   fireEvent.click(
     screen.getByRole("button", { name: /^Alpha agent.*进入会话/ }),
   );
@@ -157,7 +160,7 @@ it("returns from an agent to its project and restores project tabs through brows
     target: { value: "Project draft" },
   });
   fireEvent.click(screen.getByRole("button", { name: "返回 Agent 列表" }));
-  expect(window.location.hash).toBe("#/projects?project=alpha");
+  expect(window.location.hash).toBe("#/projects?project=alpha&view=agents");
   fireEvent.click(
     screen.getByRole("button", { name: /^Alpha agent.*进入会话/ }),
   );
@@ -168,16 +171,16 @@ it("returns from an agent to its project and restores project tabs through brows
   fireEvent.click(projectNav().getByRole("button", { name: "任务" }));
   fireEvent.click(projectNav().getByRole("button", { name: "记忆" }));
   act(() => window.history.back());
-  await screen.findByRole("heading", { name: "任务派工" });
+  await screen.findByRole("heading", { name: "任务" });
   act(() => window.history.forward());
   await screen.findByRole("heading", { name: "项目记忆" });
   expect(screen.getByText("alpha conventions")).toBeTruthy();
 });
 
 it.each([
-  ["#/projects?project=alpha&view=tasks", "任务派工"],
+  ["#/projects?project=alpha&view=tasks", "任务"],
   ["#/projects?project=alpha&view=memory", "项目记忆"],
-  ["#/messages?project=alpha", "任务派工"],
+  ["#/messages?project=alpha", "任务"],
   ["#/memory?project=alpha", "项目记忆"],
   ["#/workspace?project=alpha", "Agent"],
   ["#/agents/Alpha?project=alpha", "Alpha agent"],

@@ -243,7 +243,7 @@ class MCPTests(unittest.TestCase):
         r=b.handle({'jsonrpc':'2.0','id':2,'method':'initialize','params':{'protocolVersion':'2025-06-18'}})
         self.assertEqual(r['result']['protocolVersion'],'2025-06-18')
         self.assertIsNone(b.handle({'jsonrpc':'2.0','method':'notifications/initialized'}))
-        self.assertEqual(len(b.handle({'jsonrpc':'2.0','id':3,'method':'tools/list'})['result']['tools']),5)
+        self.assertEqual({t['name'] for t in b.handle({'jsonrpc':'2.0','id':3,'method':'tools/list'})['result']['tools']}, {'agent_list','message_send','task_status','memory_search','memory_propose','task_context','task_history','task_result','task_ask','task_deliver','task_review'})
         bad=b.handle({'jsonrpc':'2.0','id':4,'method':'tools/call','params':{'name':'message_send','arguments':{'sender_id':'fake','recipient_id':'x','body':'Hi'}}})
         self.assertIn('error',bad); self.assertEqual(calls,[])
         r=b.handle({'jsonrpc':'2.0','id':5,'method':'tools/call','params':{'name':'agent_list'}})

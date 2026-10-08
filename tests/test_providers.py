@@ -48,6 +48,27 @@ class NativeProvidersTest(unittest.TestCase):
                 self.assertTrue(self.approvals)
                 self.approvals.clear()
 
+    def test_discussion_selects_native_read_only_modes(self):
+        for provider in ('codex','claude'):
+            with self.subTest(provider=provider):
+                self.assertEqual(self.run_provider(provider,'read_only',permission_mode='read_only'),'hello world')
+
+    def test_live_steer_requires_exact_turn_receipt_without_fallback_queue(self):
+        from agentdock.input_control import InputControl
+        for scenario,expected in (('steer','accepted'),('steer_reject','rejected'),('steer_mismatch','unknown')):
+            with self.subTest(scenario=scenario):
+                control=InputControl(); receipts=[]
+                def emit(kind,payload):
+                    if kind=='input_control':
+                        control.submit('input-1','Use JSON'); control.submit('input-1','Use JSON')
+                    if kind=='input_receipt': receipts.append(payload)
+                result=execute('codex',[sys.executable,FAKE,'codex',scenario],str(self.cwd),'Work',None,
+                    {'command':sys.executable,'args':[],'env':{'AGENTDOCK_CAPABILITY':'private-token'}},
+                    self.stop,emit,self.bound.append,lambda *_:None,control=control,timeout=3)
+                self.assertEqual(result,'hello world')
+                self.assertEqual(receipts,[{'input_id':'input-1','status':expected}])
+                self.assertFalse(control.available)
+
     def test_invalid_permissions_never_start_a_native_process(self):
         for provider in ('codex', 'claude'):
             for value in (None, '', 'full', 'FULL_ACCESS', True, {}):

@@ -80,6 +80,29 @@ class RemoteTests(unittest.TestCase):
         self.assertIn('remote-project', [entry['name'] for entry in result['directories']])
         self.assertEqual([item['op'] for item in self.requests], ['directories'])
 
+    def test_remote_steering_receipt_and_recovery_check_stay_in_private_storage(self):
+        from agentdock.input_control import InputControl
+        from agentdock.execution_lease import lease
+        self.scenario='steer'
+        _,session=self.make_agent()
+        run_id=str(uuid.uuid4()); input_id=str(uuid.uuid4()); control=InputControl(); events=[]
+        def emit(kind,payload):
+            events.append((kind,payload))
+            if kind=='input_control':
+                control.attach(payload['turn_id']); control.submit(input_id,'Use JSON')
+        result=self.manager.run(self.environment['id'],run_id,{'provider':'codex','cwd':session['workspace'],
+            'session_id':session['id'],'prompt':'Fixture','timeout':8},threading.Event(),emit,lambda _:None,
+            lambda *_:None,lambda *_:None,control=control)
+        self.assertEqual(result,'hello world')
+        self.assertIn(('input_receipt',{'input_id':input_id,'status':'accepted'}),events)
+        request={'op':'recovery_status','controller':self.store.controller_id,'session_id':session['id'],'run_ids':[run_id]}
+        remote_home=self.home/'.local/share/agentdock/ssh/controllers'/self.store.controller_id/'sessions'/session['id']
+        # A lingering native process, even after a completed worker, blocks reuse.
+        with lease(remote_home):
+            self.assertFalse(self.manager.rpc(self.environment['id'],request)['idle'])
+        self.assertTrue(self.manager.rpc(self.environment['id'],request)['idle'])
+        self.assertFalse(self.store.session_directory(session['id']).exists())
+
     def run_turn(self, session, **changes):
         events, bound = [], []
         spec={'provider':self.store.get_agent(session['agent_id'])['provider'], 'cwd':session['workspace'], 'session_id':session['id'],

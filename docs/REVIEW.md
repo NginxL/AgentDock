@@ -109,6 +109,10 @@ Desktop startup, automatic local connection, shutdown cleanup, and live Codex/Cl
 
 ## 0.3 verification
 
+### Project task workflow
+
+Dedicated store, runtime, workspace and native MCP integration checks cover the task workflow. Simulated Codex and Claude peers use real pipes and a loopback MCP endpoint to ask, resume after an answer, independently review and accept delivery without adopting everyday sessions. Regressions cover steering acceptance/rejection/unknown receipts, SSH recovery locks, duplicate input/recovery, open-question queue gates, stale acceptance, reports retained after session deletion, and shared/isolated workspace boundaries. Browser checks use temporary data without connecting to a production host or requesting a real model.
+
 Dedicated conversation-page tests cover agent entry, return navigation, browser back and forward, unavailable links, and separate conversation selections and drafts per agent. The overview does not fetch conversation events; opening an agent fetches only the selected conversation.
 
 Automated coverage includes independent agent execution, project-memory isolation, overlapping directories, legacy database migration, model/effort forwarding, usage events, repeated message blocks, live/history deduplication, archived copies, append/truncation, and idle versus unknown TPS. Native quota checks cover source timestamps, unknown resets, invalid percentages and ambiguous organizations.

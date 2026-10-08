@@ -29,7 +29,7 @@ flowchart LR
 | Durable state | `agentdock/store.py` | Native bindings, task ownership, transactional queue claims, delivery/result links, memory history, token hashes and approvals. |
 | Dispatcher | `agentdock/runtime.py` | Explicit submission, automatic dispatch and result return, task settlement, approval deadlines and cancellation. |
 | Native transports | `agentdock/providers.py` | Codex App Server and Claude stream-json protocols, stream parsing, session identity checks, bounded output and process cleanup. |
-| Agent tools | `agentdock/mcp.py` | Five tools: agent discovery, addressed dispatch, task status, memory search and memory proposals. |
+| Agent tools | `agentdock/mcp.py` | Project collaboration, task context/history, questions, delivery, independent review and memory proposals. |
 | Quota bridge | `agentdock/quota.py` | Scheduled and page-entry Codex/Claude probes through the built-in macOS helper, sanitized snapshots and freshness rules. |
 
 The browser's `?demo=1` mode reads fictional fixtures and makes no API requests. It cannot execute agents, dispatch tasks or refresh quotas.
@@ -44,6 +44,14 @@ CLI entry points live in `agentdock/registry.py`. `agentdock/acp.py` handles ACP
 The source link records provenance, not live inheritance. Editing or deleting a member does not update its source or siblings. Source deletion sets links to null while retaining members and their conversations. The migration only adds a nullable column; existing IDs, sessions and roles remain intact. Each member is a separate scheduler identity, while overlapping directories still serialize. Memory and dispatch capabilities continue to use the run's project scope. Independent conversations retain null project ownership and receive no project memory or teammates. Native accounts and provider quota are shared when the same CLI login is reused.
 
 `Conversations.tsx` indexes the existing sessions without moving them. Routes use `#/conversations?session=<id>`; selection, search and project/everyday filters do not alter ownership. The detail pane reuses the existing stream, task timeline, approvals and composer with an explicit session ID; a missing ID never falls back to another session.
+
+## Durable project tasks
+
+`task_store.py` stores `tasks`, `task_inputs`, `task_questions`, `task_reviews`, `task_deliveries` and `task_journal` independently of native histories. `runs.work_task_id` and `sessions.work_task_id` bind execution to a task; `task_role` distinguishes owner, worker and reviewer. Existing `task_run_id` still identifies a dispatch chain, not a project task.
+
+`task_runtime.py` reuses the queue, account selection, native isolation and result return. Only the owner delegates or delivers; delegated conversations remain task-scoped. Discussion cannot delegate, deliver or propose memory; reviewers cannot edit files or propose memory. Acceptance checks current revision, per-criterion evidence, questions and dispatch settlement, plus optional independent review. New requirements invalidate delivery. Native completion ends only that turn.
+
+Recovery checks inherited native file locks through `execution_lease.py`. SSH `recovery_status` verifies worker and native locks; uncertainty blocks replacement execution. A new owner uses a fresh session with durable facts. `task_workspace.py` optionally pins a clean repository commit and creates member worktrees; reviewers inspect the owner workspace. See [project tasks](TASKS.md) for lifecycle, retention and live-validation boundaries.
 
 ## Sessions and turns
 

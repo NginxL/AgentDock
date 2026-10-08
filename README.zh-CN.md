@@ -10,7 +10,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 > **开发者预览版。** 默认关闭执行。自动检查覆盖原生及 ACP 协议和任务交接；Codex、Claude Code、Trae 已通过真实两轮对话。其余 ACP 服务、更多账号和长时间协作仍需验收，详见[服务兼容性](docs/PROVIDERS.zh-CN.md)。
 
-[订阅账号](docs/ACCOUNTS.zh-CN.md) · [支持的 Agent](docs/PROVIDERS.zh-CN.md) · [SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
+[项目任务](docs/TASKS.zh-CN.md) · [订阅账号](docs/ACCOUNTS.zh-CN.md) · [支持的 Agent](docs/PROVIDERS.zh-CN.md) · [SSH 配置](docs/SSH.zh-CN.md) · [架构设计](docs/ARCHITECTURE.zh-CN.md) · [接口说明](docs/API.zh-CN.md) · [验证与兼容性](docs/REVIEW.zh-CN.md) · [反馈问题](https://github.com/NginxL/AgentDock/issues)
 
 ## 工作台
 
@@ -18,7 +18,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 *离线演示模式下的实际界面截图。图中的项目、对话和额度均为虚构数据。Agent A／B 为示例名称，未预设角色；名称与职责由用户定义。*
 
-侧栏的 **项目**统一管理项目协作。选择项目后，在 **Agent / 任务 / 记忆**之间切换；项目记忆可由该项目的 Agent 复用。创建或切换项目都在此入口完成，独立 Agent 可直接在工作台使用。
+侧栏的 **项目**统一管理项目协作。选择项目后默认进入 **任务**，也可切换到 **Agent / 记忆**；项目记忆可由该项目的 Agent 复用。创建或切换项目都在此入口完成，独立 Agent 可直接在工作台使用。
 
 ![项目列表，虚构演示数据](docs/images/projects.zh-CN.png)
 
@@ -37,7 +37,9 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 
 ![Agent 设置：名称、角色、模型与推理强度](docs/images/roles.zh-CN.jpg)
 
-**项目 → 任务：**查看目标会话、执行结果与回传状态。
+**项目 → 任务：**保存目标、验收要求和负责人；集中处理待确认问题，按需分工审查，查看交付及逐项验证证据。运行过程可展开查看。
+
+**派工记录：**保留原有会话的派工与结果回传。
 
 ![任务派工与结果回传界面](docs/images/dispatch.zh-CN.png)
 
@@ -61,6 +63,7 @@ AgentDock 是一个 AI Agent 管理器，将本机或 SSH 主机上已安装的 
 | TPS 与 Token | 总计及每个 Agent 的三分钟输出吞吐曲线；单独页面查看已配置 Agent 关联会话的累计 Token、输入、输出和缓存明细，按原生标识去重。 |
 | 自定义角色 | 独立于服务定义 Agent 名称和职责，支持创建后编辑或清空角色。 |
 | 原生会话 | 通过原生或 ACP 协议连接十种 CLI 服务，保存原生会话 ID 用于续聊；按 CLI 能力展示实时进展、工具执行、最终回复和权限请求。 |
+| 项目任务 | 任务与执行会话分开保存；支持记录、讨论、执行、补充输入、待确认问题、负责人交接、独立审查、验收和归档。默认共用项目目录，可选独立 Git 工作区。 |
 | 任务交接 | 向指定智能体和会话派工；工作目录繁忙时自动排队，任务完成或失败后将结果送回发起会话；记录执行、去重、取消与回传任务。 |
 | 项目记忆 | 项目知识与私有对话分开管理；支持来源、版本、关键词检索、智能体提议审核和归档历史。 |
 | 额度与订阅 | 额度随已配置 Agent 联动，自动更新剩余额度、重置时间及过期或错误状态；续费日期与订阅费用单独记录。 |

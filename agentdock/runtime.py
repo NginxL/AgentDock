@@ -14,6 +14,8 @@ from .store import Conflict, Forbidden, Invalid
 from .providers import execute, ProviderError, ProviderCancelled
 from .mcp import TOOLS
 from .registry import PROVIDERS, commands
+from .task_runtime import TaskRuntime
+from .input_control import InputControl
 
 
 class RuntimeFailure(Conflict):
@@ -38,9 +40,10 @@ class _Run:
     output_bytes: int = 0
     attempt: Optional[dict] = None
     progress: bool = False
+    control: InputControl = field(default_factory=InputControl)
 
 
-class Runtime:
+class Runtime(TaskRuntime):
     def __init__(self, store, config: dict, executor=None):
         self.store = store
         self.config = dict(config)
@@ -94,7 +97,14 @@ class Runtime:
         with self._lock:
             self._check_enabled()
             self._agent_command(self.store.session_agent(session_id))
-            record = self.store.enqueue_run(session_id, prompt)
+            session=self.store.get_session(session_id)
+            if session.get('work_task_id'):
+                import uuid
+                task=self.store.get_task(session['work_task_id'])
+                if session_id!=task['session_id']: raise Conflict('Send requirements to the current task owner')
+                item=self.store.submit_task_input(task['id'],prompt,task['intent'],str(uuid.uuid4()))
+                record=self.store.get_run(item['run_id'])
+            else: record = self.store.enqueue_run(session_id, prompt)
             self._notify()
             return record
 
@@ -169,6 +179,10 @@ class Runtime:
             caller = self.store.capability_run(token)
             active = self._runs.get(caller['id'])
             if active: self._mark_progress(active)
+            if name in ('task_context','task_history','task_result','task_ask','task_deliver','task_review'):
+                return self._task_tool(caller,name,arguments)
+            if (caller.get('task_intent')=='discuss' or caller.get('task_role')=='reviewer') and name=='memory_propose':
+                raise Forbidden('Discussion cannot change project memory')
             if name == "message_send":
                 if caller["project_id"] is None: raise Forbidden("Agent collaboration requires a project")
                 self._recipient_command(arguments.get("recipient_id"), arguments.get("recipient_session_id"))
@@ -176,11 +190,14 @@ class Runtime:
                     caller["project_id"], caller["agent_id"], arguments.get("recipient_id"),
                     arguments.get("body"), arguments.get("correlation_id"), arguments.get("idempotency_key"),
                     sender_session_id=caller["session_id"],
-                    recipient_session_id=arguments.get("recipient_session_id"), parent_run_id=caller["id"])
+                    recipient_session_id=arguments.get("recipient_session_id"), parent_run_id=caller["id"],
+                    task_role=arguments.get('task_role','worker'))
                 self._notify()
                 return {**message, "next_step": "Finish this turn. The recipient runs automatically when its workspace is free; its result returns to this session."}
             if name == "task_status":
                 message = self.store.get_message(arguments.get("message_id"))
+                if caller.get('work_task_id') and self.store.get_run(message['run_id']).get('work_task_id')!=caller['work_task_id']:
+                    raise Forbidden('This result belongs to another task')
                 if message["project_id"] != caller["project_id"] or caller["agent_id"] not in (
                     message["sender_id"], message["recipient_id"]
                 ):
@@ -212,10 +229,17 @@ class Runtime:
                         self._runs.pop(record["id"], None)
                         self.store.finish_run(record["id"], "failed", "Could not prepare the native CLI run.")
                         self._settle_result(record["id"])
+                        self.store.refresh_work_task(record['id'])
 
     def _event(self, run, kind, payload):
         if not isinstance(payload, dict):
             raise RuntimeFailure("Agent returned an invalid event")
+        if kind=='input_control': run.control.attach(payload.get('turn_id'))
+        if kind=='input_receipt' and run.record.get('work_task_id'):
+            with self.store.lock:
+                item=self.store._one('task_inputs',payload.get('input_id'))
+                if item['run_id']!=run.record['id']: raise Forbidden('Input receipt belongs to another run')
+            self.store.task_input_receipt(item['id'],payload.get('status'))
         if kind in ('assistant_delta', 'assistant_message', 'agent_message', 'agent_message_chunk', 'reasoning_chunk',
                     'reasoning_message', 'tool_call', 'tool_result', 'tool_output'):
             self._mark_progress(run)
@@ -242,6 +266,17 @@ class Runtime:
         self.store.append_event(run.record["project_id"], run.record["session_id"], kind, json.loads(serialized))
 
     def _request_approval(self, run, request, options):
+        if run.record.get('task_intent')=='discuss' or run.record.get('task_role')=='reviewer':
+            # Native MCP calls can request permission in Claude's plan mode.
+            # The capability checks below remain the authority for these tools.
+            if request.get('tool_name') in ('mcp__agentdock__task_context','mcp__agentdock__task_history',
+                    'mcp__agentdock__task_result','mcp__agentdock__task_ask','mcp__agentdock__task_review',
+                    'mcp__agentdock__agent_list','mcp__agentdock__memory_search'):
+                allowed=next((o['optionId'] for o in options if o.get('kind')=='allow_once'),None)
+                if allowed: return allowed
+            rejected=next((o['optionId'] for o in options if o.get('kind') in ('reject_once','reject_always')),None)
+            if rejected: return rejected
+            raise Forbidden('Discussion cannot authorize project changes')
         self._mark_progress(run)
         with self._lock:
             if run.stop.is_set() or self._closed:
@@ -390,7 +425,8 @@ class Runtime:
                 session = self.store.get_session(record['session_id'])
                 agent = self.store.session_agent(record['session_id'])
                 account = self.store.get_account(record['account_id']) if record.get('account_id') else None
-                workspace = session['workspace']
+                workspace = self._prepare_task_workspace(record,session,agent)
+                permission_mode='read_only' if record.get('task_intent')=='discuss' or record.get('task_role')=='reviewer' else record['permission_mode']
                 self._event(run, 'run_started', {'provider': agent['provider'], 'protocol': 'native',
                     'native_resume': bool(session.get('native_session_id'))})
                 context = self.store.context_for_run(record['id'])
@@ -405,14 +441,15 @@ class Runtime:
                         spec = {'provider': agent['provider'], 'cwd': workspace, 'prompt': prompt,
                             'session_id': session['id'], 'legacy_workspace': session.get('legacy_workspace'),
                             'native_session_id': session.get('native_session_id'), 'model': record.get('model'),
-                            'effort': record.get('effort'), 'permission_mode': record['permission_mode'], 'timeout': remaining}
+                            'effort': record.get('effort'), 'permission_mode': permission_mode, 'timeout': remaining}
                         if record.get('account_branch'): spec['account_branch'] = record['account_branch']
                         if account: spec['account'] = {key: account[key] for key in ('id','provider','generation')}
                         result = self.remote.run(agent['environment_id'], run.attempt['id'] if account else record['id'],
                             spec, run.stop, lambda kind, payload: self._event(run, kind, payload),
                             lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
                             lambda request, options: self._request_approval(run, request, options),
-                            lambda name, arguments: self.respond_tool(run.capability, name, arguments))
+                            lambda name, arguments: self.respond_tool(run.capability, name, arguments),
+                            **({'control':run.control} if record.get('work_task_id') else {}))
                     else:
                         home = self.store.session_directory(session['id'])
                         if record.get('account_branch'): home = home / 'branches' / str(record['account_branch'])
@@ -423,7 +460,8 @@ class Runtime:
                                 lambda kind, payload: self._event(run, kind, payload),
                                 lambda native_id: self.store.bind_native_session(session['id'], native_id, run_id=record['id']),
                                 lambda request, options: self._request_approval(run, request, options),
-                                timeout=max(.1, deadline-time.monotonic()), permission_mode=record['permission_mode'], session_home=str(home),
+                                timeout=max(.1, deadline-time.monotonic()), permission_mode=permission_mode, session_home=str(home),
+                                **({'control':run.control} if record.get('work_task_id') else {}),
                                 **({'model': record['model'], 'effort': record['effort']} if record.get('model') or record.get('effort') else {}),
                                 **({'base_environment': account_env, 'managed_account': True} if account else {}))
                     break
@@ -459,6 +497,7 @@ class Runtime:
                     result = None
                 # Release any approval callback still waiting after a provider deadline.
                 run.stop.set()
+                run.control.close()
                 try:
                     if run.attempt:
                         self.store.finish_account_attempt(run.attempt['id'], status, progress=run.progress)
@@ -469,7 +508,11 @@ class Runtime:
                         self.store.finish_run(run.record["id"], status, error, result=result)
                         if not self._closed:
                             self._settle_result(run.record["id"])
+                        self.store.refresh_work_task(run.record['id'])
                 finally:
+                    if run.record.get('work_task_id'):
+                        with self.store.transaction():
+                            self.store.db.execute("UPDATE task_inputs SET status='unknown' WHERE run_id=? AND status='pending'",(run.record['id'],))
                     self._runs.pop(run.record["id"], None)
                     self._wake.set()
 

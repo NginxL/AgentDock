@@ -111,6 +111,9 @@ export interface Agent extends AccountSettings {
   permission_mode?: PermissionMode;
 }
 export interface Session extends AccountSettings {
+  work_task_id?: string | null;
+  task_role?: string | null;
+  task_intent?: string | null;
   account_branch?: string | number | null;
   agent_defaults?: {
     model?: string | null;
@@ -147,6 +150,9 @@ export interface Message {
   error?: string | null;
 }
 export interface Run extends AccountSettings {
+  work_task_id?: string | null;
+  task_role?: string | null;
+  task_intent?: string | null;
   account_branch?: string | number | null;
   result?: string | null;
   id: string;
@@ -237,6 +243,8 @@ export interface Subscription {
   currency: string;
 }
 export interface DockState {
+  tasks?: ProjectTask[];
+  task_questions?: TaskQuestion[];
   accounts?: Account[];
   account_attempts?: AccountAttempt[];
   environments?: Environment[];
@@ -252,6 +260,86 @@ export interface DockState {
   approvals: Approval[];
   subscriptions: Subscription[] | Record<string, Subscription>;
   runtime: { enabled: boolean; version: string };
+}
+
+export type TaskIntent = "record" | "discuss" | "develop";
+export interface ProjectTask {
+  id: string;
+  project_id: string;
+  title: string;
+  goal: string;
+  criteria: string;
+  owner_id: string;
+  session_id: string | null;
+  status: string;
+  intent: TaskIntent;
+  acceptance_policy: "owner" | "human";
+  review_required: boolean | number;
+  workspace_mode: "shared" | "worktree";
+  revision: number;
+  delivery_id: string | null;
+  source_session_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TaskQuestion {
+  id: string;
+  task_id: string;
+  run_id: string;
+  question: string;
+  options: string[];
+  status: string;
+  answer?: string | null;
+  created_at: string;
+}
+export interface TaskDelivery {
+  id: string;
+  run_id: string;
+  revision: number;
+  summary: string;
+  status: string;
+  checks: {
+    criterion: string;
+    status: "passed" | "failed" | "unverified";
+    evidence: string;
+  }[];
+  artifacts: string[];
+  risks: string;
+  created_at: string;
+}
+export interface TaskDetail extends ProjectTask {
+  inputs: {
+    id: string;
+    body: string;
+    intent: TaskIntent;
+    action: string;
+    status: string;
+    created_at: string;
+  }[];
+  questions: TaskQuestion[];
+  deliveries: TaskDelivery[];
+  sessions: Session[];
+  runs: Run[];
+  reviews?: {
+    id: string;
+    run_id: string;
+    revision: number;
+    verdict: string;
+    summary: string;
+  }[];
+  journal: {
+    seq: number;
+    kind: string;
+    payload: Record<string, unknown>;
+    created_at: string;
+  }[];
+  workspaces: {
+    agent_id: string;
+    environment_id: string;
+    path: string;
+    base_commit: string;
+  }[];
+  can_steer_run_id?: string | null;
 }
 
 export type Translate = (zh: string, en: string) => string;

@@ -60,6 +60,12 @@ class ACPTests(unittest.TestCase):
         messages = [v for k,v in self.events if k == 'agent_message']
         self.assertEqual([m['phase'] for m in messages], ['commentary', 'final_answer'])
 
+    def test_discussion_negotiates_plan_mode_or_stops_before_prompt(self):
+        with self.assertRaisesRegex(ProviderError,'read-only planning mode'):
+            self.run_agent(permission='read_only')
+        self.assertFalse(any(kind=='agent_message' for kind,_ in self.events))
+        self.assertEqual(self.run_agent(scenario='read_only',permission='read_only'),'Final answer')
+
     def test_custom_native_roots_are_read_only_and_runtime_roots_are_private(self):
         for provider, key, relative, filename in (
             ('qwen', 'QWEN_HOME', '.qwen', 'settings.json'),

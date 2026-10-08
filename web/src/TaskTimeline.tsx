@@ -253,7 +253,9 @@ export default function TaskTimeline({
             payload(connection).status === "reconnecting";
           const label =
             run.status === "completed"
-              ? t("任务已完成", "Task completed")
+              ? run.work_task_id
+                ? t("本轮执行结束", "Run finished")
+                : t("任务已完成", "Task completed")
               : run.status === "running"
                 ? reconnecting
                   ? t("连接中断 · 正在重连", "Connection lost · reconnecting")

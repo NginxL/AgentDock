@@ -204,6 +204,12 @@ class ACP:
     def run(self, cwd, prompt, native_id, mcp, env, model, effort):
         servers = [{'name': 'agentdock', **mcp, 'env': [{'name': k, 'value': v} for k, v in env.items()]}]
         self.setup(cwd, native_id, servers)
+        if self.permission_mode=='read_only':
+            modes=(self.settings.get('modes') or {}).get('availableModes',[])
+            mode=next((m['id'] for m in modes if isinstance(m,dict) and m.get('id') in ('plan','read-only')),None)
+            if not mode:
+                raise ProviderError('This CLI does not advertise a read-only planning mode. Choose another Agent for discussion or review.')
+            self.request('session/set_mode',{'sessionId':self.native_id,'modeId':mode})
         self.configure(model, effort)
         self.running = True
         result = self.request('session/prompt', {'sessionId': self.native_id, 'prompt': [{'type': 'text', 'text': prompt}]})

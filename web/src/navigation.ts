@@ -14,13 +14,15 @@ type Route = {
   projectView: ProjectView;
   agentID: string;
   sessionID: string;
+  taskID: string;
 };
 const home: Route = {
   tab: "workspace",
   projectID: "",
-  projectView: "agents",
+  projectView: "tasks",
   agentID: "",
   sessionID: "",
+  taskID: "",
 };
 
 function readRoute(): Route | null {
@@ -65,8 +67,14 @@ function readRoute(): Route | null {
       ...home,
       tab: "projects",
       projectID,
-      projectView: view === "tasks" || view === "memory" ? view : "agents",
+      projectView:
+        path === "workspace"
+          ? "agents"
+          : view === "agents" || view === "memory"
+            ? view
+            : "tasks",
       agentID: "",
+      taskID: params.get("task") ?? "",
     };
   }
   return {
@@ -92,8 +100,9 @@ export function useNavigation() {
       params.set("session", next.sessionID);
     if (next.tab === "projects" && next.projectID) {
       params.set("project", next.projectID);
-      if (!next.agentID && next.projectView !== "agents")
-        params.set("view", next.projectView);
+      if (!next.agentID) params.set("view", next.projectView);
+      if (next.projectView === "tasks" && next.taskID)
+        params.set("task", next.taskID);
     }
     const query = params.size ? `?${params}` : "";
     const hash = `#/${page}${query}`;

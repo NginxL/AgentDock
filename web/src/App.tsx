@@ -19,7 +19,7 @@ import { Brand, Icon, errorMessage } from "./ui";
 import { demoState } from "./demo";
 import Workspace from "./views/Workspace";
 import Conversations from "./views/Conversations";
-import Messages from "./views/Messages";
+import Tasks from "./views/Tasks";
 import Memories from "./views/Memories";
 import { ProjectHeader, ProjectList } from "./views/Projects";
 import Usage from "./views/Usage";
@@ -91,14 +91,27 @@ export default function App() {
     projectView,
     agentID: agentPageID,
     sessionID: conversationID,
+    taskID,
     navigate,
   } = useNavigation();
   const setTab = (tab: Tab) => {
     setProjectForm(false);
-    navigate({ tab, projectID: "", projectView: "agents", agentID: "" });
+    navigate({
+      tab,
+      projectID: "",
+      projectView: "tasks",
+      agentID: "",
+      taskID: "",
+    });
   };
-  const setProjectID = (projectID: string) =>
-    navigate({ tab: "projects", projectID, agentID: "" });
+  const setProjectID = (nextProjectID: string) =>
+    navigate({
+      tab: "projects",
+      projectID: nextProjectID,
+      projectView: projectID ? projectView : "tasks",
+      agentID: "",
+      taskID: "",
+    });
   const [usageVisit, setUsageVisit] = useState(0);
   const [quotaRefreshing, setQuotaRefreshing] = useState(false);
   const [quotaRefreshFailed, setQuotaRefreshFailed] = useState(false);
@@ -851,6 +864,15 @@ export default function App() {
               lang={lang}
               t={t}
               onSelect={(id) => navigate({ sessionID: id })}
+              onTask={(task) =>
+                navigate({
+                  tab: "projects",
+                  projectID: task.project_id,
+                  projectView: "tasks",
+                  taskID: task.id,
+                  agentID: "",
+                })
+              }
               onAgent={(id, projectID) =>
                 navigate({
                   tab: projectID ? "projects" : "workspace",
@@ -870,7 +892,9 @@ export default function App() {
               creating={projectForm}
               onCreate={() => setProjectForm(!projectForm)}
               onSelect={setProjectID}
-              onView={(view) => navigate({ projectView: view, agentID: "" })}
+              onView={(view) =>
+                navigate({ projectView: view, agentID: "", taskID: "" })
+              }
               t={t}
             />
           )}
@@ -885,7 +909,7 @@ export default function App() {
                 navigate({
                   tab: "projects",
                   projectID: id,
-                  projectView: "agents",
+                  projectView: "tasks",
                   agentID: "",
                 })
               }
@@ -936,13 +960,16 @@ export default function App() {
             />
           )}
           {tab === "projects" && project && projectView === "tasks" && (
-            <Messages
+            <Tasks
               key={projectID}
               t={t}
               lang={lang}
               state={state}
               projectID={projectID}
-              agents={agents}
+              taskID={taskID}
+              onSelect={(id) => navigate({ taskID: id })}
+              token={token}
+              demo={demo}
               busy={!!busy || demo}
               mutate={mutate}
             />

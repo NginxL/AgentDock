@@ -44,7 +44,7 @@ class API:
             if parsed.path=="/mcp/tool":
                 if method!="POST": return 405,{"error":"POST required"}
                 payload=self._json(headers,body)
-                if payload.get("name") in ("message_send", "task_status"):
+                if payload.get("name") in ("message_send", "task_status", "task_context", "task_history", "task_result", "task_ask", "task_deliver", "task_review"):
                     if not self.execution_enabled: raise Forbidden("Execution is disabled for review")
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
@@ -95,6 +95,11 @@ class API:
                 state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
+            if method=='GET' and len(parts)==3 and parts[:2]==['api','tasks']:
+                result=self.store.task_detail(parts[2])
+                result['can_steer_run_id']=next((r.record['id'] for r in getattr(self.runtime,'_runs',{}).copy().values()
+                    if r.record.get('work_task_id')==parts[2] and r.record.get('task_role')=='owner' and r.control.available and not r.stop.is_set()),None)
+                return 200,result
             if method=='GET' and parsed.path=='/api/accounts':
                 from .account_service import account_usage
                 return 200, {'accounts': account_usage(self.store,self.store.accounts())}
@@ -119,7 +124,30 @@ class API:
                 return 200,{"events":self.store.session_events(parts[2],int(query.get("after",[0])[0]))}
             if method!="POST": return 404,{"error":"Route not found"}
             p=self._json(headers,body)
-            if parsed.path=='/api/accounts':
+            if parsed.path=='/api/tasks':
+                result=self.store.create_task(p.get('project_id'),p.get('title'),p.get('goal'),p.get('criteria'),p.get('owner_id'),
+                    acceptance_policy=p.get('acceptance_policy','owner'),review_required=p.get('review_required',False),
+                    workspace_mode=p.get('workspace_mode','shared'),source_session_id=p.get('source_session_id'))
+            elif len(parts)>=4 and parts[:2]==['api','tasks']:
+                task_id,action=parts[2:4]
+                if len(parts)==6 and action=='questions' and parts[5]=='answer':
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    result=self.runtime.answer_task(task_id,parts[4],p.get('answer'))
+                elif len(parts)!=4: raise Missing('Route not found')
+                elif action=='inputs':
+                    if p.get('intent')!='record' and not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    result=self.runtime.submit_task(task_id,p.get('body'),p.get('intent'),p.get('request_id'),p.get('action','queue'),p.get('expected_run_id'))
+                elif action=='resume':
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    result=self.runtime.recover_task(task_id,p.get('owner_id'),p.get('intent','develop'),p.get('request_id'))
+                elif action in ('pause','cancel'):
+                    if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
+                    result=self.runtime.stop_task(task_id,action)
+                elif action=='accept': result=self.store.accept_task(task_id)
+                elif action=='settings': result=self.store.update_task(task_id,p.get('title'),p.get('goal'),p.get('criteria'),p.get('acceptance_policy'),p.get('review_required'))
+                elif action in ('archive','reopen'): result=self.store.task_transition(task_id,action)
+                else: raise Missing('Route not found')
+            elif parsed.path=='/api/accounts':
                 result=self.store.add_account(p.get('provider'),p.get('label'),p.get('environment_id','local'),p.get('priority',0))
             elif len(parts)==3 and parts[:2]==['api','accounts']:
                 result=self.store.update_account(parts[2],p)

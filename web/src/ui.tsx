@@ -10,6 +10,44 @@ import type {
 
 export function errorMessage(message: string, t: Translate): string {
   const translations: Record<string, string> = {
+    "Choose an Agent in this project": "请选择当前项目中的 Agent。",
+    "Task Agents must use the project device":
+      "负责人和协作 Agent 需要使用项目所在设备。",
+    "Resume this task before submitting more work":
+      "请先接续任务，再提交执行要求。",
+    "Reopen this task before adding requirements":
+      "请先重新打开任务，再补充要求。",
+    "Wait for the current work before changing discussion or execution mode":
+      "请等待当前执行结束，或先暂停任务，再切换处理方式。",
+    "This run does not support live adjustment; queue the input or stop it first":
+      "本轮暂不支持即时调整，请选择排队处理，或先暂停。",
+    "The active task run changed": "当前执行已变化，请刷新后选择发送时机。",
+    "The previous task processes are still stopping":
+      "上一次执行仍在停止中，请稍后接续。",
+    "A previous native process still owns this task conversation":
+      "旧执行进程仍在使用会话，请等它停止后再接续。",
+    "Remote execution is still stopping; retry after it settles":
+      "远端执行尚未停止，请稍后重试。",
+    "Pause execution before changing task requirements":
+      "请先暂停执行，待进程停止后再修改任务要求。",
+    "Wait for task execution and delegated results":
+      "请等待执行结束并收回协作结果。",
+    "Answer the pending task questions first": "请先回答待确认的问题。",
+    "The task owner has not submitted a delivery": "负责人还未提交交付结果。",
+    "All acceptance checks need passing evidence":
+      "还有验收项未通过验证，请让负责人补齐证据。",
+    "An approved independent review is required before final delivery":
+      "需要另一位 Agent 审查通过后才能验收。",
+    "Request a new review after the latest delegated changes":
+      "最新协作修改尚未审查，请重新安排审查。",
+    "Reassign or cancel this Agent's project tasks before deleting it":
+      "请先更换该 Agent 的项目任务负责人，或取消相关任务后再删除。",
+    "Use the project task input to continue this conversation":
+      "请打开对应项目任务，继续补充要求。",
+    "Commit or save project changes before creating an isolated worktree":
+      "项目目录有未提交的修改，请先保存为提交，再创建独立工作区。",
+    "This CLI does not advertise a read-only planning mode. Choose another Agent for discussion or review.":
+      "该 CLI 尚未提供只读规划模式，请选择其他 Agent 进行讨论或审查。",
     "Stop active tasks before deleting an agent":
       "请先停止该 Agent 的未完成任务，再删除。",
     "Wait for linked tasks before deleting an agent":
@@ -101,6 +139,8 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
       </>
     ),
     arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+    back: <path d="M19 12H5m5-5-5 5 5 5" />,
+    edit: <path d="m15 4 5 5M4 20l5-1L21 7a2.1 2.1 0 0 0-5-5L4 14v6Z" />,
     plus: <path d="M12 5v14M5 12h14" />,
     refresh: (
       <>

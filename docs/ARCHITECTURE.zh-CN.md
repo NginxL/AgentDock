@@ -29,7 +29,7 @@ flowchart LR
 | 持久状态 | `agentdock/store.py` | 原生会话绑定、任务归属、事务式队列领取、派工与回传关联、记忆历史、令牌哈希和审批。 |
 | 调度器 | `agentdock/runtime.py` | 显式提交、自动派工和结果回传、任务结算、审批超时与取消。 |
 | 原生通信 | `agentdock/providers.py` | Codex App Server 和 Claude stream-json 协议、流解析、会话身份检查、输出限制和进程清理。 |
-| Agent 工具 | `agentdock/mcp.py` | 五项工具：成员发现、定向派工、任务状态、记忆搜索和记忆提案。 |
+| Agent 工具 | `agentdock/mcp.py` | 项目协作、任务上下文与历史、问题、交付、独立审查和记忆提案。 |
 | 额度桥接 | `agentdock/quota.py` | 通过内置 macOS 额度组件定时查询 Codex/Claude，并在进入额度页时更新，过滤快照字段并判断时效。 |
 
 浏览器 `?demo=1` 模式读取虚构样例，不发起 API 请求，也不能执行 Agent、派工或刷新额度。
@@ -44,6 +44,14 @@ flowchart LR
 来源引用仅记录关系，不做动态继承。修改或删除项目成员不会更新来源或其他成员；删除来源将引用置空，保留已加入项目的成员与会话。迁移只增加可空字段，保留原有标识、会话和角色。每个成员独立调度，目录重叠仍串行。记忆与派工能力沿用当前运行的项目作用域。日常会话保持空项目归属，不获得项目记忆或队友。复用同一 CLI 登录时，账号与服务商额度仍共用。
 
 `Conversations.tsx` 汇集已有会话，不迁移记录。路由为 `#/conversations?session=<id>`；搜索、选择及项目／日常筛选不改变归属。详情复用已有事件流、任务时间线、授权和输入框，并明确指定会话 ID；失效 ID 不回退到另一会话。
+
+## 持久项目任务
+
+`task_store.py` 以 `tasks` 为主记录，将 `task_inputs`、`task_questions`、`task_reviews`、`task_deliveries` 和 `task_journal` 与执行会话分开保存。`runs.work_task_id` / `sessions.work_task_id` 指向所属任务，`task_role` 区分负责人、执行者和审查者。原 `task_run_id` 继续表达派工链，不与项目任务 ID 混用。
+
+`task_runtime.py` 复用队列、账号选择、原生隔离和结果回传。只有负责人可以派工或交付；所有派工使用任务专属会话，讨论禁止派工、交付和记忆写入，审查禁止修改文件及记忆。验收同时校验版本、逐项证据、问题与协作结算，以及可选独立审查。新要求使旧交付失效，原生轮次结束只表示这一轮完成。
+
+任务恢复使用 `execution_lease.py` 的继承式文件锁核对旧进程停止；SSH 通过 `recovery_status` 核对 worker 和原生锁，无法确认则阻止恢复。新负责人使用新会话读取持久事实。`task_workspace.py` 可从干净 Git 根目录固定任务起点，为成员建立独立 worktree；审查者使用负责人工作区。完整生命周期、保留规则与实机验证边界见[项目任务](TASKS.zh-CN.md)。
 
 ## 会话与轮次
 

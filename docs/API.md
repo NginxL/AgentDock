@@ -175,6 +175,26 @@ Agents sharing a workspace or managed account run sequentially. After delegating
 
 `idempotency_key` is scoped to project and sender. Repeating the same key and assignment returns the same delivery; changing the recipient, body, correlation, sender run/session, or explicitly selected target session returns a conflict. This deduplicates retries within the same sending run, not unrelated tasks.
 
+## Project tasks
+
+See [workflow and retention](TASKS.md). These routes require the administrator token. `GET /api/state` includes `tasks` and open `task_questions`; existing session and dispatch APIs remain compatible.
+
+| Route | Fields / result |
+| --- | --- |
+| `POST /api/tasks` | `project_id`, `title`, `goal`, `criteria` (one per line), `owner_id`; optional `acceptance_policy: owner/human`, `review_required`, `workspace_mode: shared/worktree`, `source_session_id`. Creates a draft only. |
+| `GET /api/tasks/{id}` | Task with inputs, questions, deliveries, reviews, journal, runs, sessions and workspaces; `can_steer_run_id` identifies an adjustable active turn. |
+| `POST /api/tasks/{id}/inputs` | `body`, `intent: record/discuss/develop`, `request_id`; optional `action: queue/steer`, `expected_run_id` (required for steer). Identical retries deduplicate; changed content conflicts. Only record works with execution disabled. |
+| `POST /api/tasks/{id}/questions/{question_id}/answer` | `answer`. Identical retries deduplicate; replacing an answered decision conflicts. Task state determines whether saving resumes the owner. |
+| `POST /api/tasks/{id}/settings` | `title`, `goal`, `criteria`, `acceptance_policy`, `review_required`. Requires idle or paused execution; changes invalidate delivery. |
+| `POST /api/tasks/{id}/pause`, `cancel` | Empty object; stops the task's active and queued work. |
+| `POST /api/tasks/{id}/resume` | Optional `owner_id`, `intent: develop/discuss`, `request_id` for idempotent recovery. Checks previous execution stopped, then creates a fresh owner session. |
+| `POST /api/tasks/{id}/accept` | Empty object; completes only after all acceptance gates pass. |
+| `POST /api/tasks/{id}/reopen`, `archive` | Empty object; requires a completed or cancelled task with settled execution. |
+
+Task states: `draft/active/waiting_input/review/completed/paused/interrupted/cancelled/archived`. Review means execution settled without acceptance; a formal delivery may still be missing, and all acceptance gates remain enforced. Inputs, questions and reports persist across conversations. `work_task_id` differs from the existing dispatch-chain `task_run_id`.
+
+Live adjustment uses Codex `turn/steer` with `expectedTurnId`. Receipts distinguish accepted, rejected and unknown; accepted input becomes processed when its turn completes. Unknown receipts are not retried or silently queued. A task-scoped active capability is required for task context and writes, with owner/reviewer role checks.
+
 ## MCP tools
 
 `python3 -m agentdock.mcp` uses newline-delimited JSON-RPC over stdio. It implements `initialize`, `ping`, `tools/list`, and `tools/call`; notifications receive no response. Supported protocol versions are `2025-11-25`, `2025-06-18`, `2025-03-26`, and `2024-11-05`.
@@ -184,10 +204,16 @@ The workbench supplies `AGENTDOCK_URL` and `AGENTDOCK_CAPABILITY` through the ch
 | Tool | Arguments | Effect |
 | --- | --- | --- |
 | `agent_list` | none | Lists agents in the current project, including the caller. Does not start them. |
-| `message_send` | `recipient_id`, `body`; optional `recipient_session_id`, `correlation_id`, `idempotency_key` | Creates an executable delivery and returns its IDs/status. The recipient runs when eligible; its result schedules a continuation in the sender's session. |
+| `message_send` | `recipient_id`, `body`; optional `recipient_session_id`, `correlation_id`, `idempotency_key`, `task_role: worker/reviewer` | Creates an executable delivery and returns its IDs/status. The recipient runs when eligible; its result schedules a continuation in the sender's session. |
 | `task_status` | `message_id` | Returns the status and result of a delivery the caller sent or received in this project. A snapshot, not a blocking wait. |
 | `memory_search` | optional `query` | Returns up to 20 approved, non-archived project memories using literal keyword matching. |
 | `memory_propose` | `key`, `content`, `expected_version` | Creates a proposal for human review. Cannot directly overwrite approved memory. |
+| `task_context` | none | Bounded current-task context: goal, criteria, inputs, questions, reports and workspaces. |
+| `task_history` | optional `after`, `offset` | Complete durable records in order; continue with next_after/next_offset until record:null. JSON text may span pages. |
+| `task_result` | `run_id`, optional `offset` | Full stored final report in this task, paginated by next_offset. Retained reports survive session deletion. |
+| `task_ask` | `question`, optional `options` | Save a question requiring human input, then finish the turn. |
+| `task_deliver` | `summary`, `checks`; optional `artifacts`, `risks` | Owner-only delivery; each check contains criterion, status and evidence. |
+| `task_review` | `verdict: approved/changes_requested/unverified`, `summary` | Independent reviewer report for the current task revision. |
 
 The former `inbox_read` and `inbox_ack` tools are not part of the 0.2 protocol. MCP tools cannot grant provider permissions; native tool approvals use the authenticated workbench approval flow.
 

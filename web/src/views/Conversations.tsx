@@ -1,16 +1,25 @@
 import SessionListItem from "../SessionListItem";
 import { useEffect, useRef, useState } from "react";
-import type { DockState, Language, Mutate, Session, Translate } from "../types";
+import type {
+  DockState,
+  Language,
+  Mutate,
+  Session,
+  Translate,
+  ProjectTask,
+} from "../types";
 import { DateText, Empty, Icon, statusLabel } from "../ui";
 import ProviderIcon from "../ProviderIcon";
 import ConversationAgentFilter from "../ConversationAgentFilter";
 import Workspace from "./Workspace";
+import { TaskForm } from "./Tasks";
 
 export default function Conversations({
   state,
   sessionID,
   onSelect,
   onAgent,
+  onTask,
   token,
   demo,
   busy,
@@ -22,6 +31,7 @@ export default function Conversations({
   sessionID: string;
   onSelect: (id: string) => void;
   onAgent: (id: string, projectID: string | null) => void;
+  onTask?: (task: ProjectTask) => void;
   token: string;
   demo: boolean;
   busy: boolean;
@@ -41,6 +51,7 @@ export default function Conversations({
   const [newScope, setNewScope] = useState("");
   const [agentID, setAgentID] = useState("");
   const [title, setTitle] = useState("");
+  const [converting, setConverting] = useState(false);
   const selected = state.sessions.find((s) => s.id === sessionID);
   const agent = state.agents.find((a) => a.id === selected?.agent_id);
   const projectName = (session: Session) =>
@@ -371,6 +382,28 @@ export default function Conversations({
               <span>
                 {projectName(selected)} · {agent.name}
               </span>
+              {onTask &&
+                (selected.work_task_id ? (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      const task = state.tasks?.find(
+                        (task) => task.id === selected.work_task_id,
+                      );
+                      if (task) onTask(task);
+                    }}
+                  >
+                    {t("打开任务", "Open task")}
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    aria-expanded={converting}
+                    onClick={() => setConverting(!converting)}
+                  >
+                    {t("转为项目任务", "Create project task")}
+                  </button>
+                ))}
               <button
                 className="text-button"
                 onClick={() => onAgent(agent.id, agent.project_id)}
@@ -378,6 +411,21 @@ export default function Conversations({
                 {t("打开 Agent", "Open agent")} <Icon name="arrow" size={16} />
               </button>
             </div>
+            {converting && onTask && (
+              <TaskForm
+                key={selected.id}
+                state={state}
+                t={t}
+                busy={busy}
+                mutate={mutate}
+                source={selected}
+                close={() => setConverting(false)}
+                onCreated={(task) => {
+                  setConverting(false);
+                  onTask(task);
+                }}
+              />
+            )}
             <Workspace
               t={t}
               lang={lang}
