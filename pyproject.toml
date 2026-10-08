@@ -1,13 +1,14 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentdock-workbench"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Native agent sessions, automatic task handoff, shared memory, and usage in one local workbench"
-requires-python = ">=3.9"
-license = {text = "MIT"}
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE*"]
 dependencies = []
 
 [tool.setuptools]
@@ -15,7 +16,7 @@ packages = ["agentdock"]
 
 [tool.ruff]
 required-version = "==0.16.10"
-target-version = "py39"
+target-version = "py311"
 line-length = 88
 
 [tool.ruff.lint]
@@ -26,3 +27,12 @@ python_version = "3.11"
 files = ["agentdock/errors.py", "agentdock/text_buffer.py", "agentdock/turn.py"]
 strict = true
 follow_imports = "silent"
+
+[project.scripts]
+agentdock = "agentdock.server:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "agentdock.__version__"}
+
+[tool.setuptools.package-data]
+agentdock = ["static/*", "static/assets/*", "static/licenses/*"]

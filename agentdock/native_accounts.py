@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -246,20 +247,18 @@ class MacClients:
 
     def _codex_store(self):
         home = self._home("codex")
-        text = (_bytes(home / "config.toml") or b"").decode()
-        # Read top-level scalar keys only, without needing a TOML dependency on
-        # Python 3.9. Anything ambiguous is rejected rather than rewritten.
-        top = re.split(r"^\s*\[", text, maxsplit=1, flags=re.M)[0]
+        try:
+            settings = tomllib.loads((_bytes(home / "config.toml") or b"").decode())
+        except (tomllib.TOMLDecodeError, UnicodeError):
+            raise AccountError(
+                "Unsupported native Codex credential configuration."
+            ) from None
 
         def scalar(key, default):
-            entries = re.findall(
-                r"^\s*" + key + r"\s*=\s*[\"\']([^\"\']+)[\"\']\s*(?:#.*)?$", top, re.M
-            )
-            if len(entries) > 1 or (
-                re.search(r"^\s*" + key + r"\s*=", top, re.M) and not entries
-            ):
+            value = settings.get(key, default)
+            if not isinstance(value, str):
                 raise AccountError("Unsupported native Codex credential configuration.")
-            return entries[0] if entries else default
+            return value
 
         mode = scalar("cli_auth_credentials_store", "file")
         if scalar("model_provider", "openai") != "openai":

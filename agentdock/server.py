@@ -9,11 +9,14 @@ import os
 import secrets
 import signal
 import sys
+import tempfile
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from contextlib import ExitStack
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from .loopback_server import LoopbackServer
 from .registry import availability as availability
 from .registry import commands as resolve_commands
 from .store import Conflict, Forbidden, Invalid, Missing, Store
@@ -314,6 +317,25 @@ def handler_for(api, web_root):
     return Handler
 
 
+def static_directory():
+    packaged = Path(__file__).resolve().parent / "static"
+    return packaged if packaged.is_dir() else packaged.parent.parent / "web/dist"
+
+
+def write_access_token(path, token):
+    if path.is_symlink():
+        raise ValueError("Access token path must not be a symbolic link")
+    descriptor, temporary = tempfile.mkstemp(prefix=".admin-", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as output:
+            output.write(token + "\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def main(argv=None):
     from .credential_broker import initialize
 
@@ -324,12 +346,17 @@ def main(argv=None):
     parser.add_argument(
         "--data-dir", default=str(Path.home() / ".local/share/agentdock")
     )
-    parser.add_argument("--port", type=int, default=47831)
+    parser.add_argument(
+        "--port", type=int, default=0, help="Loopback port; 0 chooses an available port"
+    )
     parser.add_argument("--config", type=Path)
+    parser.add_argument(
+        "--quota-helper", type=Path, help="Bundled desktop usage reader"
+    )
     parser.add_argument("--enable-execution", action="store_true")
     args = parser.parse_args(argv)
-    if not 1024 <= args.port <= 65535:
-        parser.error("port must be between 1024 and 65535")
+    if args.port != 0 and not 1024 <= args.port <= 65535:
+        parser.error("port must be 0 or between 1024 and 65535")
     config = {}
     if args.config:
         config = json.loads(args.config.read_text())
@@ -343,46 +370,61 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     command = config.get("quota_command", config.get("agentmeter_command"))
+    if command is None and args.quota_helper:
+        command = [str(args.quota_helper)]
     if command is not None and (
         not isinstance(command, list)
         or not command
         or any(not isinstance(x, str) or not x or "\x00" in x for x in command)
     ):
         parser.error("quota_command must be an argument list")
+    for key, default, minimum, maximum in (
+        ("run_timeout", 900, 30, 86400),
+        ("approval_timeout", 120, 1, 120),
+    ):
+        value = config.get(key, default)
+        if type(value) not in (int, float) or not minimum <= value <= maximum:
+            parser.error(f"{key} must be between {minimum} and {maximum} seconds")
     data = Path(args.data_dir).expanduser()
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     data.chmod(0o700)
-    from .diagnostics import configure
+    from .diagnostics import configure, failure
 
     configure(data)
+    try:
+        with ExitStack() as cleanup:
+            serve(args, commands, command, config, data, cleanup)
+    except Exception as error:
+        identifier = failure(error, "startup")
+        print("AgentDock failed to start. Error ID: " + identifier, file=sys.stderr)
+        raise SystemExit(1) from None
+
+
+def serve(args, commands, command, config, data, cleanup):
     # Never rotate a live instance's token while trying to start another one.
     store = Store(data / "agentdock.sqlite3")
-    try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), BaseHTTPRequestHandler)
-    except BaseException:
-        store.close()
-        raise
+    cleanup.callback(store.close)
+    server = LoopbackServer(("127.0.0.1", args.port), BaseHTTPRequestHandler)
+    cleanup.callback(server.server_close)
     server.daemon_threads = False
     server.block_on_close = True
     token = secrets.token_urlsafe(32)
     token_path = data / "admin.token"
-    descriptor = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "w") as output:
-        output.write(token + "\n")
-    token_path.chmod(0o600)
+    write_access_token(token_path, token)
     from .quota import QuotaService
     from .runtime import Runtime
 
     runtime_config = {
         "execution_enabled": args.enable_execution,
         "commands": commands,
-        "base_url": "http://127.0.0.1:" + str(args.port),
+        "base_url": "http://127.0.0.1:" + str(server.server_port),
         "python": sys.executable,
         "package_root": str(Path(__file__).resolve().parent.parent),
         "approval_timeout": config.get("approval_timeout", 120),
         "run_timeout": config.get("run_timeout", 900),
     }
     runtime = Runtime(store, runtime_config)
+    cleanup.callback(runtime.close)
     quota = QuotaService(
         store,
         command,
@@ -391,18 +433,18 @@ def main(argv=None):
         if "agentmeter_command" in config and "quota_command" not in config
         else "AgentDock",
     )
+    cleanup.callback(quota.close)
     quota.remote = runtime.remote
-    api = API(store, runtime, quota, token, args.port, args.enable_execution)
-    server.RequestHandlerClass = handler_for(
-        api, Path(__file__).resolve().parent.parent / "web/dist"
-    )
+    api = API(store, runtime, quota, token, server.server_port, args.enable_execution)
+    cleanup.callback(api.close)
+    server.RequestHandlerClass = handler_for(api, static_directory())
 
     def stop(*_):
         threading.Thread(target=server.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    print("AgentDock: http://127.0.0.1:" + str(args.port))
+    print("AgentDock: " + runtime_config["base_url"], flush=True)
     print("Local access token file: " + str(token_path))
     print(
         "Execution: "
@@ -412,21 +454,14 @@ def main(argv=None):
             else "disabled (review mode)"
         )
     )
-    try:
-        from .metrics import LocalUsage
+    from .metrics import LocalUsage
 
-        api.usage = LocalUsage(store)
-        if args.enable_execution:
-            api.usage.start()
-        quota.start_auto_refresh()
-        server.serve_forever(poll_interval=0.3)
-    finally:
-        api.close()
-        api.usage.close() if api.usage else None
-        runtime.close()
-        quota.close()
-        server.server_close()
-        store.close()
+    api.usage = LocalUsage(store)
+    cleanup.callback(api.usage.close)
+    if args.enable_execution:
+        api.usage.start()
+    quota.start_auto_refresh()
+    server.serve_forever(poll_interval=0.3)
 
 
 if __name__ == "__main__":

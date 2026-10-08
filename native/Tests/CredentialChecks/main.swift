@@ -32,7 +32,7 @@ print("Credential checks passed: AES-GCM roundtrip, persistence, tamper/context 
 let process = Process(), output = Pipe()
 let channel = CredentialChannel(vault: vault)
 process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-process.arguments = ["python3", "-c", """
+process.arguments = [ProcessInfo.processInfo.environment["AGENTDOCK_TEST_PYTHON"] ?? "python3", "-c", """
 from agentdock import credential_broker as broker
 import os, subprocess, sys
 broker.initialize()

@@ -22,6 +22,7 @@ BOOTSTRAP = r"""
 import base64,hashlib,io,json,os,pathlib,re,shutil,sys,tempfile,zipfile
 os.umask(0o077)
 try:
+ if sys.version_info<(3,11): raise RuntimeError('Python 3.11+ required')
  raw=sys.stdin.buffer.readline(2097153)
  if len(raw)>2097152: raise ValueError('size')
  request=json.loads(raw)
@@ -178,7 +179,7 @@ class RemoteManager:
             except Exception:
                 self.store.update_environment_status(environment_id, "error")
                 raise Conflict(
-                    "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.",
+                    "SSH connection failed. Check SSH access, Python 3.11+ and the installed CLIs.",
                     code="ssh_connection_failed_check_ssh_access_python_3_9_and_the_installed_clis",
                 ) from None
 

@@ -124,8 +124,8 @@ export const errorCopy: Record<string, readonly [string, string]> = {
     "Wait for active tasks before changing agent settings",
   ],
   ssh_connection_failed_check_ssh_access_python_3_9_and_the_installed_clis: [
-    "SSH 连接失败，请检查连接权限、远端 Python 3.9+ 及 CLI 安装情况。",
-    "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.",
+    "SSH 连接失败，请检查连接权限、远端 Python 3.11+ 及 CLI 安装情况。",
+    "SSH connection failed. Check SSH access, Python 3.11+ and the installed CLIs.",
   ],
   connect_this_ssh_environment_before_starting_an_agent: [
     "请先打开 Agent 设置，点击「连接 / 检查」，再重试任务。",
@@ -244,6 +244,8 @@ export const legacyErrorCodes: Record<string, string> = {
   "Invalid agent permission mode": "invalid_agent_permission_mode",
   "Wait for active tasks before changing agent settings":
     "wait_for_active_tasks_before_changing_agent_settings",
+  "SSH connection failed. Check SSH access, Python 3.11+ and the installed CLIs.":
+    "ssh_connection_failed_check_ssh_access_python_3_9_and_the_installed_clis",
   "SSH connection failed. Check SSH access, Python 3.9+ and the installed CLIs.":
     "ssh_connection_failed_check_ssh_access_python_3_9_and_the_installed_clis",
   "Connect this SSH environment before starting an agent.":

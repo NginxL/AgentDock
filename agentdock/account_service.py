@@ -104,8 +104,11 @@ class AccountService:
                         "cooldown",
                     ) and time.monotonic() >= self._refresh_after.get(account["id"], 0):
                         self.refresh(account["id"])
-                except Exception:
-                    # Login/transport diagnostics are intentionally not logged.
+                except Exception as error:
+                    from .diagnostics import failure
+
+                    failure(error, "accounts")
+                    # Error text and credentials are excluded from structured logs.
                     continue
 
     def start_login(self, identifier, method=None):

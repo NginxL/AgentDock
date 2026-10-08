@@ -4,13 +4,14 @@
 import argparse
 import json
 import os
-import plistlib
 import shutil
 import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+
+from macos_bundle import build_sources, bundle_at
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,30 +26,7 @@ def main():
     args = parser.parse_args()
     if sys.platform != "darwin":
         parser.error("macOS 14+ and Apple Command Line Tools are required")
-    npm = shutil.which("npm")
-    if not npm:
-        parser.error("Node.js 20.19+ and npm are required to build the interface")
-    if not (ROOT / "web/node_modules").exists():
-        subprocess.run([npm, "ci", "--ignore-scripts"], cwd=ROOT / "web", check=True)
-    subprocess.run([npm, "run", "build"], cwd=ROOT / "web", check=True)
-    subprocess.run(
-        ["swift", "build", "--package-path", str(ROOT / "native"), "-c", "release"],
-        check=True,
-    )
-    binaries = Path(
-        subprocess.check_output(
-            [
-                "swift",
-                "build",
-                "--package-path",
-                str(ROOT / "native"),
-                "-c",
-                "release",
-                "--show-bin-path",
-            ],
-            text=True,
-        ).strip()
-    )
+    binaries = build_sources()
     data = Path.home() / ".local/share/agentdock"
     data.mkdir(parents=True, exist_ok=True, mode=0o700)
     data.chmod(0o700)
@@ -94,84 +72,7 @@ def main():
         with tempfile.TemporaryDirectory(
             prefix="agentdock-install-", dir=applications
         ) as staging:
-            bundle = Path(staging) / "AgentDock.app"
-            contents = bundle / "Contents"
-            resources = contents / "Resources"
-            for p in (
-                contents / "MacOS",
-                contents / "Helpers",
-                resources / "workbench/web",
-            ):
-                p.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(binaries / "AgentDock", contents / "MacOS/AgentDock")
-            shutil.copy2(
-                binaries / "AgentDockUsage", contents / "Helpers/AgentDockUsage"
-            )
-            shutil.copytree(
-                ROOT / "agentdock",
-                resources / "workbench/agentdock",
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
-            shutil.copytree(ROOT / "web/dist", resources / "workbench/web/dist")
-            shutil.copy2(ROOT / "LICENSE", resources / "LICENSE.txt")
-            shutil.copy2(ROOT / "NOTICE.md", resources / "NOTICE.md")
-            licenses = resources / "dependency-licenses"
-            licenses.mkdir()
-            for name in ("react", "react-dom", "scheduler"):
-                license_file = ROOT / "web/node_modules" / name / "LICENSE"
-                if license_file.exists():
-                    shutil.copy2(license_file, licenses / (name + ".txt"))
-            shutil.copy2(
-                ROOT / "web/src/assets/providers/LICENSE", licenses / "lobe-icons.txt"
-            )
-            (resources / "runtime.json").write_text(
-                json.dumps(
-                    {
-                        "python": sys.executable,
-                        "path": os.environ.get("PATH", "/usr/bin:/bin"),
-                    }
-                )
-            )
-            info = {
-                "CFBundleExecutable": "AgentDock",
-                "CFBundleIdentifier": "io.github.nginxl.AgentDock",
-                "CFBundleName": "AgentDock",
-                "CFBundleDisplayName": "AgentDock",
-                "CFBundlePackageType": "APPL",
-                "CFBundleShortVersionString": "0.3.0",
-                "CFBundleVersion": "35",
-                "LSMinimumSystemVersion": "14.0",
-                "NSHighResolutionCapable": True,
-                "CFBundleIconFile": "AppIcon",
-                "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},
-                "NSAppleEventsUsageDescription": "AgentDock quits and reopens a native client only when you choose to save, switch or recover its account login.",
-                "NSHumanReadableCopyright": "Copyright © 2026 NginxL. MIT License.",
-            }
-            (contents / "Info.plist").write_bytes(plistlib.dumps(info))
-            subprocess.run(
-                [
-                    "swift",
-                    str(ROOT / "scripts/make-icon.swift"),
-                    str(resources / "AppIcon.icns"),
-                ],
-                check=True,
-            )
-            subprocess.run(
-                [
-                    "codesign",
-                    "--force",
-                    "--sign",
-                    "-",
-                    str(contents / "Helpers/AgentDockUsage"),
-                ],
-                check=True,
-            )
-            subprocess.run(
-                ["codesign", "--force", "--sign", "-", str(bundle)], check=True
-            )
-            subprocess.run(
-                ["codesign", "--verify", "--deep", "--strict", str(bundle)], check=True
-            )
+            bundle = bundle_at(Path(staging), binaries)
             if destination.exists():
                 backup = (
                     data

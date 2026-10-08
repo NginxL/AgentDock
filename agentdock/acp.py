@@ -3,6 +3,7 @@
 import time
 import uuid
 
+from . import __version__
 from .provider_common import ProviderCancelled, ProviderError
 from .text_buffer import TextBuffer
 
@@ -91,7 +92,7 @@ class ACP:
             "initialize",
             {
                 "protocolVersion": 1,
-                "clientInfo": {"name": "agentdock", "version": "0.3.0"},
+                "clientInfo": {"name": "agentdock", "version": __version__},
                 "clientCapabilities": {
                     "fs": {"readTextFile": False, "writeTextFile": False},
                     "terminal": False,

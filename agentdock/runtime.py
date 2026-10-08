@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from .diagnostics import failure
 from .errors import Conflict, Forbidden, Invalid
 from .input_control import InputControl
 from .mcp import TOOLS
@@ -223,13 +224,13 @@ class Runtime(TaskRuntime):
                 run.record["session_id"] == session_id for run in self._runs.values()
             ):
                 raise RuntimeFailure("Stop active tasks before deleting a session")
-            return self.store.delete_session(session_id, self._cleanup_session)
+        return self.store.delete_session(session_id, self._cleanup_session)
 
     def delete_agent(self, agent_id):
         with self._lock:
             if any(run.record["agent_id"] == agent_id for run in self._runs.values()):
                 raise RuntimeFailure("Stop active tasks before deleting an agent")
-            return self.store.delete_agent(agent_id, self._cleanup_session)
+        return self.store.delete_agent(agent_id, self._cleanup_session)
 
     def send_message(
         self,
@@ -362,7 +363,8 @@ class Runtime(TaskRuntime):
                         )
                         self._runs[record["id"]] = run
                         run.thread.start()
-                    except Exception:
+                    except Exception as error:
+                        failure(error, "runtime")
                         self._runs.pop(record["id"], None)
                         self.store.finish_run(
                             record["id"],

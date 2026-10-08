@@ -4,7 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import ThreadingHTTPServer
+from agentdock.loopback_server import LoopbackServer
 from unittest.mock import Mock
 
 from agentdock.server import API, handler_for
@@ -17,7 +17,7 @@ class EventStreamTests(unittest.TestCase):
         self.store = Store(":memory:")
         agent = self.store.add_agent(None, "Fixture", "codex")
         self.session = self.store.add_session(agent["id"], "Fixture")["id"]
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), lambda *a: None)
+        self.server = LoopbackServer(("127.0.0.1", 0), lambda *a: None)
         self.api = API(self.store, Mock(), Mock(), "fixture", self.server.server_port)
         self.server.RequestHandlerClass = handler_for(self.api, self.tmp.name)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

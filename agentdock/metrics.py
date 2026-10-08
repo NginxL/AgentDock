@@ -340,7 +340,10 @@ class LocalUsage:
         while not self.stop.is_set():
             try:
                 self.scan()
-            except Exception:
+            except Exception as error:
+                from .diagnostics import failure
+
+                failure(error, "usage")
                 self.status = self.activity_status = "partial"
                 self.activity_pending = False
             self.stop.wait(0.2 if self.activity_pending else 10)

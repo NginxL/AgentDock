@@ -17,10 +17,11 @@ import threading
 import time
 import uuid
 from contextlib import nullcontext
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from .errors import Conflict
+from .loopback_server import LoopbackServer
 from .providers import ProviderCancelled, ProviderError, execute
 from .session_storage import remove_session_directory, session_directory
 
@@ -511,7 +512,7 @@ def work(path):
         except OSError:
             stop.set()  # Never continue a task whose lease or status cannot be tracked.
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), BridgeHandler)
+    server = LoopbackServer(("127.0.0.1", 0), BridgeHandler)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     watcher = threading.Thread(target=monitor, daemon=True)

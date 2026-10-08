@@ -19,6 +19,11 @@ func lines(_ values: [String: Any], _ language: DesktopLanguage = .zh) throws ->
 }
 
 do {
+    expect(ServiceLaunch.origin(in: "AgentDock: http://127.0.0.1:52345\n")?.port == 52345, "Readiness uses the actual bound loopback port")
+    expect(ServiceLaunch.origin(in: "AgentDock: http://127.0.0.1:5234") == nil, "Partial readiness lines cannot authorize a different port")
+    for address in ["http://localhost:52345", "https://127.0.0.1:52345", "http://127.0.0.1:80", "http://user@127.0.0.1:52345", "http://127.0.0.1:52345/path", "http://127.0.0.1:52345?token=x", "http://127.0.0.1:52345#x"] {
+        expect(ServiceLaunch.origin(in: "AgentDock: " + address + "\n") == nil, "Unexpected origins never receive the desktop token")
+    }
     let values: [String: Any] = ["windows": [["label": "5 小时", "remaining_percent": 25.5, "reset_at": "2026-09-28T05:30:00.000Z"]]]
     let zh = try lines(values), en = try lines(values, .en)
     expect(zh.contains("5 小时 · 剩余 25.5%"), "Remaining percentage is displayed without inverting it")

@@ -9,6 +9,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import __version__
+
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 
 
@@ -168,7 +170,7 @@ class Bridge:
                     if requested in PROTOCOLS
                     else PROTOCOLS[0],
                     "capabilities": {"tools": {"listChanged": False}},
-                    "serverInfo": {"name": "agentdock", "version": "0.3.0"},
+                    "serverInfo": {"name": "agentdock", "version": __version__},
                 }
             elif not self.initialized:
                 raise ValueError("Initialize first")

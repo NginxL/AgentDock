@@ -15,7 +15,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
     private var menuBar: MenuBarController?
     private var connectionScript: WKUserScript?
     private var language = DesktopLanguage(rawValue: UserDefaults.standard.string(forKey: "interfaceLanguage") ?? "zh") ?? .zh
-    private let origin = "http://127.0.0.1:47831"
+    private var origin = ""
     private let dataDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share/agentdock")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,7 +36,6 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        menuBar = MenuBarController(origin: URL(string: origin)!, language: language) { [weak self] in self?.showWorkbench() }
         startService()
     }
 
@@ -67,20 +66,28 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
 
     private func startService() {
         do {
-            guard let resources = Bundle.main.resourceURL,
-                  let settings = try JSONSerialization.jsonObject(with: Data(contentsOf: resources.appendingPathComponent("runtime.json"))) as? [String: String],
-                  let python = settings["python"], FileManager.default.isExecutableFile(atPath: python) else {
+            guard let resources = Bundle.main.resourceURL else {
+                throw NSError(domain: "AgentDock", code: 1)
+            }
+            let settings = (try? JSONSerialization.jsonObject(with: Data(contentsOf: resources.appendingPathComponent("runtime.json")))) as? [String: String] ?? [:]
+            guard let python = ServiceLaunch.python(resources: resources, settings: settings, environment: ProcessInfo.processInfo.environment) else {
                 throw NSError(domain: "AgentDock", code: 1)
             }
             let process = Process(), output = Pipe()
             let credentials = CredentialChannel()
             self.credentials = credentials
-            process.executableURL = URL(fileURLWithPath: python)
+            process.executableURL = python
             process.currentDirectoryURL = resources.appendingPathComponent("workbench")
-            process.arguments = ["-u", "-m", "agentdock", "--config", dataDirectory.appendingPathComponent("config.json").path, "--enable-execution"]
+            process.arguments = ["-s", "-u", "-m", "agentdock", "--port", "0", "--data-dir", dataDirectory.path, "--enable-execution"]
+            process.arguments?.append(contentsOf: ["--quota-helper", resources.deletingLastPathComponent().appendingPathComponent("Helpers/AgentDockUsage").path])
+            let configuration = dataDirectory.appendingPathComponent("config.json")
+            if FileManager.default.fileExists(atPath: configuration.path) {
+                process.arguments?.append(contentsOf: ["--config", configuration.path])
+            }
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = settings["path"] ?? "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
             env["AGENTDOCK_CREDENTIAL_PIPE"] = "1"
+            env["PYTHONDONTWRITEBYTECODE"] = "1" // Keep signed bundle resources immutable.
             process.environment = env
             process.standardOutput = output
             process.standardInput = credentials.responses
@@ -93,7 +100,10 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
                 DispatchQueue.main.async {
                     guard let self, !self.ready else { return }
                     self.startupOutput = String((self.startupOutput + line).suffix(4096))
-                    if self.startupOutput.contains("AgentDock: " + self.origin) { self.connectOwnedService() }
+                    if let origin = ServiceLaunch.origin(in: self.startupOutput) {
+                        self.origin = origin.absoluteString
+                        self.connectOwnedService()
+                    }
                 }
             }
             process.terminationHandler = { [weak self] _ in
@@ -120,6 +130,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             connectionScript = WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             installPageScripts()
             ready = true
+            menuBar = MenuBarController(origin: URL(string: origin)!, language: language) { [weak self] in self?.showWorkbench() }
             menuBar?.connect(token: token)
             web.load(URLRequest(url: URL(string: origin)!, cachePolicy: .reloadIgnoringLocalCacheData))
         } catch { showFailure() }
@@ -131,7 +142,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
         menuBar?.disconnect()
         connectionScript = nil
         web.configuration.userContentController.removeAllUserScripts()
-        web.loadHTMLString("<meta charset='utf-8'><body style='font:16px -apple-system;padding:60px'><h1>AgentDock 无法启动</h1><p>请确认 Python 可用，且没有其他 AgentDock 实例占用 47831 端口。退出后重新打开应用。</p><p>Unable to start. Check Python and port 47831, then reopen AgentDock.</p></body>", baseURL: nil)
+        web.loadHTMLString("<meta charset='utf-8'><body style='font:16px -apple-system;padding:60px'><h1>AgentDock 无法启动</h1><p>请关闭其他 AgentDock 实例后重试。若仍失败，请重新安装并查看数据目录 logs 中的诊断记录。</p><p>Close other AgentDock instances and reopen. If this persists, reinstall and check the diagnostics in the data directory’s logs folder.</p></body>", baseURL: nil)
     }
 
     @objc private func reloadPage() { if ready { web.reload() } }
@@ -147,7 +158,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard ready, message.name == "agentdockLanguage", message.frameInfo.isMainFrame,
               message.frameInfo.securityOrigin.protocol == "http", message.frameInfo.securityOrigin.host == "127.0.0.1",
-              message.frameInfo.securityOrigin.port == 47831,
+              message.frameInfo.securityOrigin.port == URL(string: origin)?.port,
               let value = message.body as? String, let next = DesktopLanguage(rawValue: value), next != language else { return }
         language = next
         UserDefaults.standard.set(value, forKey: "interfaceLanguage")
@@ -165,7 +176,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
-        if url.scheme == "about" || (url.scheme == "http" && url.host == "127.0.0.1" && url.port == 47831) {
+        if url.scheme == "about" || (!origin.isEmpty && url.scheme == "http" && url.host == "127.0.0.1" && url.port == URL(string: origin)?.port) {
             decisionHandler(.allow)
         } else {
             if action.navigationType == .linkActivated && ["http", "https"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }

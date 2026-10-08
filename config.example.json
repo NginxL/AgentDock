@@ -3,5 +3,7 @@
     "codex": ["codex", "app-server"],
     "claude": ["claude"]
   },
-  "quota_command": null
+  "quota_command": null,
+  "run_timeout": 900,
+  "approval_timeout": 120
 }

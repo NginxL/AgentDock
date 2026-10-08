@@ -6,7 +6,8 @@ import tempfile
 import threading
 import time
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
+from agentdock.loopback_server import LoopbackServer
 from pathlib import Path
 
 from agentdock.runtime import Runtime, RuntimeFailure
@@ -36,7 +37,7 @@ class DispatchIntegrationTests(unittest.TestCase):
         self.sa = self.store.add_session(self.a["id"], "Original planner conversation")
         self.sb = self.store.add_session(self.b["id"], "Builder conversation")
         self.runtime = None
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+        self.server = LoopbackServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
         self.server.daemon_threads = True
         self.server_thread = None
 

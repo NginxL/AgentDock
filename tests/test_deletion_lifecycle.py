@@ -5,8 +5,10 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from agentdock.store import Conflict, Missing, Store
+from agentdock.runtime import Runtime
 
 
 class DeletionLifecycleTests(unittest.TestCase):
@@ -83,3 +85,31 @@ class DeletionLifecycleTests(unittest.TestCase):
         with self.assertRaises(Missing):
             self.store.get_session(self.session["id"])
         self.assertEqual(self.store.get_session(self.other["id"])["title"], "Unrelated")
+
+    def test_external_cleanup_does_not_hold_the_runtime_dispatch_lock(self):
+        runtime = Runtime(self.store, {"execution_enabled": True})
+        entered, release = threading.Event(), threading.Event()
+
+        def cleanup(*_):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("Cleanup fixture was not released")
+
+        try:
+            with (
+                patch.object(runtime, "_cleanup_session", cleanup),
+                patch.object(runtime, "_notify"),
+            ):
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    deleting = pool.submit(runtime.delete_session, self.session["id"])
+                    try:
+                        self.assertTrue(entered.wait(1))
+                        run = pool.submit(
+                            runtime.start, self.other["id"], "Unrelated task"
+                        ).result(timeout=1)
+                        self.assertEqual(run["status"], "queued")
+                    finally:
+                        release.set()
+                    self.assertEqual(deleting.result(timeout=1), {"ok": True})
+        finally:
+            runtime.close()

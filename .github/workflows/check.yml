@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ['3.9', '3.12']
+        python: ['3.11', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,6 +32,18 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install build==1.4.0
+        working-directory: .
+      - run: python -m build
+        working-directory: .
+      - run: |
+          python -m venv /tmp/agentdock-wheel
+          /tmp/agentdock-wheel/bin/pip install --no-deps dist/*.whl
+          /tmp/agentdock-wheel/bin/python scripts/check-wheel.py
+        working-directory: .
   desktop:
     runs-on: macos-latest
     steps:
@@ -54,5 +66,5 @@ jobs:
           python-version: '3.13'
       - run: python -m pip install -r requirements-dev.txt
       - run: ruff check agentdock
-      - run: ruff format --check agentdock tests scripts
+      - run: ruff format --check agentdock tests scripts setup.py
       - run: mypy

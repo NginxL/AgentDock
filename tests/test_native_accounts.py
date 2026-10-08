@@ -282,6 +282,23 @@ class NativeStorageTests(unittest.TestCase):
         self.assertEqual((home / "history.jsonl").read_text(), "keep")
         self.key.read.assert_not_called()
 
+    def test_toml_quoted_keys_and_tables_cannot_hide_native_store_policy(self):
+        home = self.home / ".codex"
+        home.mkdir()
+        path = home / "config.toml"
+        path.write_text(
+            '\x22cli_auth_credentials_store\x22 = "file"\n[other]\nmodel_provider = "relay"\n'
+        )
+        self.assertEqual(self.clients._codex_store()[0], "file")
+        for contents in (
+            'model_provider = "relay"\n',
+            "cli_auth_credentials_store = true\n",
+            "[invalid",
+        ):
+            path.write_text(contents)
+            with self.assertRaises(AccountError):
+                self.clients._codex_store()
+
     def test_claude_code_proxy_and_unrelated_metadata_remain(self):
         home = self.home / ".claude"
         home.mkdir()

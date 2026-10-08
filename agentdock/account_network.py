@@ -18,6 +18,8 @@ from urllib.request import (
     proxy_bypass_environment,
 )
 
+from . import __version__
+
 NETWORK_ENV = frozenset(
     {
         "HTTP_PROXY",
@@ -207,7 +209,7 @@ def claude_get(path, token, network):
             headers={
                 "Authorization": "Bearer " + token,
                 "anthropic-beta": "oauth-2025-04-20",
-                "User-Agent": "AgentDock/0.3.0",
+                "User-Agent": "AgentDock/" + __version__,
                 "Accept": "application/json",
             },
         )
