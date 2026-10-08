@@ -22,6 +22,7 @@ import time
 
 from .accounts import AccountError, _directory, _identity, _now, _read, _safe_label, _write
 from .account_keychain import Keychain, KeychainError, claude_service
+from . import credential_broker
 from .account_network import claude_network, claude_get, NetworkError
 from .registry import commands
 
@@ -34,18 +35,18 @@ _CLIENTS = {'codex': ('codex',), 'claude': ('claude_code', 'claude_desktop')}
 _MAX = 64 * 1024 * 1024
 
 
-def _bytes(path):
+def _bytes(path, limit=_MAX):
     if any(p.is_symlink() for p in (path, *path.parents)):
         raise AccountError('Native login files must not contain symbolic links.')
     try:
-        with path.open('rb') as handle: data = handle.read(_MAX + 1)
+        with path.open('rb') as handle: data = handle.read(limit + 1)
     except FileNotFoundError: return None
-    if len(data) > _MAX: raise AccountError('Native login storage exceeded its size limit.')
+    if len(data) > limit: raise AccountError('Native login storage exceeded its size limit.')
     return data
 
 
-def _atomic(path, data):
-    _bytes(path)  # Refuse links before touching an existing native path.
+def _atomic(path, data, limit=_MAX):
+    _bytes(path, limit)  # Refuse links before touching an existing native path.
     if data is None:
         path.unlink(missing_ok=True)
         return
@@ -293,15 +294,20 @@ class MacClients:
 
 
 class NativeAccounts:
-    def __init__(self, manager, platform=None):
+    def __init__(self, manager, platform=None, vault=None):
         self.root = manager.root / 'native-clients'
         self.platform = platform or MacClients(manager.commands_config)
+        self.vault = vault or credential_broker
+        if self.vault.available():
+            self.protect_legacy()
 
     def _client(self, account, client):
         if account.get('environment_id') != 'local' or client not in _CLIENTS.get(account.get('provider'), ()):
             raise AccountError('Choose a matching local native client.')
         _identity(account['id'])
         if sys.platform != 'darwin': raise AccountError('Native client switching is available on macOS.')
+        if not self.vault.available():
+            raise AccountError('Open AgentDock desktop to use protected native credentials.')
         return client
 
     @contextmanager
@@ -320,21 +326,46 @@ class NativeAccounts:
         _directory(path.parent)
         data = json.dumps(value).encode()
         if len(data) > _MAX: raise AccountError('Native login snapshot exceeded its size limit.')
-        _atomic(path, data)
+        sealed = self.vault.seal(data, str(path.absolute()))
+        public = {key: value[key] for key in ('identity', 'saved_at', 'client') if key in value}
+        _atomic(path, json.dumps({'schema': 2, 'public': public, 'sealed': sealed}).encode(), limit=96 * 1024 * 1024)
 
     def _load(self, path):
-        data = _bytes(path)
-        return _json(data) if data is not None else None
+        data = _bytes(path, 96 * 1024 * 1024)
+        if data is None:
+            return None
+        value = _json(data)
+        if value.get('schema') == 2:
+            return _json(self.vault.unseal(value['sealed'], str(path.absolute())))
+        # Upgrade old base64-only snapshots atomically, without a plaintext
+        # backup. If Keychain authorization fails, no native login is touched.
+        self._save(path, value)
+        return value
+
+    def protect_legacy(self):
+        if not self.root.exists():
+            return
+        with self._lock():
+            for path in (*self.root.glob('*/*.json'), self.root / 'previous.json', self.root / 'pending.json'):
+                raw = _bytes(path, 96 * 1024 * 1024)
+                if raw is not None and _json(raw).get('schema') != 2:
+                    self._load(path)
+
+    def _public(self, path):
+        value = _json(_bytes(path, 96 * 1024 * 1024))
+        return value.get('public') if value.get('schema') == 2 else None
 
     def status(self, account):
-        available = sys.platform == 'darwin' and account['environment_id'] == 'local'
+        available = sys.platform == 'darwin' and account['environment_id'] == 'local' and self.vault.available()
+        if available:
+            self.protect_legacy()
         clients = []
         for client in _CLIENTS.get(account['provider'], ()):
-            saved = self._load(self._path(account['id'], client)) if available else None
+            saved = self._public(self._path(account['id'], client)) if available else None
             clients.append({'id': client, 'saved': bool(saved), 'saved_at': saved.get('saved_at') if saved else None,
                             'identity': saved.get('identity') if saved else None})
-        pending = self._load(self.root / 'pending.json')
-        previous = pending or self._load(self.root / 'previous.json')
+        pending = self._public(self.root / 'pending.json')
+        previous = pending or self._public(self.root / 'previous.json')
         return {'available': available, 'clients': clients, 'recovery_needed': bool(pending),
                 'recovery_client': previous.get('client') if previous else None}
 

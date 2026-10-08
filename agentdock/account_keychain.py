@@ -1,5 +1,6 @@
 """macOS generic passwords. Secrets never enter process arguments or logs."""
-import ctypes
+import base64
+from . import credential_broker
 import getpass
 import hashlib
 import json
@@ -14,50 +15,24 @@ class KeychainError(ValueError):
 
 
 class Keychain:
+    """All macOS authorization belongs to the signed Swift desktop process."""
     def __init__(self):
-        if sys.platform != 'darwin': raise KeychainError()
-        self.lib = ctypes.CDLL('/System/Library/Frameworks/Security.framework/Security')
-        self.cf = ctypes.CDLL('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation')
-        pointer, length = ctypes.c_void_p, ctypes.c_uint32
-        self.lib.SecKeychainFindGenericPassword.argtypes = [pointer, length, pointer, length, pointer,
-                                                          ctypes.POINTER(length), ctypes.POINTER(pointer), ctypes.POINTER(pointer)]
-        self.lib.SecKeychainItemModifyAttributesAndData.argtypes = [pointer, pointer, length, pointer]
-        self.lib.SecKeychainAddGenericPassword.argtypes = [pointer, length, pointer, length, pointer, length, pointer, pointer]
-        self.lib.SecKeychainItemFreeContent.argtypes = [pointer, pointer]
-        self.lib.SecKeychainItemDelete.argtypes = [pointer]
-        self.cf.CFRelease.argtypes = [pointer]
-
-    def _find(self, service, account):
-        service, account = service.encode(), account.encode()
-        size, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
-        status = self.lib.SecKeychainFindGenericPassword(None, len(service), service, len(account), account,
-                                                       ctypes.byref(size), ctypes.byref(data), ctypes.byref(item))
-        if status == -25300: return None, None
-        if status: raise KeychainError()
-        try:
-            if size.value > 1024 * 1024: raise KeychainError()
-            return ctypes.string_at(data, size.value), item
-        finally: self.lib.SecKeychainItemFreeContent(None, data)
+        if sys.platform != 'darwin':
+            raise KeychainError()
 
     def read(self, service, account):
-        data, item = self._find(service, account)
-        if item: self.cf.CFRelease(item)
-        return data
+        try:
+            value = credential_broker.request('read', service=service, account=account)
+            return base64.b64decode(value, validate=True) if value is not None else None
+        except (ValueError, credential_broker.BrokerUnavailable):
+            raise KeychainError() from None
 
     def write(self, service, account, data):
-        _, item = self._find(service, account)
         try:
-            if data is None:
-                status = self.lib.SecKeychainItemDelete(item) if item else 0
-            elif item:
-                status = self.lib.SecKeychainItemModifyAttributesAndData(item, None, len(data), data)
-            else:
-                service, account = service.encode(), account.encode()
-                status = self.lib.SecKeychainAddGenericPassword(None, len(service), service, len(account), account,
-                                                               len(data), data, None)
-            if status: raise KeychainError()
-        finally:
-            if item: self.cf.CFRelease(item)
+            credential_broker.request('write', service=service, account=account,
+                                      data=base64.b64encode(data).decode() if data is not None else None)
+        except credential_broker.BrokerUnavailable:
+            raise KeychainError() from None
 
 
 def claude_service(environment):

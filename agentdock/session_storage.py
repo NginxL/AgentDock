@@ -41,8 +41,9 @@ def prepare_claude(home, environment, native_id=None):
         target = home/name
         if not target.exists() and not target.is_symlink() and (source/name).exists(): target.symlink_to(source/name, target_is_directory=True)
     env = dict(environment)
-    # Claude itself accesses its existing credential store. AgentDock never reads
-    # tokens or calls the macOS Keychain. Empty means the native default entry.
+    # Execution lets Claude use its existing credential store. Separate account
+    # actions use the signed desktop credential broker; this preparation does
+    # not read credentials. Empty means the native default Keychain entry.
     env['CLAUDE_SECURESTORAGE_CONFIG_DIR'] = environment.get('CLAUDE_SECURESTORAGE_CONFIG_DIR', environment.get('CLAUDE_CONFIG_DIR', ''))
     env['CLAUDE_CONFIG_DIR'] = str(home)
     env['CLAUDE_CODE_AUTO_CONNECT_IDE'] = '0'

@@ -322,6 +322,8 @@ def handler_for(api, web_root):
 
 
 def main(argv=None):
+    from .credential_broker import initialize
+    initialize()
     parser=argparse.ArgumentParser(description="AgentDock local workbench. Execution is disabled unless explicitly enabled.")
     parser.add_argument("--data-dir",default=str(Path.home()/".local/share/agentdock"))
     parser.add_argument("--port",type=int,default=47831)

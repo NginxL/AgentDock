@@ -11,9 +11,11 @@ let package = Package(
     targets: [
         .target(name: "MeterCore"),
         .target(name: "DesktopCore"),
+        .target(name: "CredentialCore"),
         .target(name: "MeterProviders", dependencies: ["MeterCore"]),
         .executableTarget(name: "AgentDockUsage", dependencies: ["MeterCore", "MeterProviders"]),
-        .executableTarget(name: "AgentDockDesktop", dependencies: ["DesktopCore"]),
+        .executableTarget(name: "AgentDockDesktop", dependencies: ["DesktopCore", "CredentialCore"]),
+        .executableTarget(name: "CredentialChecks", dependencies: ["CredentialCore"], path: "Tests/CredentialChecks"),
         .executableTarget(name: "MeterChecks", dependencies: ["MeterCore"], path: "Tests/MeterChecks"),
         .executableTarget(name: "DesktopChecks", dependencies: ["DesktopCore"], path: "Tests/DesktopChecks"),
         .executableTarget(name: "MeterProviderChecks", dependencies: ["MeterCore", "MeterProviders"], path: "Tests/ProviderChecks"),

@@ -1,12 +1,14 @@
 import AppKit
 import WebKit
 import DesktopCore
+import CredentialCore
 
 @MainActor
 final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var web: WKWebView!
     private var child: Process?
+    private var credentials: CredentialChannel?
     private var startupOutput = ""
     private var ready = false
     private var quitting = false
@@ -71,14 +73,18 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
                 throw NSError(domain: "AgentDock", code: 1)
             }
             let process = Process(), output = Pipe()
+            let credentials = CredentialChannel()
+            self.credentials = credentials
             process.executableURL = URL(fileURLWithPath: python)
             process.currentDirectoryURL = resources.appendingPathComponent("workbench")
             process.arguments = ["-u", "-m", "agentdock", "--config", dataDirectory.appendingPathComponent("config.json").path, "--enable-execution"]
             var env = ProcessInfo.processInfo.environment
             env["PATH"] = settings["path"] ?? "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"
+            env["AGENTDOCK_CREDENTIAL_PIPE"] = "1"
             process.environment = env
             process.standardOutput = output
-            process.standardError = FileHandle.nullDevice
+            process.standardInput = credentials.responses
+            process.standardError = credentials.requests
             // Readiness is emitted only after this process owns the database, port and token.
             output.fileHandleForReading.readabilityHandler = { [weak self] handle in
                 let data = handle.availableData
@@ -99,6 +105,7 @@ final class DesktopDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, 
             }
             child = process
             try process.run()
+            credentials.start()
         } catch { showFailure() }
     }
 

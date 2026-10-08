@@ -34,6 +34,17 @@ class Client:
             raise OSError('private-native-token must not reach the API')
 
 
+class FixtureVault:
+    """In-memory fixture; real authenticated encryption is checked in Swift."""
+    def __init__(self): self.values = {}
+    def available(self): return True
+    def seal(self, data, context):
+        handle = uuid.uuid4().hex
+        self.values[(handle, context)] = data
+        return handle
+    def unseal(self, data, context): return self.values[(data, context)]
+
+
 class NativeSwitchTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -44,7 +55,7 @@ class NativeSwitchTests(unittest.TestCase):
         self.identity = {'email': 'one@example.test', 'account_id': 'native-one'}
         self.client = Client(self.identity)
         self.manager = AccountManager(self.root / 'accounts')
-        self.native = NativeAccounts(self.manager, self.client)
+        self.native = NativeAccounts(self.manager, self.client, FixtureVault())
 
     def tearDown(self): self.mac.stop(); self.temp.cleanup()
 
@@ -60,6 +71,19 @@ class NativeSwitchTests(unittest.TestCase):
         self.assertNotIn('private-native-token', json.dumps(public))
         self.assertEqual(self.native._path(self.account['id'], 'codex').stat().st_mode & 0o777, 0o600)
         self.assertFalse((self.manager.root / self.account['id'] / 'codex').exists())
+        self.assertNotIn('private-native-token', self.native._path(self.account['id'], 'codex').read_text())
+
+    def test_old_plaintext_snapshots_and_recovery_journals_are_migrated(self):
+        for path in (self.native._path(self.account['id'], 'codex'), self.native.root / 'previous.json',
+                     self.native.root / 'pending.json'):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            value = {'identity': self.identity, 'snapshot': self.client.read('codex'), 'client': 'codex'}
+            path.write_text(json.dumps(value))
+        self.native.protect_legacy()
+        for path in self.native.root.rglob('*.json'):
+            self.assertNotIn('private-native-token', path.read_text())
+            self.assertEqual(json.loads(path.read_text())['schema'], 2)
+            self.assertEqual(self.native._load(path)['snapshot'], self.client.current)
 
     def test_cannot_switch_before_capture_or_use_wrong_provider_device_identity(self):
         with self.assertRaises(AccountError): self.native.switch(self.account, 'codex')
