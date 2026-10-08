@@ -6,6 +6,8 @@ import {
   type FormEvent,
 } from "react";
 import { ApiError, listOf, request } from "./api";
+import DiagnosticExport from "./DiagnosticExport";
+import { watchState } from "./stateStream";
 import type {
   DockState,
   Account,
@@ -76,6 +78,8 @@ export default function App() {
   const [state, setState] = useState<DockState | null>(() =>
     demo ? demoState("zh") : null,
   );
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const { metrics, failed: metricsFailed } = useMetrics(
     token,
     demo,
@@ -212,9 +216,9 @@ export default function App() {
     const currentEpoch = stateEpoch.current;
     const currentQuotaEpoch = quotaEpoch.current;
     if (!currentToken) return false;
-    const next = await request<DockState>(
+    const snapshot = await request<DockState>(
       currentToken,
-      "/api/state",
+      stateRef.current?.version ? `/api/state?since=${encodeURIComponent(stateRef.current.version)}` : "/api/state",
       undefined,
       signal,
     );
@@ -223,8 +227,14 @@ export default function App() {
       currentEpoch !== stateEpoch.current
     )
       return false;
-    setState((current) =>
-      currentQuotaEpoch === quotaEpoch.current
+    setState((current) => {
+      if (current?.version && snapshot.version) {
+        const [currentEpoch, currentRevision] = current.version.split(":");
+        const [nextEpoch, nextRevision] = snapshot.version.split(":");
+        if (currentEpoch === nextEpoch && Number(nextRevision) <= Number(currentRevision)) return current;
+      }
+      const next = snapshot.partial && current ? { ...current, ...snapshot } : snapshot;
+      return currentQuotaEpoch === quotaEpoch.current
         ? next
         : {
             ...next,
@@ -251,12 +261,52 @@ export default function App() {
                 error: latest.error,
               };
             }),
-          },
-    );
+          };
+    });
     return true;
   }, []);
 
   const canRefreshQuota = !demo && !!token && !!state?.runtime.enabled;
+
+  const versionedState = !!state?.version;
+  useEffect(() => {
+    if (!token || demo || !versionedState) return;
+    const controller = new AbortController();
+    let inFlight = false;
+    let pending = false;
+    let reconnect: ReturnType<typeof setTimeout> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const update = async () => {
+      if (controller.signal.aborted || document.visibilityState === "hidden") return;
+      if (inFlight) { pending = true; return; }
+      if (mutationInFlight.current) {
+        clearTimeout(retry);
+        retry = setTimeout(() => void update(), 250);
+        return;
+      }
+      inFlight = true;
+      try { await refresh(controller.signal); }
+      catch { /* The bounded fallback poll reports connection errors. */ }
+      finally {
+        inFlight = false;
+        if (pending && !controller.signal.aborted) {
+          pending = false;
+          retry = setTimeout(() => void update(), 250);
+        }
+      }
+    };
+    const connect = () => {
+      void watchState(token, controller.signal, (version) => {
+        if (version !== stateRef.current?.version) void update();
+      }).catch(() => {}).finally(() => {
+        if (!controller.signal.aborted) reconnect = setTimeout(connect, 3000);
+      });
+    };
+    connect();
+    const visible = () => { if (document.visibilityState === "visible") void update(); };
+    document.addEventListener("visibilitychange", visible);
+    return () => { controller.abort(); clearTimeout(reconnect); clearTimeout(retry); document.removeEventListener("visibilitychange", visible); };
+  }, [token, demo, versionedState, refresh]);
 
   useEffect(() => {
     setQuotaRefreshing(false);
@@ -418,12 +468,12 @@ export default function App() {
       } finally {
         inFlight = false;
       }
-    }, 8000);
+    }, versionedState ? 60000 : 8000);
     return () => {
       window.clearInterval(interval);
       controller.abort();
     };
-  }, [token, refresh, disconnect, lang]);
+  }, [token, refresh, disconnect, lang, versionedState]);
 
   useEffect(() => {
     if (
@@ -728,6 +778,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          {!demo && <DiagnosticExport token={token} t={t} onError={setError} />}
           <div className="local-status">
             <span className="status-dot" />
             <div>

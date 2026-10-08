@@ -7,3 +7,7 @@
 - Add a reproducible isolated cancellation benchmark and migration/long-history regressions.
 - Keep the workbench responsive during local/SSH cleanup, with durable deletion tombstones and retry after restart.
 - Encrypt native account snapshots and recovery journals with a Keychain-held AES-GCM key; isolate Keychain authorization in the signed desktop host.
+- Coalesce streaming progress, keep tasks running after display truncation, and allow per-agent execution time limits excluding approval waits.
+- Add redacted rotating diagnostics, error IDs and a metadata-only diagnostic export.
+- Replace frequent full-state refreshes with versioned changes and authenticated SSE; use WAL readers, scoped wakeups, numbered migrations and minute heatmap caching.
+- Filter local transcript scans before opening unrelated files and include account branch histories.

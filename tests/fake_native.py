@@ -114,6 +114,10 @@ if provider == "codex":
             send({"id": "permission-1", "method": method, "params": params})
             hang()
     shared_tool()
+    if scenario == 'noisy':
+        for _ in range(11000):
+            send({'method': 'item/commandExecution/outputDelta', 'params': {
+                'threadId': native_id, 'turnId': 'turn-1', 'itemId': 'noisy-tool', 'delta': 'x' * 900}})
     if scenario == "usage":
         assert request["params"]["model"] == "fixture-model"
         assert request["params"]["effort"] == "high"

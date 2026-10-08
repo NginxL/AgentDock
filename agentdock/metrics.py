@@ -4,6 +4,7 @@ import json
 from .registry import PROVIDERS
 import math
 import os
+import re
 from pathlib import Path
 import threading
 import time
@@ -99,7 +100,20 @@ def daily_activity(store, at):
     return {'today': today.isoformat(), 'days': [{'date': day, 'tokens': n} for day, n in sorted(days.items())], 'updated_at': updated}
 
 
-def snapshot(store, at=None):
+def cached_activity(store, at):
+    # A minute cache is shared by independent read connections. Binding changes
+    # invalidate it immediately so deleted/unrelated sessions never stay visible.
+    key = (int(at // 60), store._epoch, store._domain_versions.get('sessions', 0),
+           store._domain_versions.get('agents', 0))
+    with store._activity_lock:
+        if key not in store._activity_cache:
+            result = daily_activity(store, at)
+            store._activity_cache.clear()
+            store._activity_cache[key] = result
+        return dict(store._activity_cache[key])
+
+
+def snapshot(store, at=None, *, cache_activity=False):
     at = at or time.time()
     with store.lock:
         bindings = store.usage_bindings()
@@ -128,7 +142,7 @@ def snapshot(store, at=None):
         # Unknown during a run until its first measured usage sample. Idle really is zero.
         current = sum(points[-5:])/5 if recent else None if active else 0
         return {**{k: sum(r[k] for r in chosen) for k in FIELDS}, 'sessions': len(chosen), 'active_sessions': len(observed | {(r['provider'],r['native_session_id'] or r['agent_id']) for r in active}), 'current_tps': round(current,2) if current is not None else None, 'average_tps': round(sum(points)/60,2), 'points': points, 'updated_at': max((r['updated_at'] for r in chosen), default=None)}
-    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in providers}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'activity': daily_activity(store, at)}
+    return {'as_of': at, 'total': group(), 'providers': {p: group(provider=p) for p in providers}, 'agents': {a: group(agent_id=a) for a in agent_ids}, 'activity': cached_activity(store, at) if cache_activity else daily_activity(store, at)}
 
 
 class LocalUsage:
@@ -173,15 +187,23 @@ class LocalUsage:
         activity_files = []
         codex = Path(self.environment.get('CODEX_HOME') or self.home/'.codex').expanduser()
         claude = Path(self.environment.get('CLAUDE_CONFIG_DIR') or self.home/'.claude').expanduser()
-        roots = [('codex', codex/'sessions'), ('codex', codex/'archived_sessions'), ('claude', claude/'projects')]
+        native_roots = [('codex', codex/'sessions'), ('codex', codex/'archived_sessions'), ('claude', claude/'projects')]
+        roots = []
         with self.store.lock:
             local_sessions = self.store.db.execute("SELECT id FROM sessions WHERE environment_id='local'").fetchall()
         for session in local_sessions:
             managed = self.store.session_directory(session['id'])
-            roots += [('codex', managed/'codex'/'sessions'), ('codex', managed/'codex'/'archived_sessions'),
-                      ('claude', managed/'claude'/'projects')]
-        for provider, root in roots:
-            identities = {native for (p, native) in bindings if p == provider}
+            homes = [managed]
+            branches = managed/'branches'
+            if branches.is_dir():
+                homes.extend(path for path in branches.iterdir() if path.name.isdigit() and path.is_dir() and not path.is_symlink())
+            for home in homes:
+                roots += [('codex', home/'codex'/'sessions'), ('codex', home/'codex'/'archived_sessions'),
+                          ('claude', home/'claude'/'projects')]
+        owned = set()
+        for provider, root in roots + native_roots:
+            identities = {native for (p, native) in bindings if p == provider and
+                          ((provider, root) not in native_roots or (p, native) not in owned)}
             if not identities: continue
             if not root.is_dir(): continue
             for path in root.rglob('*.jsonl'):
@@ -191,12 +213,17 @@ class LocalUsage:
                 # Codex includes that UUID in its rollout filename. Check metadata
                 # for older/custom names before deciding whether to read the log.
                 if provider == 'claude' and path.stem not in identities: continue
+                identity = path.stem
                 if provider == 'codex':
+                    named = re.search(r'([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})$', path.stem)
+                    if named and named[1] not in identities: continue
                     try:
                         with path.open('rb') as src:
                             meta = json.loads(src.readline(1024 * 1024))
-                        if meta.get('type') != 'session_meta' or meta.get('payload', {}).get('id') not in identities: continue
+                        identity = meta.get('payload', {}).get('id')
+                        if meta.get('type') != 'session_meta' or identity not in identities: continue
                     except (OSError, ValueError, AttributeError): continue
+                if (provider, root) not in native_roots: owned.add((provider, identity))
                 if provider == 'codex': activity_files.append(path)
                 try: pending = self._file(provider, path) or pending
                 except (OSError, ValueError, KeyError, TypeError): self.failures += 1

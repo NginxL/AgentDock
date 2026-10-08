@@ -105,6 +105,7 @@ class _Pipe:
     def __init__(self, command, cwd, env, stop, timeout):
         self.stop = stop
         self.deadline = time.monotonic() + timeout
+        self.waiting_approval = False
         self.process = None
         self.selector = selectors.DefaultSelector()
         self.buffer, self.writes = bytearray(), bytearray()
@@ -141,7 +142,7 @@ class _Pipe:
     def check(self):
         if self.stop.is_set():
             raise ProviderCancelled()
-        if time.monotonic() >= self.deadline:
+        if not self.waiting_approval and time.monotonic() >= self.deadline:
             raise ProviderError("Agent run timed out and its processes were stopped.")
 
     def send(self, message):
@@ -187,8 +188,9 @@ class _Pipe:
                             raise ProviderError("Native CLI ended with an incomplete protocol message.")
                     continue
                 self.total += len(data)
-                if self.total > _MAX_OUTPUT:
-                    raise ProviderError("Native CLI exceeded the bounded output limit.")
+                # Lifetime byte/message totals are telemetry, not a run limit.
+                # Each protocol frame and the in-memory queue remain bounded;
+                # noisy output is truncated by the event sink, not by killing CLI.
                 if key.data == "stderr":
                     continue
                 self.buffer.extend(data)
@@ -204,8 +206,6 @@ class _Pipe:
                     if not isinstance(message, dict):
                         raise ProviderError("Native CLI emitted an invalid protocol message.")
                     self.count += 1
-                    if self.count > _MAX_EVENTS:
-                        raise ProviderError("Native CLI exceeded the event limit.")
                     self.messages.append(message)
                 if len(self.buffer) > _MAX_LINE:
                     raise ProviderError("Native CLI message exceeded the line limit.")
@@ -234,6 +234,8 @@ class _Callbacks:
         self.bind_session, self.approve_callback = bind_session, approve
         self.secrets = [v for k, v in secrets.items() if v and re.search(r"TOKEN|KEY|SECRET|CAPABILITY", k, re.I)]
         self.approvals = 0
+        from .stream_buffer import StreamBuffer
+        self.stream = StreamBuffer(emit)
 
     def clean(self, value):
         encoded = json.dumps(value, ensure_ascii=False)
@@ -245,7 +247,13 @@ class _Callbacks:
         return json.loads(encoded)
 
     def emit(self, kind, payload):
-        self.emit_callback(kind, self.clean(payload))
+        try:
+            value = self.clean(payload)
+        except ProviderError:
+            if kind not in ('tool_call', 'tool_result', 'tool_output', 'agent_update'):
+                raise
+            value = {'truncated': True, 'text': '[Output truncated: individual event exceeded the display limit.]'}
+        self.stream.push(kind, value)
 
     def text(self, text, *, item_id=None, provider=None, part=0, phase=None, complete=False):
         if not isinstance(text, str):
@@ -279,10 +287,20 @@ class _Callbacks:
             finally:
                 done.set()
 
-        # A slow UI callback must not bypass the run deadline or cancellation.
+        self.stream.flush()
+        # Human approval has its own bounded wait. It does not consume execution
+        # time, but cancellation still stops the entire process group immediately.
+        started = time.monotonic()
+        self.pipe.waiting_approval = True
         threading.Thread(target=decide, daemon=True, name="agentdock-permission").start()
-        while not done.wait(0.05):
-            self.pipe.check()
+        try:
+            while not done.wait(0.05):
+                self.pipe.check()
+                if time.monotonic() - started > 120:
+                    raise ProviderError('Permission request expired; no action was approved.')
+        finally:
+            self.pipe.deadline += time.monotonic() - started
+            self.pipe.waiting_approval = False
         self.pipe.check()
         if not answer or answer[0] not in [option['optionId'] for option in options]:
             raise ProviderError("Permission request was not resolved; the agent run was stopped.")
@@ -300,6 +318,7 @@ class _Codex:
         self.message_phases = {}
         self.message_order = {}
         self.deltas = {}
+        self.text_bytes = 0
         self.usage_output = None
         self.usage_at = None
 
@@ -359,8 +378,9 @@ class _Codex:
             if not _identifier(item) or not isinstance(params.get("delta"), str):
                 raise ProviderError("Codex returned an invalid message delta.")
             self.deltas[item] = self.deltas.get(item, "") + params["delta"]
+            self.text_bytes += len(params['delta'].encode())
             self.message_order[item] = None
-            if sum(len(v.encode()) for v in self.deltas.values()) > _MAX_RESULT:
+            if self.text_bytes > _MAX_RESULT:
                 raise ProviderError("Codex response exceeded the text limit.")
             self.cb.text(params["delta"], item_id=item, provider="codex", phase=self.message_phases.get(item))
         elif method in ("item/reasoning/summaryTextDelta", "item/commandExecution/outputDelta", "item/fileChange/outputDelta"):
@@ -516,6 +536,8 @@ class _Claude:
         self.message_number = 0
         self.message_id = None
         self.messages = {}
+        self.text_bytes = 0
+        self.part_bytes = {}
         self.usage_messages = {}
         self.usage_id = None
         self.turn_started = time.time()
@@ -635,8 +657,6 @@ class _Claude:
                     if isinstance(block, dict) and block.get("type") == "tool_use":
                         self.cb.emit("tool_call", {"provider": "claude", "item": block})
             elif kind in ("assistant", "user"):
-                if kind == "assistant" and message.get("error"):
-                    raise ProviderError("Claude reported a provider error; private error details were omitted.")
                 body = message.get("message", {})
                 if kind == "assistant" and not message.get("parent_tool_use_id") and isinstance(body, dict): self.usage(body)
                 content = body.get("content", []) if isinstance(body, dict) else []
@@ -654,8 +674,11 @@ class _Claude:
                         if not isinstance(text, str):
                             raise ProviderError("Claude returned an invalid assistant message.")
                         parts = self.messages.setdefault(identifier, {})
+                        length = len(text.encode())
+                        self.text_bytes += length - self.part_bytes.get((identifier, index), 0)
+                        self.part_bytes[(identifier, index)] = length
                         parts[index] = text
-                        if sum(len(v.encode()) for values in self.messages.values() for v in values.values()) > _MAX_RESULT:
+                        if self.text_bytes > _MAX_RESULT:
                             raise ProviderError("Claude response exceeded the text limit.")
                         metadata = {"item_id": identifier, "provider": "claude", "part": index}
                         if not self.saw_delta:
@@ -788,7 +811,7 @@ def _execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop
         argv = acp_command(provider, argv, cwd, env, stop)
         if provider == 'opencode':
             env['OPENCODE_PERMISSION'] = '{"*":"ask"}'
-    pipe = adapter = None
+    pipe = adapter = callbacks = None
     try:
         pipe = _Pipe(argv, cwd, env, stop, timeout)
         callbacks = _Callbacks(pipe, emit, bind_session, approve, additions)
@@ -814,3 +837,5 @@ def _execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop
         if control: control.close()
         if pipe:
             pipe.close()
+        if callbacks:
+            callbacks.stream.close()

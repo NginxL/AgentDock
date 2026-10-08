@@ -85,7 +85,7 @@ class StreamTransportTests(unittest.TestCase):
             threading.Event(), emit, lambda *a:None, lambda *a:None, lambda *a:None)
         self.assertEqual(result, 'hello world')
         self.assertTrue(dropped)
-        self.assertEqual(sum(kind == 'reasoning_chunk' for kind, _ in events), 2)
+        self.assertEqual(''.join(p['text'] for k, p in events if k == 'reasoning_chunk'), 'Inspect private-token')
         contract = Path(session['workspace'].replace('~', str(self.fixture.home), 1))/'fake-contract.jsonl'
         self.assertEqual(sum(json.loads(line).get('method') == 'turn/start' for line in contract.read_text().splitlines()), 1)
         self.assertIn(('transport_status', {'status':'connected'}), events)

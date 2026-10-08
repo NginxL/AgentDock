@@ -71,6 +71,7 @@ class DeletionStore:
 
     def _delete_session_records(self, session):
         session_id = session['id']
+        self._changed_sessions.add(session_id)
         # Task journals/deliveries outlive disposable native histories.
         self.db.execute('UPDATE tasks SET session_id=NULL WHERE session_id=?',(session_id,))
         natives = {row[0] for row in self.db.execute('SELECT native_session_id FROM session_account_branches WHERE session_id=? AND native_session_id IS NOT NULL',(session_id,))}

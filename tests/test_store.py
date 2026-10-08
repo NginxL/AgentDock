@@ -21,6 +21,7 @@ class StoreTests(unittest.TestCase):
     def test_existing_database_gets_cancellation_indexes(self):
         for name in ('runs_task', 'runs_session', 'messages_sender_run', 'events_run'):
             self.store.db.execute('DROP INDEX ' + name)
+        self.store.db.execute('PRAGMA user_version=8')
         self.store.close()
         self.store = Store(self.root / 'state.sqlite3')
         indexes = {row[0] for row in self.store.db.execute("SELECT name FROM sqlite_master WHERE type='index'")}

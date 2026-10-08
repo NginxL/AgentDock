@@ -9,6 +9,9 @@ import type {
 } from "./types";
 
 export function errorMessage(message: string, t: Translate): string {
+  if (message.startsWith("internal_error:")) {
+    return t("操作失败，请导出诊断包。错误编号：", "Operation failed. Export diagnostics. Error ID: ") + message.slice(15);
+  }
   const translations: Record<string, string> = {
     "Choose an Agent in this project": "请选择当前项目中的 Agent。",
     "Task Agents must use the project device":

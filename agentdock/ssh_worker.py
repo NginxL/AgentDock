@@ -261,6 +261,7 @@ def work(path):
     stop = threading.Event()
     event_lock = threading.Lock()
     sequence, total = 0, 0
+    truncated = False
     spec = read(path / 'request.json')['spec']
     if (path/'cancel').exists() or time.time()-(path/'lease').stat().st_mtime>LEASE_SECONDS:
         atomic(path/'state.json',{'status':'cancelled','last_seq':0,'updated_at':time.time()})
@@ -269,12 +270,18 @@ def work(path):
     token = secrets.token_urlsafe(32)
 
     def emit(kind, payload):
-        nonlocal sequence, total
+        nonlocal sequence, total, truncated
         with event_lock:
             encoded = json.dumps(payload, ensure_ascii=False).replace(token, '[redacted]')
+            size = len(encoded.encode())
+            essential = kind.startswith('remote_') or kind in ('usage', 'input_receipt') or (
+                kind == 'agent_message' and payload.get('phase') == 'final_answer')
+            if not essential and (size > 300000 or total + size > 8 * 1024 * 1024 or sequence >= 5000):
+                if truncated: return
+                truncated = True
+                kind = 'output_truncated'
+                encoded = json.dumps({'text': 'Progress display limit reached; the task continues.'})
             total += len(encoded.encode())
-            if len(encoded.encode()) > 300000 or total > 8 * 1024 * 1024 or sequence >= 5000:
-                raise ProviderError('Remote event limit exceeded.')
             sequence += 1
             with (path / 'events.jsonl').open('a') as output:
                 output.write(json.dumps({'seq': sequence, 'kind': kind, 'payload': json.loads(encoded)}, ensure_ascii=False) + '\n')

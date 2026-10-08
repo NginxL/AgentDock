@@ -31,6 +31,7 @@ class ACP:
         self.settings = {}
         self.running = False
         self.texts = {}
+        self.text_bytes = 0
         self.message = None
         self.last_kind = None
         self.turn = uuid.uuid4().hex
@@ -163,7 +164,8 @@ class ACP:
                 elif self.last_kind != kind or self.message is None:
                     self.message = self.turn + '-' + str(len(self.texts))
                 self.texts[self.message] = self.texts.get(self.message, '') + text
-                if sum(len(v.encode()) for v in self.texts.values()) > _MAX_RESULT:
+                self.text_bytes += len(text.encode())
+                if self.text_bytes > _MAX_RESULT:
                     raise ProviderError('ACP response exceeded the text limit.')
                 self.cb.text(text, item_id=self.message, provider=self.provider)
             self.last_kind = kind

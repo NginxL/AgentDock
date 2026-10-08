@@ -95,6 +95,7 @@ class SessionStorageTests(unittest.TestCase):
         session=self.store.add_session(agent['id'],'Legacy')
         (Path(agent['workspace'])/'keep.txt').write_text('existing session work')
         self.store.db.execute('UPDATE sessions SET workspace=?,native_session_id=? WHERE id=?',(agent['workspace'],'owned-native',session['id']))
+        self.store.db.execute('PRAGMA user_version=3')
         self.store.close(); self.store=Store(self.root/'data'/'agentdock.sqlite3')
         migrated=self.store.get_session(session['id'])
         self.assertNotEqual(migrated['workspace'],agent['workspace'])

@@ -2,6 +2,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
+    public errorId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -44,7 +46,10 @@ export async function request<T>(
       typeof result.error === "string"
         ? result.error
         : `HTTP ${response.status}`;
-    throw new ApiError(response.status, message);
+    const details = result as { code?: string; error_id?: string };
+    throw new ApiError(response.status,
+      details.code === "internal_error" ? `internal_error:${details.error_id ?? ""}` : message,
+      details.code, details.error_id);
   }
   return result as T;
 }

@@ -294,6 +294,29 @@ class AccountRuntimeTests(unittest.TestCase):
         self.assertNotIn('Old action', handover)
         self.assertEqual(len(self.store.run_activity(failed['id'])), 12)
 
+    def test_progress_cap_does_not_fail_the_turn_or_discard_final_reply(self):
+        def noisy(call):
+            for _ in range(5010):
+                call['emit']('tool_output', {'text': 'fixture'})
+            return 'The final reply is intact.'
+        runtime = self.runtime(noisy)
+        session = self.session()
+        run = runtime.start(session['id'], 'A long task')
+        self.wait(lambda: self.store.get_run(run['id'])['status'] == 'completed', seconds=10)
+        self.assertEqual(self.store.get_run(run['id'])['result'], 'The final reply is intact.')
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM events WHERE kind='output_truncated'").fetchone()[0], 1)
+        self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM events WHERE kind='assistant_message'").fetchone()[0], 1)
+
+    def test_agent_execution_timeout_is_inherited_by_the_session(self):
+        runtime = self.runtime()
+        session = self.session()
+        self.store.update_agent(session['agent_id'], {'run_timeout': 3600})
+        self.finished(runtime.start(session['id'], 'Use the configured duration'))
+        self.assertGreater(self.calls[-1]['options']['timeout'], 3590)
+        for invalid in (True, -1, 0, 90000, '3600'):
+            with self.assertRaises(Invalid):
+                self.store.update_agent(session['agent_id'], {'run_timeout': invalid})
+
     def test_all_cooling_wait_can_be_cancelled_without_native_execution(self):
         account = self.account()
         self.cooldown(account)

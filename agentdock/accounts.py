@@ -311,8 +311,9 @@ class AccountManager:
     def credential_session(self, account, session_home, base_env=None, stop=None):
         """Root must prepare/run the conversation with managed=True inside this lease.
 
-        This is deliberately copy-in/copy-out, not an auth.json symlink: native
-        atomic refresh replaces a symlink rather than updating its target.
+        Copy-in/copy-out bounds the lifetime of session credential copies. Native
+        write behavior is version dependent; the isolated 0.154.0 file-login
+        probe follows symlinks, and real OAuth refresh still needs verification.
         """
         with self.lease(account, stop=stop) as lock_fd:
             env = self.environment(account, base_env)
@@ -330,6 +331,12 @@ class AccountManager:
             try:
                 yield env
             finally:
+                # The native desktop does not participate in our account lock.
+                # Do not overwrite a concurrent external login/refresh.
+                for name in _CREDENTIALS[account['provider']]:
+                    current = self._fingerprint(source / name)
+                    if current not in (pending['source_hashes'][name], self._fingerprint(target / name)):
+                        raise AccountError('Account credentials changed during execution; recovery is required.')
                 for name in _CREDENTIALS[account['provider']]:
                     _copy_credential(target / name, source / name)
                 _write(journal, dict(pending, phase='committed'))

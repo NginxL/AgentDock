@@ -121,6 +121,7 @@ export default function Workspace({
   const [agentProject, setAgentProject] = useState(project?.id ?? "");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState("");
+  const [runTimeout, setRunTimeout] = useState("");
   const [accountDraft, setAccountDraft] =
     useState<AccountSettings>(deviceAccount);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask");
@@ -346,6 +347,7 @@ export default function Workspace({
                     setAgentProject(selectedAgent.project_id ?? "");
                     setModel(selectedAgent.model ?? "");
                     setEffort(selectedAgent.effort ?? "");
+                    setRunTimeout(selectedAgent.run_timeout ? String(selectedAgent.run_timeout / 60) : "");
                     setPermissionMode(selectedAgent.permission_mode ?? "ask");
                     setAccountDraft(accountSettings(selectedAgent));
                     draftTarget.current = selectedAgent.id;
@@ -434,6 +436,7 @@ export default function Workspace({
                     setModel("");
                     setEffort("");
                     setPermissionMode("ask");
+                    setRunTimeout("");
                     setAccountDraft(deviceAccount);
                     draftTarget.current = "new";
                   }
@@ -516,6 +519,7 @@ export default function Workspace({
                       role: role.trim(),
                       model: model || null,
                       effort: effort || null,
+                      run_timeout: runTimeout ? Number(runTimeout) * 60 : null,
                       permission_mode: permissionMode,
                       ...(supportsAccounts(provider) &&
                       (state.accounts?.length ||
@@ -539,6 +543,7 @@ export default function Workspace({
                       workspace: workspace || null,
                       model: model || null,
                       effort: effort || null,
+                      run_timeout: runTimeout ? Number(runTimeout) * 60 : null,
                       permission_mode: permissionMode,
                       ...(supportsAccounts(provider) &&
                       (state.accounts?.length ||
@@ -601,6 +606,7 @@ export default function Workspace({
                 );
                 setModel(original?.model ?? "");
                 setEffort(original?.effort ?? "");
+                setRunTimeout(original?.run_timeout ? String(original.run_timeout / 60) : "");
               }}
             >
               <WorkspaceDirectory
@@ -690,6 +696,12 @@ export default function Workspace({
                   <input readOnly value={selectedProject?.name ?? ""} />
                 </label>
               )}
+              <label>
+                {t("最长执行时间（分钟）", "Execution time limit (minutes)")}
+                <input type="number" min="1" max="1440" step="1"
+                  placeholder={t("默认 15 分钟", "Default: 15 minutes")}
+                  value={runTimeout} onChange={(event) => setRunTimeout(event.target.value)} />
+              </label>
             </div>
             <p className="settings-note">
               {catalogLoading

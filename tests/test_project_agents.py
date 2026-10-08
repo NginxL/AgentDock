@@ -131,6 +131,7 @@ class ProjectAgentTests(unittest.TestCase):
         original = self.store.get_session(self.daily['id'])
         # Simulate the immediately preceding schema without the new nullable column.
         self.store.db.execute('ALTER TABLE agents DROP COLUMN source_agent_id')
+        self.store.db.execute('PRAGMA user_version=5')
         self.store.close()
         self.store = Store(self.root / 'state.sqlite3')
         self.assertEqual(self.store.get_agent(self.base['id']), self.base)

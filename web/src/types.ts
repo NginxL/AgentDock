@@ -109,6 +109,7 @@ export interface Agent extends AccountSettings {
   role: string;
   workspace?: string;
   workspace_is_default?: boolean;
+  run_timeout?: number | null;
   model?: string | null;
   effort?: string | null;
   permission_mode?: PermissionMode;
@@ -246,6 +247,8 @@ export interface Subscription {
   currency: string;
 }
 export interface DockState {
+  version?: string;
+  partial?: boolean;
   tasks?: ProjectTask[];
   task_questions?: TaskQuestion[];
   accounts?: Account[];

@@ -251,6 +251,7 @@ describe("user-defined agent roles", () => {
         model: null,
         effort: null,
         permission_mode: "ask",
+        run_timeout: null,
         name: "My helper",
         provider,
         role: "",
@@ -308,6 +309,7 @@ describe("user-defined agent roles", () => {
       ([path]) => path === "/api/agents/agent-a",
     )!;
     expect(JSON.parse(call[1].body)).toEqual({
+      run_timeout: null,
       name: "Custom helper",
       role: "",
       environment_id: "local",

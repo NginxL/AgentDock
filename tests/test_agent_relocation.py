@@ -35,7 +35,7 @@ class AgentRelocationTests(unittest.TestCase):
         self.assertTrue(moved['workspace'].startswith('~/.local/share/agentdock/'))
         after = self.store.get_session(old['id'])
         self.assertEqual({k: v for k, v in after.items() if k != 'agent_defaults'}, {k: v for k, v in before.items() if k != 'agent_defaults'})
-        self.assertEqual(after['agent_defaults'], {'model': 'local-model', 'effort': 'high', 'permission_mode': 'full_access'})
+        self.assertEqual(after['agent_defaults'], {'model': 'local-model', 'effort': 'high', 'permission_mode': 'full_access', 'run_timeout': None})
         self.assertEqual(events, self.store.session_events(old['id']))
         self.assertEqual(self.store.get_run(running['id']), running)
         self.assertEqual(self.store.get_run(queued['id']), queued)

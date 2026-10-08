@@ -23,9 +23,10 @@ from .errors import Invalid, Missing, Conflict, Forbidden, now, text, version
 from .account_store import AccountStore
 from .task_store import TaskStore
 from .deletions import DeletionStore
+from .state_sync import StateSync
 
 
-class Store(AccountStore, TaskStore, DeletionStore):
+class Store(AccountStore, TaskStore, DeletionStore, StateSync):
     def __init__(self, path):
         self._existing_db = str(path) != ":memory:" and Path(path).expanduser().exists()
         self.lock = threading.RLock()
@@ -66,20 +67,23 @@ class Store(AccountStore, TaskStore, DeletionStore):
         CREATE TABLE IF NOT EXISTS quotas(provider TEXT PRIMARY KEY,payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS subscriptions(provider TEXT PRIMARY KEY,plan TEXT NOT NULL,renewal_date TEXT,monthly_cost REAL,currency TEXT NOT NULL);
         ''')
-        self._migrate_dispatch()
-        self._migrate_independent_agents()
-        self._migrate_environments()
-        self._migrate_session_workspaces()
-        self._migrate_inference_settings()
-        self._migrate_project_agents()
-        self._migrate_accounts()
-        self._migrate_tasks()
-        self._migrate_read_indexes()
-        self._migrate_deletions()
+        migrations = (self._migrate_dispatch, self._migrate_independent_agents,
+                      self._migrate_environments, self._migrate_session_workspaces,
+                      self._migrate_inference_settings, self._migrate_project_agents,
+                      self._migrate_accounts, self._migrate_tasks, self._migrate_read_indexes,
+                      self._migrate_deletions, self._migrate_run_limits)
+        applied = self.db.execute('PRAGMA user_version').fetchone()[0]
+        if applied > len(migrations):
+            raise Conflict('This database requires a newer AgentDock version')
+        for number, migrate in enumerate(migrations, 1):
+            if number > applied:
+                migrate()
+                self.db.execute('PRAGMA user_version=' + str(number))
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
         with self.transaction():
+            self.db.execute("UPDATE run_attempts SET status='interrupted',finished_at=? WHERE status='running'", (now(),))
             self.db.execute("UPDATE tasks SET status='interrupted' WHERE status IN ('active','waiting_input','review') AND id IN (SELECT work_task_id FROM runs WHERE status IN ('running','queued'))")
             self.db.execute("UPDATE runs SET status='interrupted',error='Workbench restarted; explicit rerun required',updated_at=? WHERE status IN ('running','queued')", (now(),))
             self.db.execute("UPDATE sessions SET status='interrupted',updated_at=? WHERE status IN ('running','queued')", (now(),))
@@ -88,6 +92,18 @@ class Store(AccountStore, TaskStore, DeletionStore):
             self.db.execute("UPDATE capabilities SET revoked=1")
             self.db.execute("UPDATE task_inputs SET status='unknown' WHERE status='pending'")
             self.db.execute("UPDATE task_inputs SET status='interrupted' WHERE status IN ('queued','accepted')")
+        self._initialize_sync(path)
+
+    def _migrate_run_limits(self):
+        with self.transaction():
+            if 'run_timeout' not in {row[1] for row in self.db.execute('PRAGMA table_info(agents)')}:
+                self.db.execute('ALTER TABLE agents ADD COLUMN run_timeout INTEGER')
+
+    @staticmethod
+    def _run_timeout(value):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or not 30 <= value <= 86400):
+            raise Invalid('Agent execution time must be between 30 and 86400 seconds')
+        return value
 
     def _migrate_read_indexes(self):
         # Run on existing databases too. Correlated cancellation queries otherwise
@@ -189,6 +205,7 @@ class Store(AccountStore, TaskStore, DeletionStore):
             self.db.execute('''INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode,source_agent_id)
                 VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode,:source_agent_id)''', item)
             self.db.execute('UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?', (source['account_id'],source['account_policy'],json.dumps(source['account_ids']),item['id']))
+            self.db.execute('UPDATE agents SET run_timeout=? WHERE id=?', (source['run_timeout'], item['id']))
             return item
 
     def _migrate_inference_settings(self):
@@ -309,15 +326,23 @@ class Store(AccountStore, TaskStore, DeletionStore):
             try:
                 yield
                 self.db.execute("COMMIT")
-                self.changed.notify_all()
+                if hasattr(self, "_changed_tables"):
+                    self._publish_changes()
+                else:
+                    self.changed.notify_all()
             except BaseException:
                 self.db.execute("ROLLBACK")
+                if hasattr(self, "_changed_tables"):
+                    self._changed_tables.clear()
+                    self._changed_sessions.clear()
                 raise
 
     def close(self):
         with self.lock:
             self.closed = True
             self.changed.notify_all()
+            for condition in getattr(self, "_session_conditions", {}).values():
+                condition.notify_all()
             self.db.close()
             if self._file_lock:
                 fcntl.flock(self._file_lock.fileno(), fcntl.LOCK_UN)
@@ -418,22 +443,23 @@ class Store(AccountStore, TaskStore, DeletionStore):
             self.db.execute("INSERT INTO projects VALUES(:id,:name,:path,:created_at,:environment_id)",item)
         return item
 
-    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask', account_id=None, account_policy='manual', account_ids=None):
+    def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask', account_id=None, account_policy='manual', account_ids=None, run_timeout=None):
         if provider not in PROVIDERS: raise Invalid("Unsupported provider")
         model, effort = self._settings(model, effort, provider)
         permission_mode = self._permission_mode(permission_mode)
         environment_id=environment_id or 'local'
         self.get_environment(environment_id)
-        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None,deleting=0)
+        item = dict(id=str(uuid.uuid4()),project_id=project_id or None,name=text(name,"name",100),provider=provider,role=text(role,"role",4000,True),created_at=now(),model=model,effort=effort,environment_id=environment_id,permission_mode=permission_mode,source_agent_id=None,deleting=0,run_timeout=self._run_timeout(run_timeout))
         with self.transaction():
             item.update(self._account_settings(provider, environment_id, account_id, account_policy, account_ids))
             item["workspace"] = self._workspace(project_id, workspace, item["id"],environment_id)
             self.db.execute("INSERT INTO agents(id,project_id,name,provider,role,created_at,workspace,model,effort,environment_id,permission_mode) VALUES(:id,:project_id,:name,:provider,:role,:created_at,:workspace,:model,:effort,:environment_id,:permission_mode)",item)
             self.db.execute("UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?", (item["account_id"],item["account_policy"],json.dumps(item["account_ids"]),item["id"]))
+            self.db.execute("UPDATE agents SET run_timeout=? WHERE id=?", (item["run_timeout"], item["id"]))
         return item
 
     def update_agent(self, agent_id, changes):
-        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id", "account_id", "account_policy", "account_ids"}:
+        if not isinstance(changes, dict) or not changes or set(changes) - {"name", "role", "model", "effort", "workspace", "project_id", "permission_mode", "environment_id", "account_id", "account_policy", "account_ids", "run_timeout"}:
             raise Invalid("Only agent settings can be updated")
         with self.transaction():
             agent = self._available("agents", agent_id)
@@ -443,6 +469,7 @@ class Store(AccountStore, TaskStore, DeletionStore):
             account_settings = self._account_settings(agent['provider'], environment_id, changes.get('account_id', None if relocated else agent['account_id']), changes.get('account_policy', 'manual' if relocated else agent['account_policy']), changes.get('account_ids', [] if relocated else agent['account_ids']))
             model, effort = self._settings(changes.get("model", None if relocated else agent["model"]), changes.get("effort", None if relocated else agent["effort"]), agent['provider'])
             permission_mode = self._permission_mode(changes.get("permission_mode", agent["permission_mode"]))
+            run_timeout = self._run_timeout(changes.get("run_timeout", agent["run_timeout"]))
             project_id = changes.get("project_id", agent["project_id"]) or None
             if agent['source_agent_id'] and project_id != agent['project_id']:
                 raise Conflict('Add this agent to the other project separately')
@@ -450,16 +477,17 @@ class Store(AccountStore, TaskStore, DeletionStore):
             moved = project_id != agent["project_id"] or workspace != agent["workspace"]
             if (project_id != agent['project_id'] or (moved and not relocated)) and self.db.execute("SELECT 1 FROM sessions WHERE agent_id=?", (agent_id,)).fetchone():
                 raise Conflict("Create a new agent to change the workspace or project after a conversation exists")
-            if not relocated and (moved or (model, effort, permission_mode) != (agent['model'], agent['effort'], agent['permission_mode'])) and self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone():
+            if not relocated and (moved or (model, effort, permission_mode, run_timeout) != (agent['model'], agent['effort'], agent['permission_mode'], agent['run_timeout'])) and self.db.execute("SELECT 1 FROM runs WHERE agent_id=? AND status IN ('queued','running')", (agent_id,)).fetchone():
                 raise Conflict("Wait for active tasks before changing agent settings")
             workspace = self._workspace(project_id, workspace, agent_id,environment_id) if moved or relocated else workspace
             if relocated:
                 # Freeze inherited defaults once; repeated moves must not rebind old conversations.
-                defaults = {key: agent[key] for key in ('model', 'effort', 'permission_mode')}
+                defaults = {key: agent[key] for key in ('model', 'effort', 'permission_mode', 'run_timeout')}
                 self.db.execute('UPDATE sessions SET agent_defaults=? WHERE agent_id=? AND agent_defaults IS NULL',
                                 (json.dumps(defaults), agent_id))
             self.db.execute("UPDATE agents SET name=?,role=?,model=?,effort=?,project_id=?,workspace=?,permission_mode=?,environment_id=? WHERE id=?", (text(changes.get("name", agent["name"]), "name", 100), text(changes.get("role", agent["role"]), "role", 4000, True), model, effort, project_id, workspace, permission_mode, environment_id, agent_id))
             self.db.execute("UPDATE agents SET account_id=?,account_policy=?,account_ids=? WHERE id=?", (account_settings["account_id"],account_settings["account_policy"],json.dumps(account_settings["account_ids"]),agent_id))
+            self.db.execute("UPDATE agents SET run_timeout=? WHERE id=?", (run_timeout, agent_id))
             return self._one("agents", agent_id)
 
     def _add_session(self, agent_id, title, account_settings=None):
@@ -743,6 +771,8 @@ class Store(AccountStore, TaskStore, DeletionStore):
         event=dict(id=str(uuid.uuid4()),project_id=project_id,session_id=session_id,kind=kind,payload=data,created_at=now())
         c=self.db.execute("INSERT INTO events(id,project_id,session_id,kind,payload,created_at) VALUES(:id,:project_id,:session_id,:kind,:payload,:created_at)",event)
         event["seq"]=c.lastrowid; event["payload"]=payload
+        if session_id and hasattr(self, "_changed_sessions"):
+            self._changed_sessions.add(session_id)
         return event
 
     def append_event(self, project_id, session_id, kind, payload):
@@ -766,14 +796,15 @@ class Store(AccountStore, TaskStore, DeletionStore):
     def wait_session_events(self, session_id, after, stop, timeout=10):
         # Subscribe and inspect the durable cursor under the same lock. A commit
         # between a history read and the wait cannot be missed.
-        with self.changed:
+        with self.lock:
+            condition = self._session_conditions.setdefault(session_id, threading.Condition(self.lock))
             result = []
             def available():
                 nonlocal result
                 if self.closed or stop.is_set(): return True
                 result = self.session_events(session_id, after)
                 return bool(result)
-            self.changed.wait_for(available, timeout)
+            condition.wait_for(available, timeout)
             return result
 
     def enqueue_message(self, project_id, sender_id, recipient_id, body, correlation_id=None, idempotency_key=None, *, sender_session_id=None, recipient_session_id=None, parent_run_id=None, task_role='worker'):
@@ -1039,21 +1070,41 @@ class Store(AccountStore, TaskStore, DeletionStore):
             return {(r['provider'], self.metric_identity(r['environment_id'],r['native_session_id'])): r['agent_id'] for r in self.db.execute(
                 "SELECT agents.provider,branch.native_session_id,sessions.agent_id,sessions.environment_id FROM session_account_branches AS branch JOIN sessions ON branch.session_id=sessions.id JOIN agents ON agents.id=sessions.agent_id WHERE branch.native_session_id IS NOT NULL AND (?=0 OR sessions.environment_id='local')",(local_only,))}
 
-    def state(self):
+    def state(self, since=None):
+        if not self._is_reader:
+            with self.reader() as reader:
+                return reader._state_snapshot(since)
+        return self._state_snapshot(since)
+
+    def _state_snapshot(self, since=None):
         with self.lock:
-            result={name:self._all("SELECT * FROM "+name+" ORDER BY created_at") for name in ("projects","agents","sessions","messages","memories","proposals")}
-            for agent in result['agents']:
+            domains = self.changed_domains(since)
+            if domains == set():
+                return {"version": self.state_version(), "partial": True}
+            result={name:self._all("SELECT * FROM "+name+" ORDER BY created_at") for name in ("projects","agents","sessions","messages","memories","proposals") if domains is None or name in domains}
+            for agent in result.get('agents', []):
                 agent['workspace_is_default'] = self._automatic_workspace(agent['workspace'], agent['id'], agent['environment_id'])
-            result["runs"]=self._all("SELECT * FROM runs WHERE id IN (SELECT id FROM runs ORDER BY created_at DESC,rowid DESC LIMIT 300) ORDER BY created_at,rowid")
-            result["events"]=self._all("SELECT * FROM (SELECT * FROM events ORDER BY seq DESC LIMIT 300) ORDER BY seq")
-            result["approvals"]=self._all("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at")
-            result["quotas"]=[json.loads(row[0]) for row in self.db.execute("SELECT payload FROM quotas")]
-            result["subscriptions"]=self._all("SELECT * FROM subscriptions")
-            for item in result['subscriptions']:
+            if domains is None or 'runs' in domains:
+                result["runs"]=self._all("SELECT * FROM runs WHERE id IN (SELECT id FROM runs ORDER BY created_at DESC,rowid DESC LIMIT 300) ORDER BY created_at,rowid")
+            if domains is None or 'events' in domains:
+                result["events"]=self._all("SELECT * FROM (SELECT * FROM events ORDER BY seq DESC LIMIT 300) ORDER BY seq")
+            if domains is None or 'approvals' in domains:
+                result["approvals"]=self._all("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at")
+            if domains is None or 'quotas' in domains:
+                result["quotas"]=[json.loads(row[0]) for row in self.db.execute("SELECT payload FROM quotas")]
+            if domains is None or 'subscriptions' in domains:
+                result["subscriptions"]=self._all("SELECT * FROM subscriptions")
+            for item in result.get('subscriptions', []):
                 if ':' in item['provider']: item['environment_id'],item['provider']=item['provider'].split(':',1)
-            result['accounts']=self.accounts(include_removed=True)
-            result['account_attempts']=self._all('SELECT * FROM run_attempts ORDER BY created_at DESC LIMIT 300')
-            result['environments']=self.environments()
-            result['tasks']=self._all('SELECT * FROM tasks ORDER BY updated_at DESC,rowid DESC')
-            result['task_questions']=self._all("SELECT * FROM task_questions WHERE status='open' ORDER BY created_at")
+            if domains is None or 'accounts' in domains:
+                result['accounts']=self.accounts(include_removed=True)
+            if domains is None or 'account_attempts' in domains:
+                result['account_attempts']=self._all('SELECT * FROM run_attempts ORDER BY created_at DESC LIMIT 300')
+            if domains is None or 'environments' in domains:
+                result['environments']=self.environments()
+            if domains is None or 'tasks' in domains:
+                result['tasks']=self._all('SELECT * FROM tasks ORDER BY updated_at DESC,rowid DESC')
+            if domains is None or 'task_questions' in domains:
+                result['task_questions']=self._all("SELECT * FROM task_questions WHERE status='open' ORDER BY created_at")
+            result.update(version=self.state_version(), partial=domains is not None)
             return result

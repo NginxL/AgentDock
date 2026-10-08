@@ -191,7 +191,7 @@ class RemoteTests(unittest.TestCase):
         self.drop_start=self.drop_poll=True
         result, events, _ = self.run_turn(session)
         self.assertEqual(result,'hello world')
-        self.assertEqual(sum(k=='reasoning_chunk' for k,p in events),2)
+        self.assertEqual(''.join(p['text'] for k, p in events if k == 'reasoning_chunk'), 'Inspect private-token')
         contract=Path(session['workspace'].replace('~',str(self.home),1))/'fake-contract.jsonl'
         self.assertEqual(sum(json.loads(line).get('method')=='turn/start' for line in contract.read_text().splitlines()),1)
         self.assertIn(('transport_status',{'status':'reconnecting'}), events)

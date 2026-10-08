@@ -30,7 +30,10 @@ class API:
 
     def close(self):
         self.closed.set()
-        with self.store.changed: self.store.changed.notify_all()
+        with self.store.changed:
+            self.store.changed.notify_all()
+            for condition in self.store._session_conditions.values():
+                condition.notify_all()
         self.catalog.close()
 
     def dispatch(self, method, path, headers, body=b""):
@@ -49,6 +52,11 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method == 'GET' and parsed.path == '/api/state/version':
+                return 200, {'version': self.store.state_version()}
+            if method == 'GET' and parsed.path == '/api/diagnostics':
+                from .diagnostics import export
+                return 200, export(self.store)
             if method=="GET" and parsed.path=="/api/providers":
                 environment=self.store.get_environment(parse_qs(parsed.query).get('environment_id',['local'])[0])
                 if environment['kind']=='local':
@@ -74,7 +82,8 @@ class API:
                 return 200,list_directories(path)
             if method=="GET" and parsed.path=="/api/metrics":
                 from .metrics import snapshot
-                result=snapshot(self.store)
+                with self.store.reader() as reader:
+                    result=snapshot(reader, cache_activity=True)
                 result["scan_status"]=self.usage.status if self.usage else "disabled"
                 result["activity"]["status"]=self.usage.activity_status if self.usage else "disabled"
                 return 200,result
@@ -86,12 +95,17 @@ class API:
                     quotas.append({**value, 'agent_names': self.store.connection_agent_names(provider, env)})
                 return 200,{'quotas':quotas}
             if method=="GET" and parsed.path=="/api/state":
-                state=self.store.state()
+                since = parse_qs(parsed.query).get('since', [None])[0]
+                state=self.store.state(since)
                 from .account_service import account_usage
-                state['accounts']=account_usage(self.store,state.get('accounts',[]))
+                if 'accounts' in state:
+                    with self.store.reader() as reader:
+                        state['accounts']=account_usage(reader,state['accounts'])
                 connections=set(self.store.configured_connections())
-                state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
-                state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
+                if 'quotas' in state:
+                    state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
+                if 'subscriptions' in state:
+                    state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
                 state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
@@ -178,7 +192,7 @@ class API:
             elif parsed.path=="/api/projects": result=self.store.add_project(p.get("name"),p.get("path"),p.get('environment_id','local'))
             elif len(parts)==4 and parts[:2]==['api','projects'] and parts[3]=='agents': result=self.store.add_project_agent(parts[2],p)
             elif parsed.path=="/api/agents": result=self.store.add_agent(p.get("project_id"),p.get("name"),p.get("provider"),p.get("role",""),p.get("workspace"),p.get("model"),p.get("effort"),p.get('environment_id','local'),p.get('permission_mode','ask'),
-                account_id=p.get('account_id'),account_policy=p.get('account_policy','manual'),account_ids=p.get('account_ids'))
+                account_id=p.get('account_id'),account_policy=p.get('account_policy','manual'),account_ids=p.get('account_ids'),run_timeout=p.get('run_timeout'))
             elif len(parts)==3 and parts[:2]==["api","agents"]: result=self.store.update_agent(parts[2],p)
             elif len(parts)==4 and parts[:2]==["api","agents"] and parts[3]=='delete': return 200,self.runtime.delete_agent(parts[2])
             elif parsed.path=="/api/sessions":
@@ -217,11 +231,15 @@ class API:
                 self.runtime.approve(parts[2],p.get("option_id")); result={"ok":True}
             else: raise Missing("Route not found")
             return 200,result
-        except Forbidden as error: return 403,{"error":str(error)}
-        except Missing: return 404,{"error":"Resource not found"}
-        except Conflict as error: return 409,{"error":str(error)}
-        except (Invalid,ValueError,TypeError) as error: return 400,{"error":str(error)[:300]}
-        except Exception: return 500,{"error":"Operation failed. No successful result was recorded; inspect local configuration."}
+        except Forbidden as error: return 403,{'error':str(error), 'code':getattr(error, 'code', 'forbidden')}
+        except Missing: return 404,{'error':'Resource not found', 'code':'not_found'}
+        except Conflict as error: return 409,{'error':str(error), 'code':getattr(error, 'code', 'state_conflict')}
+        except Invalid as error: return 400,{'error':str(error)[:300], 'code':getattr(error, 'code', 'invalid_request')}
+        except (ValueError,TypeError): return 400,{'error':'Invalid request', 'code':'invalid_request'}
+        except Exception as error:
+            from .diagnostics import failure
+            return 500,{'error':'Operation failed. Export diagnostics and include the error ID.',
+                        'code':'internal_error', 'error_id':failure(error, 'api')}
 
     def _quota(self, provider, environment_id):
         return self.quota.cached(provider) if environment_id=='local' else self.quota.cached(provider,environment_id)
@@ -259,6 +277,8 @@ def handler_for(api, web_root):
             self.end_headers(); self.wfile.write(body)
         def do_GET(self):
             parsed = urlsplit(self.path)
+            if parsed.path == '/api/state/stream':
+                return self._state_stream()
             parts = parsed.path.strip('/').split('/')
             if len(parts) == 5 and parts[:2] == ['api', 'sessions'] and parts[3:] == ['events', 'stream']:
                 return self._events(parts[2], parsed.query)
@@ -273,6 +293,29 @@ def handler_for(api, web_root):
             if suffix not in types: return self._reply(404,b"Not found","text/plain")
             self._reply(200,candidate.read_bytes(),types[suffix])
         def do_POST(self): self._api()
+        def _state_stream(self):
+            status, result = api.dispatch('GET', '/api/state/version', dict(self.headers))
+            if status != 200:
+                return self._reply(status, json.dumps(result).encode())
+            if not api.stream_slots.acquire(blocking=False):
+                return self._reply(503, b'{"error":"Too many event streams","code":"stream_limit"}')
+            try:
+                self.connection.settimeout(10)
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.end_headers()
+                version = result['version']
+                while not api.closed.is_set() and not api.store.closed:
+                    self.wfile.write(('data: ' + json.dumps({'version': version}) + '\n\n').encode())
+                    self.wfile.flush()
+                    version = api.store.wait_state_version(version, api.closed)
+            except OSError:
+                pass
+            finally:
+                api.stream_slots.release()
+                self.close_connection = True
         def _events(self, session_id, query):
             # Reuse precisely the history endpoint's host/origin/token boundary.
             status, result = api.dispatch('GET', '/api/sessions/' + session_id + '/events?' + query, dict(self.headers))
@@ -343,6 +386,8 @@ def main(argv=None):
     command=config.get("quota_command",config.get("agentmeter_command"))
     if command is not None and (not isinstance(command,list) or not command or any(not isinstance(x,str) or not x or "\x00" in x for x in command)): parser.error("quota_command must be an argument list")
     data=Path(args.data_dir).expanduser(); data.mkdir(parents=True,exist_ok=True,mode=0o700); data.chmod(0o700)
+    from .diagnostics import configure
+    configure(data)
     # Never rotate a live instance's token while trying to start another one.
     store=Store(data/"agentdock.sqlite3")
     try:
@@ -359,7 +404,7 @@ def main(argv=None):
     token_path.chmod(0o600)
     from .runtime import Runtime
     from .quota import QuotaService
-    runtime_config={"execution_enabled":args.enable_execution,"commands":commands,"base_url":"http://127.0.0.1:"+str(args.port),"python":sys.executable,"package_root":str(Path(__file__).resolve().parent.parent),"approval_timeout":120,"run_timeout":900}
+    runtime_config={"execution_enabled":args.enable_execution,"commands":commands,"base_url":"http://127.0.0.1:"+str(args.port),"python":sys.executable,"package_root":str(Path(__file__).resolve().parent.parent),"approval_timeout":config.get("approval_timeout",120),"run_timeout":config.get("run_timeout",900)}
     runtime=Runtime(store,runtime_config)
     quota=QuotaService(store,command,args.enable_execution,source="AgentMeter" if "agentmeter_command" in config and "quota_command" not in config else "AgentDock")
     quota.remote=runtime.remote

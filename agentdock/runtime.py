@@ -38,6 +38,7 @@ class _Run:
     approvals: dict = field(default_factory=dict)
     event_count: int = 0
     output_bytes: int = 0
+    output_truncated: bool = False
     attempt: Optional[dict] = None
     progress: bool = False
     control: InputControl = field(default_factory=InputControl)
@@ -261,8 +262,13 @@ class Runtime(TaskRuntime):
         size = len(serialized.encode("utf-8"))
         run.event_count += 1
         run.output_bytes += size
-        if size > 131072 or run.output_bytes > 8388608 or run.event_count > 5000:
-            raise RuntimeFailure("Agent output exceeded the limit.")
+        final = kind == 'assistant_message'
+        if not final and (size > 131072 or run.output_bytes > 8388608 or run.event_count > 5000):
+            if not run.output_truncated:
+                run.output_truncated = True
+                self.store.append_event(run.record['project_id'], run.record['session_id'], 'output_truncated',
+                    {'run_id': run.record['id'], 'text': 'Progress output was truncated. The task continues; its final reply is preserved.'})
+            return
         self.store.append_event(run.record["project_id"], run.record["session_id"], kind, json.loads(serialized))
 
     def _request_approval(self, run, request, options):
@@ -404,7 +410,8 @@ class Runtime(TaskRuntime):
         try:
             if run.stop.is_set():
                 raise ProviderCancelled()
-            deadline = time.monotonic() + self.config.get('run_timeout', 900)
+            agent = self.store.session_agent(run.record['session_id'])
+            deadline = time.monotonic() + (agent.get('run_timeout') or self.config.get('run_timeout', 900))
             while True:
                 if run.stop.is_set(): raise ProviderCancelled()
                 try:
@@ -486,8 +493,9 @@ class Runtime(TaskRuntime):
             status = "cancelled"
         except (ProviderError, Conflict, ValueError) as exc:
             error = str(exc).replace(run.capability, "[redacted]").replace("\x00", "")[:500]
-        except Exception:
-            error = "Could not run the native CLI. Check its installation and local login configuration."
+        except Exception as exception:
+            from .diagnostics import failure
+            error = 'Native execution failed. Diagnostic ID: ' + failure(exception, 'runtime')
         finally:
             with self._lock:
                 if run.stop.is_set() or self._closed:

@@ -214,28 +214,31 @@ class NativeProvidersTest(unittest.TestCase):
                 self.assertNotIn("private-token", json.dumps(self.events))
 
     def test_output_limits_stop_process(self):
-        for scenario in ("huge_line", "huge_stderr"):
+        for scenario in ("huge_line",):
             with self.subTest(scenario=scenario):
                 with self.assertRaisesRegex(ProviderError, "limit"):
                     self.run_provider("codex", scenario)
                 self.assert_process_stopped()
 
-    def test_deadline_interrupts_a_blocked_permission_callback(self):
+    def test_human_approval_does_not_consume_execution_time(self):
         release = threading.Event()
         entered = threading.Event()
         def blocked(request, options):
             entered.set()
-            release.wait(2)
+            release.wait(.5)
             return options[0]["optionId"]
         before = time.monotonic()
         try:
-            with self.assertRaisesRegex(ProviderError, "timed out"):
-                self.run_provider("claude", "permission_slow", approve=blocked, timeout=0.35)
+            self.assertEqual(self.run_provider("claude", "permission_slow", approve=blocked, timeout=0.35), 'hello world')
             self.assertTrue(entered.is_set())
-            self.assertLess(time.monotonic() - before, 1.5)
+            self.assertGreater(time.monotonic() - before, .5)
             self.assert_process_stopped()
         finally:
             release.set()
+
+    def test_noisy_native_output_keeps_the_final_result(self):
+        self.assertEqual(self.run_provider('codex', 'noisy', timeout=10), 'hello world')
+        self.assertLess(len(self.events), 2000)
 
     def test_cancel_stops_a_hung_native_process(self):
         timer = threading.Timer(0.2, self.stop.set)
