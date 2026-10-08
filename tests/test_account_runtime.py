@@ -272,6 +272,28 @@ class AccountRuntimeTests(unittest.TestCase):
         self.assertEqual(len(self.store.account_attempts(result['id'])), 3)
         self.assertEqual(self.store.get_account(accounts[3]['id'])['status'], 'ready')
 
+    def test_handover_reads_last_actions_of_failed_run_beyond_first_500_events(self):
+        first, second = self.account('One'), self.account('Two')
+        session = self.session(first)
+        old = self.store.begin_run(session['id'], 'Earlier task')
+        for index in range(510):
+            self.store.append_event(None, session['id'], 'tool_output',
+                                    {'run_id': old['id'], 'text': 'Old action ' + str(index)})
+        self.store.finish_run(old['id'], 'completed', result='Earlier result')
+        failed = self.store.begin_run(session['id'], 'Failed task')
+        for index in range(20):
+            self.store.append_event(None, session['id'], 'tool_output',
+                                    {'run_id': failed['id'], 'text': 'Recent action ' + str(index)})
+        self.store.finish_run(failed['id'], 'failed')
+        self.store.switch_session_account(session['id'], second['id'])
+        continuation = self.store.enqueue_run(session['id'], 'Continue')
+        handover = self.runtime()._handover(self.store.get_session(session['id']), continuation)
+        self.assertIn('Recent action 19', handover)
+        self.assertIn('Recent action 8', handover)
+        self.assertNotIn('Recent action 7', handover)
+        self.assertNotIn('Old action', handover)
+        self.assertEqual(len(self.store.run_activity(failed['id'])), 12)
+
     def test_all_cooling_wait_can_be_cancelled_without_native_execution(self):
         account = self.account()
         self.cooldown(account)

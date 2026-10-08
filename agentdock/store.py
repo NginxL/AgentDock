@@ -91,6 +91,7 @@ class Store(AccountStore, TaskStore):
         self._migrate_project_agents()
         self._migrate_accounts()
         self._migrate_tasks()
+        self._migrate_read_indexes()
         from .metrics import initialize
         initialize(self.db)
         if str(path) != ":memory:": Path(path).chmod(0o600)
@@ -103,6 +104,15 @@ class Store(AccountStore, TaskStore):
             self.db.execute("UPDATE capabilities SET revoked=1")
             self.db.execute("UPDATE task_inputs SET status='unknown' WHERE status='pending'")
             self.db.execute("UPDATE task_inputs SET status='interrupted' WHERE status IN ('queued','accepted')")
+
+    def _migrate_read_indexes(self):
+        # Run on existing databases too. Correlated cancellation queries otherwise
+        # scan the entire run/message history once for every logical task.
+        with self.transaction():
+            self.db.execute('CREATE INDEX IF NOT EXISTS runs_task ON runs(task_run_id)')
+            self.db.execute('CREATE INDEX IF NOT EXISTS runs_session ON runs(session_id)')
+            self.db.execute('CREATE INDEX IF NOT EXISTS messages_sender_run ON messages(sender_run_id)')
+            self.db.execute("CREATE INDEX IF NOT EXISTS events_run ON events(json_extract(payload, '$.run_id'), seq)")
 
     def _migrate_dispatch(self):
         # Additive migration keeps earlier workspaces, history and memory intact.
@@ -830,6 +840,16 @@ class Store(AccountStore, TaskStore):
         with self.lock:
             self._one("sessions",session_id)
             return self._all("SELECT * FROM events WHERE session_id=? AND seq>? ORDER BY seq LIMIT 500",(session_id,max(0,int(after))))
+
+    def run_activity(self, run_id, limit=12):
+        """Most recent observed actions for one attempt, in chronological order."""
+        with self.lock:
+            self._one('runs', run_id)
+            rows = self._all("""SELECT * FROM events
+                WHERE json_extract(payload, '$.run_id')=?
+                AND kind IN ('tool_call','tool_result','tool_output','agent_message')
+                ORDER BY seq DESC LIMIT ?""", (run_id, max(1, min(int(limit), 100))))
+            return list(reversed(rows))
 
     def wait_session_events(self, session_id, after, stop, timeout=10):
         # Subscribe and inspect the durable cursor under the same lock. A commit

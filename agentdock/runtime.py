@@ -369,9 +369,8 @@ class Runtime(TaskRuntime):
         for turn in reversed(previous):
             entry = {'question': turn['prompt'], 'reply': turn['result'], 'status': turn['status']}
             if turn['status'] != 'completed':
-                events = [e for e in self.store.session_events(session['id'])
-                    if e['payload'].get('run_id') == turn['id'] and e['kind'] in ('tool_call','tool_result','tool_output','agent_message')]
-                entry['observed_activity'] = [{ 'kind': e['kind'], 'payload': e['payload']} for e in events[-12:]]
+                events = self.store.run_activity(turn['id'])
+                entry['observed_activity'] = [{'kind': e['kind'], 'payload': e['payload']} for e in events]
             history.append(entry)
         if not history: return ''
         encoded = json.dumps(history, ensure_ascii=False)

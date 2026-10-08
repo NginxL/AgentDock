@@ -17,6 +17,15 @@ class StoreTests(unittest.TestCase):
     def token(self):
         r=self.store.begin_run(self.s['id'],'Discuss interface')
         return r,self.store.issue_capability(r['id'])
+
+    def test_existing_database_gets_cancellation_indexes(self):
+        for name in ('runs_task', 'runs_session', 'messages_sender_run', 'events_run'):
+            self.store.db.execute('DROP INDEX ' + name)
+        self.store.close()
+        self.store = Store(self.root / 'state.sqlite3')
+        indexes = {row[0] for row in self.store.db.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+        self.assertTrue({'runs_task', 'runs_session', 'messages_sender_run', 'events_run'} <= indexes)
+        self.assertEqual(self.store.get_session(self.s['id'])['title'], 'One task')
     def test_roles_are_optional_and_independent_of_provider(self):
         for provider in ('codex', 'claude'):
             empty = self.store.add_agent(self.p['id'], 'General helper', provider)
