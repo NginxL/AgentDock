@@ -4,6 +4,8 @@
 
 ACP checks exercise model/effort options, continued sessions, message phases, permission choices, timeouts/cancellation, invalid messages, private directories and cleanup with deterministic peers. An isolated SSH worker verifies remote discovery, model reading and continuation. Live Trae model discovery and two-turn dialogue passed with unchanged original configuration hashes. Other new services still need live account and tool validation; see [CLI support](PROVIDERS.md).
 
+Current review remediation, additional test counts, measurements and remaining live acceptance boundaries are tracked in [the remediation ledger](REMEDIATION.md).
+
 ## Implementation status
 
 AgentDock 0.3 combines a React interface, a Python standard-library service, and SQLite storage. Native Codex and Claude Code processes execute tasks; the dispatcher retains their session identifiers and routes work and results. Five scoped MCP tools expose collaboration and reviewed project memory. The macOS application bundles a dedicated usage helper that supplies sanitized quota snapshots through `--probe`.
@@ -72,7 +74,7 @@ swift run --package-path native MeterProviderChecks
 swift run --package-path native DesktopChecks
 ```
 
-[CI](../.github/workflows/check.yml) runs backend checks on Python 3.9 and 3.12, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, absence of Keychain authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
+[CI](../.github/workflows/check.yml) runs backend checks on Python 3.11 and 3.13, and frontend checks on Node 20, plus desktop builds and offline usage checks on macOS. Desktop checks cover menu quota formatting, expiration, unknown values, bounded summaries, and both languages. The API and interface checks cover cache-only reads, automatic page-entry refresh, absence of Keychain authorization controls, and language synchronization. Timer checks use simulated time to verify 600-second intervals, provider failure isolation, non-interactive reads, missed-tick handling and shutdown cleanup. Passing these checks validates the local contracts and lifecycle behavior exercised by fixtures. It does not validate actual provider accounts, model decisions, CLI releases beyond those inspected, or live quota accuracy.
 
 Runtime relocation checks cover local-to-SSH and SSH-to-local execution for both providers, queued and active tasks, native continuation, frozen model and permission defaults, explicit versus automatic dispatch, repeated moves, restart persistence, and cleanup on each original location. These checks use deterministic fixtures, without production model requests.
 

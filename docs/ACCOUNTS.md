@@ -8,6 +8,8 @@ AgentDock can manage multiple **Codex / ChatGPT** and **Claude Code / Claude.ai*
 
 *Actual interface preview with isolated fictional data; no real accounts or authorization were used.*
 
+Native switching, automatic failover and undocumented Claude quota reads require their separate default-off switches in Accounts → Experimental features. Saved native snapshots and recovery journals use authenticated encryption with a Keychain-held key; the signed desktop host owns Keychain authorization. See [credential protection](CREDENTIALS.md) and [experimental boundaries](EXPERIMENTS.md).
+
 ## Add and use an account
 
 1. Open **Accounts → Add account**. Choose Codex or Claude Code, select the device, and enter a name you can recognize. An SSH device must already be configured; install the CLI on that device first.

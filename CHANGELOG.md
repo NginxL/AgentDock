@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Require Python 3.11+, use the standard TOML parser and derive all build versions from one source.
+- Allocate loopback ports automatically and avoid reverse-DNS lookups during local/SSH startup.
+- Bundle frontend assets/notices in Python distributions, add the agentdock command and verify an isolated wheel installation.
+- Build relocatable macOS apps with embedded Python; add optional Developer ID signing/notarization and explicit opt-in live CLI workflows.
+- Keep native bundle resources immutable at runtime; add compatible-interpreter fallback for source installs.
+- Keep dispatcher locks free during external cleanup and record sanitized background failures.
+- Split quick-start READMEs from detailed bilingual user guides and document remaining acceptance boundaries.
+
 - Add cancellation indexes to existing and new databases.
 - Preserve the most recent actions of a failed run in account handovers, including long conversations.
 - Add a reproducible isolated cancellation benchmark and migration/long-history regressions.

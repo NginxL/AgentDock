@@ -2,7 +2,7 @@
 
 **English** · [简体中文](API.zh-CN.md) · [README](../README.md) · [Architecture](ARCHITECTURE.md)
 
-Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON except for the SSE endpoint. Error responses are `{ "error": "message" }`.
+Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is an opaque provider-owned identifier. Timestamps use UTC ISO 8601. Success responses are JSON except for the SSE endpoint. Errors contain `error`; domain errors include a stable `code`, and unexpected failures include `error_id`. Authentication/boundary failures may contain only `error`.
 
 | HTTP status | Meaning |
 | --- | --- |
@@ -14,6 +14,12 @@ Version: **0.3 preview**. Workbench IDs are UUID strings; `native_session_id` is
 | `409` | State, idempotency, ownership, or memory-version conflict. |
 | `413` | HTTP request body exceeds the size limit. |
 | `500` | Sanitized internal failure; success must not be assumed. |
+
+## Versioned state and diagnostics
+
+`GET /api/state` returns `version` and `partial`. With `?since=<version>` it returns only changed collections: omitted keys retain prior data, empty arrays clear it. First load and service restart return a full snapshot. `GET /api/state/stream` sends authenticated SSE version notifications; `GET /api/state/version` reads the current version.
+
+`GET /api/diagnostics` returns ZIP base64 `data`, filename and content type, containing only versions, counts and sanitized failure locations. `POST /api/features` takes `name`, `enabled`, `acknowledged`; four experiments default off. `POST /api/projects/{id}/policy` takes Boolean `confirm_dispatch`, without approving existing requests. Agent create/update accepts nullable `run_timeout` (30–86,400 seconds). Task history returns `records` batches within a 16,000-character total budget, retaining cursor pagination.
 
 ## Model and usage endpoints
 
@@ -43,7 +49,7 @@ Streams use authenticated streaming `fetch`; bearer tokens never enter URLs. SQL
 
 Administrator requests require `Authorization: Bearer <local admin token>`. `Host` must exactly match `127.0.0.1:<configured port>`. Browser `Origin`, when present, must match the same HTTP origin; cross-site requests are rejected. POST bodies use `application/json` and are limited to 256 KiB. CORS and remote binding are not supported.
 
-MCP requests use a separate per-run capability. That credential grants access only to `/mcp/tool` for the executing project's agent and session. It cannot access administrator APIs. The capability is revoked when a run ends or is cancelled, and expires after at most one hour.
+MCP requests use a separate per-run capability. That credential grants access only to `/mcp/tool` for the executing project's agent and session. It cannot access administrator APIs. The capability is revoked immediately when a run ends or is cancelled. Its finite lifetime covers the configured execution time and bounded approval waits, with a one-hour minimum.
 
 Execution is disabled by default. In review mode, project, agent, session, memory, subscription, and account metadata records can be managed; native account login/check/refresh/delete operations, starting tasks, sending executable messages, resolving runtime approvals, and refreshing provider quotas are rejected. Reading state never starts a process or quota probe.
 
@@ -211,7 +217,7 @@ The workbench supplies `AGENTDOCK_URL` and `AGENTDOCK_CAPABILITY` through the ch
 | `memory_search` | optional `query` | Returns up to 20 approved, non-archived project memories using literal keyword matching. |
 | `memory_propose` | `key`, `content`, `expected_version` | Creates a proposal for human review. Cannot directly overwrite approved memory. |
 | `task_context` | none | Bounded current-task context: goal, criteria, inputs, questions, reports and workspaces. |
-| `task_history` | optional `after`, `offset` | Complete durable records in order; continue with next_after/next_offset until record:null. JSON text may span pages. |
+| `task_history` | optional `after`, `offset`, `limit` (1–20, MCP default 20) | Ordered `records` batches within 16,000 characters; continue with next_after/next_offset until record:null. JSON text may span pages. |
 | `task_result` | `run_id`, optional `offset` | Full stored final report in this task, paginated by next_offset. Retained reports survive session deletion. |
 | `task_ask` | `question`, optional `options` | Save a question requiring human input, then finish the turn. |
 | `task_deliver` | `summary`, `checks`; optional `artifacts`, `risks` | Owner-only delivery; each check contains criterion, status and evidence. |
@@ -227,8 +233,8 @@ Each native process executes one foreground turn and exits afterward. Claude's c
 | --- | --- |
 | Concurrency | At most 4 active native processes. The same agent, the same managed account and identical or parent/child workspace paths cannot execute concurrently. |
 | Collaboration | Root depth is 0; delegation depth is at most 3. Each root task admits at most 16 runs, including the root, delegated tasks, and result continuations. New delegations reserve capacity for their replies and may therefore be rejected before 16 runs exist. |
-| Timeouts | The service uses a 15-minute run deadline and a 2-minute approval deadline. Expiry stops the run without granting permission. |
-| Output | Native output is capped at 8 MiB, with a 512 KiB protocol-line limit. Runtime events and final text have additional bounds; stored final text is capped at 64,000 characters, and automatic result handoffs include at most 12,000 characters. |
+| Timeouts | Execution defaults to 15 minutes, configurable up to 24 hours per Agent/service. Approval waits are excluded, with a separate deadline of at most 2 minutes. Expiry never grants permission. |
+| Output | Progress display truncates after 5,000 events or 8 MiB; final reply and settlement continue. Protocol lines remain bounded to 512 KiB. Stored final text is capped at 64,000 characters; automatic result handoffs include at most 12,000 characters. |
 | Device-login quotas | The service refreshes every 600 seconds when execution and a helper are enabled. Selecting Usage & billing also triggers refresh. A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
 
 SQLite migration is additive: projects, sessions, history, and memory remain available. Messages from the earlier mailbox model without an executable `run_id` become `legacy` audit records and are never dispatched. Native bindings are created on the first 0.2 execution; older adapter sessions are not imported.

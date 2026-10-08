@@ -25,10 +25,10 @@ flowchart LR
 | Component | Code | Responsibility |
 | --- | --- | --- |
 | Workbench | `web/src/` | Projects, agents, conversations, execution queue, task handoffs, reviewed memory, quotas and permission prompts. Chinese is the default; English is selectable. |
-| HTTP boundary | `agentdock/server.py` | Loopback Host/Origin validation, bearer authentication, bounded requests, and separate human/tool routes. |
-| Durable state | `agentdock/store.py` | Native bindings, task ownership, transactional queue claims, delivery/result links, memory history, token hashes and approvals. |
+| HTTP boundary | `agentdock/server.py`, `routes.py`, `loopback_server.py` | Host/Origin and bearer validation; declared execution guards; loopback binding without DNS. |
+| Durable state | `agentdock/store.py`, `*_store.py`, `deletions.py` | Shared transactional facade with session, run, event, message, connection, permission, memory, account and task domains. |
 | Dispatcher | `agentdock/runtime.py` | Explicit submission, automatic dispatch and result return, task settlement, approval deadlines and cancellation. |
-| Native transports | `agentdock/providers.py` | Codex App Server and Claude stream-json protocols, stream parsing, session identity checks, bounded output and process cleanup. |
+| Native transports | `providers.py`, `codex_protocol.py`, `claude_protocol.py`, `acp.py`, `native_io.py` | Provider protocols share native transport, initialization and bounded text/stream buffers. `turn.py` describes one turn; `executors.py` handles local/SSH execution. |
 | Agent tools | `agentdock/mcp.py` | Project collaboration, task context/history, questions, delivery, independent review and memory proposals. |
 | Quota bridge | `agentdock/quota.py` | Scheduled and page-entry Codex/Claude probes through the built-in macOS helper, sanitized snapshots and freshness rules. |
 
@@ -36,6 +36,20 @@ The browser's `?demo=1` mode reads fictional fixtures and makes no API requests.
 
 CLI entry points live in `agentdock/registry.py`. `agentdock/acp.py` handles ACP capabilities, native continuation, model settings, permissions and streaming events. `agentdock/acp_home.py` provides private HOME/XDG state and selected configuration snapshots. SSH workers reuse these modules; provider discovery submits no model requests. See [CLI support](PROVIDERS.md) for capability and live-validation boundaries.
 
+
+## State, responsiveness and diagnostics
+
+`state_sync.py` maintains an instance epoch and domain revisions. Global SSE publishes changes; clients request only changed domains. The first load and service restart still return a full snapshot. Per-row pagination is not implemented. Disk databases use independent read-only WAL connections for snapshot/statistics reads; writes retain one transactional connection. Session event streams wake only for their own changes. Numbered migrations also upgrade existing databases.
+
+Deletion first persists a tombstone, performs CLI/SSH cleanup without holding database or dispatcher locks, then removes records. Tombstones reject new work and survive failures/restarts for retry. Completed turns compact redundant deltas only where an authoritative message exists; incomplete output and event cursors remain valid.
+
+Progress is coalesced at roughly 100 ms. Display limits truncate progress, leaving final replies, approval events and settlement available. Per-agent run timeouts override the service default; approval waits have a separate bound. Cancellation remains available.
+
+`diagnostics.py` writes private rolling metadata logs and associates unexpected failures with an error ID. Export contains versions, counts and sanitized error locations, excluding request/exception text and credentials. `errors.py` defines stable public codes; the interface translates codes independently of English messages.
+
+The interface uses TanStack Query for state/model/statistics requests. Account generations and epoch checks remain business-level safeguards. Workspace/task forms, lists and conversation panes are separate components; styles preserve their original cascade, and fixed bilingual copy lives in `messages.ts`. Account, usage and token pages load lazily.
+
+[Native credential protection](CREDENTIALS.md), [experimental feature gates](EXPERIMENTS.md) and [runtime/distribution](DISTRIBUTION.md) specify their separate boundaries.
 
 ## Reusable agents and project members
 
@@ -126,7 +140,7 @@ Each agent stores `permission_mode`: `ask` by default (including migrated record
 
 Invalid values are rejected before starting a native CLI. Full access removes routine CLI approval prompts, subject to system account permissions and upstream managed policies; it does not widen AgentDock MCP capabilities. The Claude child process receives `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, so shell and subagent work stays in the foreground and finishes within the managed turn; user-wide settings are unchanged. Permissions appear as human-only, single-use options in the UI. Unknown control requests are rejected; Codex's unsupported elicitation forms are declined. The provider's own permission behavior still applies; the UI does not guarantee every upstream action will prompt.
 
-Runs have a 15-minute deadline. An unanswered permission request expires after 120 seconds. The native transport bounds stdout/stderr to 8 MiB combined, each JSON line to 512 KiB, protocol messages to 10,000 and permission/control requests to 64. The dispatcher separately caps stored events to 5,000 and 8 MiB per run. Stderr is drained but not persisted; stable errors omit raw provider details. Shared process-group cleanup handles native CLIs and quota probes.
+The default run deadline is 15 minutes and is configurable per service/Agent up to 24 hours. Approval waits do not consume this time; unanswered requests expire after at most 120 seconds. JSON lines remain bounded to 512 KiB and permission/control requests to 64. Lifetime byte/message counts no longer terminate turns. Progress display is bounded to 5,000 events / 8 MiB with an explicit truncation marker; final replies and settlement remain available. Stderr is drained but not persisted. Process-group cleanup handles native CLIs and quota probes.
 
 ## SSH execution environments
 
@@ -156,7 +170,7 @@ Renewal dates and amounts are manual subscription records, distinct from quota r
 
 ## Trust and persistence
 
-The server binds to `127.0.0.1`, checks exact Host/Origin values and provides no CORS or remote binding. A human access token is written to a mode-0600 file in the private data directory and kept only in browser memory. Per-run MCP capabilities are hashed in SQLite, expire after one hour and are revoked when execution ends. They cannot access human approval routes.
+The server binds to `127.0.0.1`, checks exact Host/Origin values and provides no CORS or remote binding. A human access token is atomically written to a mode-0600 file in the private data directory and kept only in browser memory. Per-run MCP capabilities are hashed in SQLite, have a finite lifetime covering configured execution/approval waits (at least one hour), and are revoked when execution ends. They cannot access human approval routes.
 
 A file lock prevents concurrent service instances from corrupting restart recovery. It does not isolate hostile processes running as the same OS user. Native CLIs may have that user's filesystem/network access; stronger isolation requires a separate user, container or VM.
 
