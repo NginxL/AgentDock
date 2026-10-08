@@ -38,7 +38,7 @@ class Catalog:
             command = commands(self.config.get('commands', {})).get(provider)
             if not isinstance(command, list) or not command: raise ValueError('Native CLI is not configured')
             if provider in ACP_PROVIDERS:
-                value = self._acp(provider, command)
+                value = self._acp(provider, command, environment)
                 self.cache[key] = (time.monotonic(), value)
                 return value
             argv = command + (['--listen', 'stdio://'] if provider == 'codex' else
@@ -81,12 +81,15 @@ class Catalog:
             finally:
                 pipe.close()
 
-    def _acp(self, provider, command):
+    def _acp(self, provider, command, environment=None):
         from .acp import ACP
-        from .acp_home import prepare
+        from .credential_lease import credentials, catalog_home
         from .registry import acp_command
-        with tempfile.TemporaryDirectory(prefix='agentdock-catalog-') as directory:
-            env = prepare(provider, Path(directory)/'home', os.environ)
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            directory = stack.enter_context(tempfile.TemporaryDirectory(prefix='agentdock-catalog-'))
+            source = os.environ if environment is None else environment
+            env = stack.enter_context(credentials(provider, catalog_home(provider, source), source, self.stop))
             cwd = Path(directory)/'workspace'
             cwd.mkdir()
             pipe = _Pipe(acp_command(provider, command, str(cwd), env, self.stop), str(cwd), env, self.stop, 25)

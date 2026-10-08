@@ -6,6 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import { ApiError, listOf, request } from "./api";
+import { FeatureContext } from "./ExperimentalFeatures";
 import DiagnosticExport from "./DiagnosticExport";
 import { watchState } from "./stateStream";
 import type {
@@ -218,7 +219,9 @@ export default function App() {
     if (!currentToken) return false;
     const snapshot = await request<DockState>(
       currentToken,
-      stateRef.current?.version ? `/api/state?since=${encodeURIComponent(stateRef.current.version)}` : "/api/state",
+      stateRef.current?.version
+        ? `/api/state?since=${encodeURIComponent(stateRef.current.version)}`
+        : "/api/state",
       undefined,
       signal,
     );
@@ -231,9 +234,14 @@ export default function App() {
       if (current?.version && snapshot.version) {
         const [currentEpoch, currentRevision] = current.version.split(":");
         const [nextEpoch, nextRevision] = snapshot.version.split(":");
-        if (currentEpoch === nextEpoch && Number(nextRevision) <= Number(currentRevision)) return current;
+        if (
+          currentEpoch === nextEpoch &&
+          Number(nextRevision) <= Number(currentRevision)
+        )
+          return current;
       }
-      const next = snapshot.partial && current ? { ...current, ...snapshot } : snapshot;
+      const next =
+        snapshot.partial && current ? { ...current, ...snapshot } : snapshot;
       return currentQuotaEpoch === quotaEpoch.current
         ? next
         : {
@@ -277,17 +285,23 @@ export default function App() {
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let retry: ReturnType<typeof setTimeout> | undefined;
     const update = async () => {
-      if (controller.signal.aborted || document.visibilityState === "hidden") return;
-      if (inFlight) { pending = true; return; }
+      if (controller.signal.aborted || document.visibilityState === "hidden")
+        return;
+      if (inFlight) {
+        pending = true;
+        return;
+      }
       if (mutationInFlight.current) {
         clearTimeout(retry);
         retry = setTimeout(() => void update(), 250);
         return;
       }
       inFlight = true;
-      try { await refresh(controller.signal); }
-      catch { /* The bounded fallback poll reports connection errors. */ }
-      finally {
+      try {
+        await refresh(controller.signal);
+      } catch {
+        /* The bounded fallback poll reports connection errors. */
+      } finally {
         inFlight = false;
         if (pending && !controller.signal.aborted) {
           pending = false;
@@ -298,14 +312,23 @@ export default function App() {
     const connect = () => {
       void watchState(token, controller.signal, (version) => {
         if (version !== stateRef.current?.version) void update();
-      }).catch(() => {}).finally(() => {
-        if (!controller.signal.aborted) reconnect = setTimeout(connect, 3000);
-      });
+      })
+        .catch(() => {})
+        .finally(() => {
+          if (!controller.signal.aborted) reconnect = setTimeout(connect, 3000);
+        });
     };
     connect();
-    const visible = () => { if (document.visibilityState === "visible") void update(); };
+    const visible = () => {
+      if (document.visibilityState === "visible") void update();
+    };
     document.addEventListener("visibilitychange", visible);
-    return () => { controller.abort(); clearTimeout(reconnect); clearTimeout(retry); document.removeEventListener("visibilitychange", visible); };
+    return () => {
+      controller.abort();
+      clearTimeout(reconnect);
+      clearTimeout(retry);
+      document.removeEventListener("visibilitychange", visible);
+    };
   }, [token, demo, versionedState, refresh]);
 
   useEffect(() => {
@@ -440,35 +463,38 @@ export default function App() {
     if (!token) return;
     const controller = new AbortController();
     let inFlight = false;
-    const interval = window.setInterval(async () => {
-      if (
-        inFlight ||
-        mutationInFlight.current ||
-        document.visibilityState === "hidden"
-      )
-        return;
-      inFlight = true;
-      try {
-        await refresh(controller.signal);
-      } catch (e) {
-        if (controller.signal.aborted) return;
-        if (e instanceof ApiError && e.status === 401) {
-          disconnect();
-          setError(
-            lang === "zh"
-              ? "连接凭据已失效，请重新连接。"
-              : "Connection credentials expired. Please reconnect.",
-          );
-        } else
-          setError(
-            lang === "zh"
-              ? "暂时无法刷新。显示的是上次读取的数据。"
-              : "Refresh failed. Showing the last available data.",
-          );
-      } finally {
-        inFlight = false;
-      }
-    }, versionedState ? 60000 : 8000);
+    const interval = window.setInterval(
+      async () => {
+        if (
+          inFlight ||
+          mutationInFlight.current ||
+          document.visibilityState === "hidden"
+        )
+          return;
+        inFlight = true;
+        try {
+          await refresh(controller.signal);
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          if (e instanceof ApiError && e.status === 401) {
+            disconnect();
+            setError(
+              lang === "zh"
+                ? "连接凭据已失效，请重新连接。"
+                : "Connection credentials expired. Please reconnect.",
+            );
+          } else
+            setError(
+              lang === "zh"
+                ? "暂时无法刷新。显示的是上次读取的数据。"
+                : "Refresh failed. Showing the last available data.",
+            );
+        } finally {
+          inFlight = false;
+        }
+      },
+      versionedState ? 60000 : 8000,
+    );
     return () => {
       window.clearInterval(interval);
       controller.abort();
@@ -753,336 +779,350 @@ export default function App() {
   ];
 
   return (
-    <div className="shell">
-      <a className="skip-link" href="#main-content">
-        {t("跳至主要内容", "Skip to content")}
-      </a>
-      <aside className="sidebar">
-        <Brand small />
-        <nav aria-label={t("主导航", "Main navigation")}>
-          {nav.map((item) => (
-            <button
-              key={item.key}
-              className={tab === item.key ? "nav-item selected" : "nav-item"}
-              onClick={() => {
-                setTab(item.key);
-                if (item.key === "usage") setUsageVisit((visit) => visit + 1);
-              }}
-              aria-label={t(item.zh, item.en)}
-              aria-current={tab === item.key ? "page" : undefined}
-            >
-              <Icon name={item.icon} />
-              <span>{t(item.zh, item.en)}</span>
-              {!!item.badge && <span className="nav-badge">{item.badge}</span>}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          {!demo && <DiagnosticExport token={token} t={t} onError={setError} />}
-          <div className="local-status">
-            <span className="status-dot" />
-            <div>
-              {demo ? t("离线演示", "Offline demo") : t("已就绪", "Ready")}
-              <small>v{state.runtime.version}</small>
+    <FeatureContext.Provider value={state.runtime.features ?? {}}>
+      <div className="shell">
+        <a className="skip-link" href="#main-content">
+          {t("跳至主要内容", "Skip to content")}
+        </a>
+        <aside className="sidebar">
+          <Brand small />
+          <nav aria-label={t("主导航", "Main navigation")}>
+            {nav.map((item) => (
+              <button
+                key={item.key}
+                className={tab === item.key ? "nav-item selected" : "nav-item"}
+                onClick={() => {
+                  setTab(item.key);
+                  if (item.key === "usage") setUsageVisit((visit) => visit + 1);
+                }}
+                aria-label={t(item.zh, item.en)}
+                aria-current={tab === item.key ? "page" : undefined}
+              >
+                <Icon name={item.icon} />
+                <span>{t(item.zh, item.en)}</span>
+                {!!item.badge && (
+                  <span className="nav-badge">{item.badge}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-bottom">
+            {!demo && (
+              <DiagnosticExport token={token} t={t} onError={setError} />
+            )}
+            <div className="local-status">
+              <span className="status-dot" />
+              <div>
+                {demo ? t("离线演示", "Offline demo") : t("已就绪", "Ready")}
+                <small>v{state.runtime.version}</small>
+              </div>
             </div>
+            {(demo || !desktopToken.current) && (
+              <button className="disconnect" onClick={disconnect}>
+                {demo
+                  ? t("退出演示", "Exit demo")
+                  : t("退出工作台", "Sign out")}
+              </button>
+            )}
           </div>
-          {(demo || !desktopToken.current) && (
-            <button className="disconnect" onClick={disconnect}>
-              {demo ? t("退出演示", "Exit demo") : t("退出工作台", "Sign out")}
-            </button>
-          )}
-        </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumb">
-            <span className="breadcrumb-brand">AgentDock</span>
-            <span>/</span>
-            {tab === "projects" && project ? (
-              <>
-                <button
-                  className="breadcrumb-page"
-                  onClick={() => setTab("projects")}
-                >
-                  {t("项目", "Projects")}
-                </button>
-                <span>/</span>
-                {pageAgent ? (
+        </aside>
+        <div className="main-shell">
+          <header className="topbar">
+            <div className="breadcrumb">
+              <span className="breadcrumb-brand">AgentDock</span>
+              <span>/</span>
+              {tab === "projects" && project ? (
+                <>
                   <button
                     className="breadcrumb-page"
-                    onClick={() =>
-                      navigate({ agentID: "", projectView: "agents" })
-                    }
+                    onClick={() => setTab("projects")}
                   >
-                    {project.name}
+                    {t("项目", "Projects")}
                   </button>
-                ) : (
-                  <strong>{project.name}</strong>
-                )}
-              </>
-            ) : pageAgent ? (
-              <button
-                className="breadcrumb-page"
-                aria-label={t("返回工作台", "Back to workspace")}
-                onClick={() => setTab("workspace")}
-              >
-                {t("协作工作台", "Workspace")}
-              </button>
-            ) : (
-              <strong>
-                {t(
-                  nav.find((n) => n.key === tab)!.zh,
-                  nav.find((n) => n.key === tab)!.en,
-                )}
-              </strong>
-            )}
-            {pageAgent && (
-              <>
-                <span>/</span>
-                <strong>{pageAgent.name}</strong>
-              </>
-            )}
-          </div>
-          <div className="top-actions">
-            {languageButton}
-            {tab !== "usage" && (
-              <button
-                className="icon-button"
-                title={t("刷新工作台状态", "Refresh workspace state")}
-                aria-label={t("刷新工作台状态", "Refresh workspace state")}
-                onClick={manualRefresh}
-                disabled={!!busy || demo}
-              >
-                <Icon name="refresh" />
-              </button>
-            )}
-          </div>
-        </header>
-        <main
-          id="main-content"
-          className={`main-content ${pageAgent || tab === "conversations" ? "agent-content" : ""}`}
-        >
-          {(demo || !state.runtime.enabled) && (
-            <div
-              className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
-            >
-              <Icon name="shield" size={18} />
-              <span>
-                {demo
-                  ? t(
-                      "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
-                      "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
-                    )
-                  : t(
-                      "当前仅可查看，尚未启用任务执行。",
-                      "View only. Task execution is not enabled.",
-                    )}
-              </span>
+                  <span>/</span>
+                  {pageAgent ? (
+                    <button
+                      className="breadcrumb-page"
+                      onClick={() =>
+                        navigate({ agentID: "", projectView: "agents" })
+                      }
+                    >
+                      {project.name}
+                    </button>
+                  ) : (
+                    <strong>{project.name}</strong>
+                  )}
+                </>
+              ) : pageAgent ? (
+                <button
+                  className="breadcrumb-page"
+                  aria-label={t("返回工作台", "Back to workspace")}
+                  onClick={() => setTab("workspace")}
+                >
+                  {t("协作工作台", "Workspace")}
+                </button>
+              ) : (
+                <strong>
+                  {t(
+                    nav.find((n) => n.key === tab)!.zh,
+                    nav.find((n) => n.key === tab)!.en,
+                  )}
+                </strong>
+              )}
+              {pageAgent && (
+                <>
+                  <span>/</span>
+                  <strong>{pageAgent.name}</strong>
+                </>
+              )}
             </div>
-          )}
-          {error && (
-            <div className="alert error" role="alert">
-              <span>{error}</span>
-              <button
-                className="icon-button"
-                onClick={() => setError("")}
-                aria-label={t("关闭错误提示", "Dismiss error")}
-              >
-                <Icon name="close" size={16} />
-              </button>
+            <div className="top-actions">
+              {languageButton}
+              {tab !== "usage" && (
+                <button
+                  className="icon-button"
+                  title={t("刷新工作台状态", "Refresh workspace state")}
+                  aria-label={t("刷新工作台状态", "Refresh workspace state")}
+                  onClick={manualRefresh}
+                  disabled={!!busy || demo}
+                >
+                  <Icon name="refresh" />
+                </button>
+              )}
             </div>
-          )}
-          {notice && (
-            <div className="alert success" role="status">
-              {notice}
-              <button
-                className="icon-button"
-                onClick={() => setNotice("")}
-                aria-label={t("关闭提示", "Dismiss notice")}
+          </header>
+          <main
+            id="main-content"
+            className={`main-content ${pageAgent || tab === "conversations" ? "agent-content" : ""}`}
+          >
+            {(demo || !state.runtime.enabled) && (
+              <div
+                className={`runtime-banner ${state.runtime.enabled ? "enabled" : ""}`}
               >
-                <Icon name="close" size={16} />
-              </button>
-            </div>
-          )}
-          {tab === "conversations" && (
-            <Conversations
-              state={state}
-              sessionID={conversationID}
-              token={token}
-              demo={demo}
-              busy={!!busy || demo}
-              mutate={mutate}
-              lang={lang}
-              t={t}
-              onSelect={(id) => navigate({ sessionID: id })}
-              onTask={(task) =>
-                navigate({
-                  tab: "projects",
-                  projectID: task.project_id,
-                  projectView: "tasks",
-                  taskID: task.id,
-                  agentID: "",
-                })
-              }
-              onAgent={(id, projectID) =>
-                navigate({
-                  tab: projectID ? "projects" : "workspace",
-                  projectID: projectID ?? "",
-                  projectView: "agents",
-                  agentID: id,
-                })
-              }
-            />
-          )}
-          {tab === "projects" && !pageAgent && (
-            <ProjectHeader
-              project={project}
-              projects={state.projects}
-              view={projectView}
-              pending={proposals.length}
-              creating={projectForm}
-              onCreate={() => setProjectForm(!projectForm)}
-              onSelect={setProjectID}
-              onView={(view) =>
-                navigate({ projectView: view, agentID: "", taskID: "" })
-              }
-              t={t}
-            />
-          )}
-          {projectForm && tab === "projects" && !project && (
-            <ProjectForm
-              environments={state.environments ?? []}
-              t={t}
-              busy={!!busy || demo}
-              mutate={mutate}
-              close={() => setProjectForm(false)}
-              onCreated={(id) =>
-                navigate({
-                  tab: "projects",
-                  projectID: id,
-                  projectView: "tasks",
-                  agentID: "",
-                })
-              }
-            />
-          )}
-          {tab === "projects" && !project && (
-            <ProjectList
-              state={state}
-              t={t}
-              onSelect={setProjectID}
-              creating={projectForm}
-              onCreate={() => setProjectForm(!projectForm)}
-            />
-          )}
-          {(tab === "workspace" ||
-            (tab === "projects" && project && projectView === "agents")) && (
-            <Workspace
-              key={projectID}
-              t={t}
-              lang={lang}
-              metrics={metrics}
-              metricsFailed={metricsFailed}
-              project={project}
-              agents={agents}
-              sessions={sessions}
-              approvals={approvals}
-              state={state}
-              token={token}
-              demo={demo}
-              runtimeEnabled={state.runtime.enabled}
-              busy={!!busy || demo}
-              mutate={mutate}
-              agentPageID={agentPageID}
-              onNavigateAgent={(id, replace) =>
-                navigate({ agentID: id }, replace)
-              }
-              initialEnvironment={agentEnvironment ?? undefined}
-              onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
-              onConfigureAgent={() => {
-                setAgentEnvironment(project?.environment_id ?? "local");
-                navigate({
-                  tab: "workspace",
-                  projectID: "",
-                  projectView: "agents",
-                  agentID: "",
-                });
-              }}
-            />
-          )}
-          {tab === "projects" && project && projectView === "tasks" && (
-            <Tasks
-              key={projectID}
-              t={t}
-              lang={lang}
-              state={state}
-              projectID={projectID}
-              taskID={taskID}
-              onSelect={(id) => navigate({ taskID: id })}
-              token={token}
-              demo={demo}
-              busy={!!busy || demo}
-              mutate={mutate}
-            />
-          )}
-          {tab === "projects" && project && projectView === "memory" && (
-            <Memories
-              key={projectID}
-              t={t}
-              lang={lang}
-              state={state}
-              projectID={projectID}
-              agents={agents}
-              proposals={proposals}
-              busy={!!busy || demo}
-              mutate={mutate}
-            />
-          )}
-          {tab === "accounts" && (
-            <Accounts
-              state={state}
-              token={token}
-              busy={!!busy || demo}
-              mutate={mutate}
-              onChanged={() => {
-                void refresh().catch(() => {});
-              }}
-              t={t}
-            />
-          )}
-          {tab === "tokens" && (
-            <Tokens
-              metrics={metrics}
-              failed={metricsFailed}
-              agents={state.agents}
-              t={t}
-              lang={lang}
-            />
-          )}
-          {tab === "usage" && (
-            <Usage
-              t={t}
-              lang={lang}
-              quotas={listOf(state.quotas)}
-              subscriptions={listOf(state.subscriptions)}
-              agents={state.agents}
-              sessions={state.sessions}
-              accounts={state.accounts ?? []}
-              environments={state.environments ?? []}
-              onAddAgent={() => {
-                setProjectForm(false);
-                setAgentEnvironment("local");
-                setTab("workspace");
-              }}
-              refreshing={quotaRefreshing}
-              refreshFailed={quotaRefreshFailed}
-              busy={!!busy || demo}
-              mutate={mutate}
-            />
-          )}
-        </main>
+                <Icon name="shield" size={18} />
+                <span>
+                  {demo
+                    ? t(
+                        "演示模式 · 所有内容均为虚构示例，不连接本地服务、不运行 Agent、不读取额度。",
+                        "Demo mode · Fictional examples only. No service connection, agent execution or quota fetching.",
+                      )
+                    : t(
+                        "当前仅可查看，尚未启用任务执行。",
+                        "View only. Task execution is not enabled.",
+                      )}
+                </span>
+              </div>
+            )}
+            {error && (
+              <div className="alert error" role="alert">
+                <span>{error}</span>
+                <button
+                  className="icon-button"
+                  onClick={() => setError("")}
+                  aria-label={t("关闭错误提示", "Dismiss error")}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            )}
+            {notice && (
+              <div className="alert success" role="status">
+                {notice}
+                <button
+                  className="icon-button"
+                  onClick={() => setNotice("")}
+                  aria-label={t("关闭提示", "Dismiss notice")}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            )}
+            {tab === "conversations" && (
+              <Conversations
+                state={state}
+                sessionID={conversationID}
+                token={token}
+                demo={demo}
+                busy={!!busy || demo}
+                mutate={mutate}
+                lang={lang}
+                t={t}
+                onSelect={(id) => navigate({ sessionID: id })}
+                onTask={(task) =>
+                  navigate({
+                    tab: "projects",
+                    projectID: task.project_id,
+                    projectView: "tasks",
+                    taskID: task.id,
+                    agentID: "",
+                  })
+                }
+                onAgent={(id, projectID) =>
+                  navigate({
+                    tab: projectID ? "projects" : "workspace",
+                    projectID: projectID ?? "",
+                    projectView: "agents",
+                    agentID: id,
+                  })
+                }
+              />
+            )}
+            {tab === "projects" && !pageAgent && (
+              <ProjectHeader
+                onPolicy={(project) =>
+                  void mutate(`/api/projects/${project.id}/policy`, {
+                    confirm_dispatch: !project.confirm_dispatch,
+                  })
+                }
+                busy={!!busy || demo}
+                project={project}
+                projects={state.projects}
+                view={projectView}
+                pending={proposals.length}
+                creating={projectForm}
+                onCreate={() => setProjectForm(!projectForm)}
+                onSelect={setProjectID}
+                onView={(view) =>
+                  navigate({ projectView: view, agentID: "", taskID: "" })
+                }
+                t={t}
+              />
+            )}
+            {projectForm && tab === "projects" && !project && (
+              <ProjectForm
+                environments={state.environments ?? []}
+                t={t}
+                busy={!!busy || demo}
+                mutate={mutate}
+                close={() => setProjectForm(false)}
+                onCreated={(id) =>
+                  navigate({
+                    tab: "projects",
+                    projectID: id,
+                    projectView: "tasks",
+                    agentID: "",
+                  })
+                }
+              />
+            )}
+            {tab === "projects" && !project && (
+              <ProjectList
+                state={state}
+                t={t}
+                onSelect={setProjectID}
+                creating={projectForm}
+                onCreate={() => setProjectForm(!projectForm)}
+              />
+            )}
+            {(tab === "workspace" ||
+              (tab === "projects" && project && projectView === "agents")) && (
+              <Workspace
+                key={projectID}
+                t={t}
+                lang={lang}
+                metrics={metrics}
+                metricsFailed={metricsFailed}
+                project={project}
+                agents={agents}
+                sessions={sessions}
+                approvals={approvals}
+                state={state}
+                token={token}
+                demo={demo}
+                runtimeEnabled={state.runtime.enabled}
+                busy={!!busy || demo}
+                mutate={mutate}
+                agentPageID={agentPageID}
+                onNavigateAgent={(id, replace) =>
+                  navigate({ agentID: id }, replace)
+                }
+                initialEnvironment={agentEnvironment ?? undefined}
+                onInitialEnvironmentUsed={() => setAgentEnvironment(null)}
+                onConfigureAgent={() => {
+                  setAgentEnvironment(project?.environment_id ?? "local");
+                  navigate({
+                    tab: "workspace",
+                    projectID: "",
+                    projectView: "agents",
+                    agentID: "",
+                  });
+                }}
+              />
+            )}
+            {tab === "projects" && project && projectView === "tasks" && (
+              <Tasks
+                key={projectID}
+                t={t}
+                lang={lang}
+                state={state}
+                projectID={projectID}
+                taskID={taskID}
+                onSelect={(id) => navigate({ taskID: id })}
+                token={token}
+                demo={demo}
+                busy={!!busy || demo}
+                mutate={mutate}
+              />
+            )}
+            {tab === "projects" && project && projectView === "memory" && (
+              <Memories
+                key={projectID}
+                t={t}
+                lang={lang}
+                state={state}
+                projectID={projectID}
+                agents={agents}
+                proposals={proposals}
+                busy={!!busy || demo}
+                mutate={mutate}
+              />
+            )}
+            {tab === "accounts" && (
+              <Accounts
+                state={state}
+                token={token}
+                busy={!!busy || demo}
+                mutate={mutate}
+                onChanged={() => {
+                  void refresh().catch(() => {});
+                }}
+                t={t}
+              />
+            )}
+            {tab === "tokens" && (
+              <Tokens
+                metrics={metrics}
+                failed={metricsFailed}
+                agents={state.agents}
+                t={t}
+                lang={lang}
+              />
+            )}
+            {tab === "usage" && (
+              <Usage
+                t={t}
+                lang={lang}
+                quotas={listOf(state.quotas)}
+                subscriptions={listOf(state.subscriptions)}
+                agents={state.agents}
+                sessions={state.sessions}
+                accounts={state.accounts ?? []}
+                environments={state.environments ?? []}
+                onAddAgent={() => {
+                  setProjectForm(false);
+                  setAgentEnvironment("local");
+                  setTab("workspace");
+                }}
+                refreshing={quotaRefreshing}
+                refreshFailed={quotaRefreshFailed}
+                busy={!!busy || demo}
+                mutate={mutate}
+              />
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+    </FeatureContext.Provider>
   );
 }
 

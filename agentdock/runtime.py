@@ -62,6 +62,7 @@ class Runtime(TaskRuntime):
         self.accounts.watch()
 
     def _agent_command(self, agent):
+        if agent['provider'] not in ('codex', 'claude'): self.store.require_feature('acp_agents')
         if agent.get('environment_id', 'local') != 'local':
             self.remote.check(agent)
             return None
@@ -194,7 +195,7 @@ class Runtime(TaskRuntime):
                     recipient_session_id=arguments.get("recipient_session_id"), parent_run_id=caller["id"],
                     task_role=arguments.get('task_role','worker'))
                 self._notify()
-                return {**message, "next_step": "Finish this turn. The recipient runs automatically when its workspace is free; its result returns to this session."}
+                return {**message, "next_step": "Finish this turn. The recipient runs after any required human approval and when its workspace is free; its result returns to this session."}
             if name == "task_status":
                 message = self.store.get_message(arguments.get("message_id"))
                 if caller.get('work_task_id') and self.store.get_run(message['run_id']).get('work_task_id')!=caller['work_task_id']:
@@ -305,6 +306,14 @@ class Runtime(TaskRuntime):
 
     def approve(self, approval_id, option_id):
         with self._lock:
+            approval = self.store.get_approval(approval_id)
+            if approval['request'].get('kind') == 'dispatch':
+                child = self.store.resolve_dispatch(approval_id, option_id)
+                if option_id == 'reject':
+                    self.store.cancel_queued_run(child['id'])
+                    self._settle_result(child['id'])
+                self._notify()
+                return
             for run in self._runs.values():
                 pending = run.approvals.get(approval_id)
                 if pending is None:
@@ -478,7 +487,7 @@ class Runtime(TaskRuntime):
                                                       error_code=exc.code, progress=run.progress)
                     number = run.attempt['number']
                     run.attempt = None
-                    if safe and account and record['account_policy'] == 'failover' and number < 3:
+                    if safe and account and record['account_policy'] == 'failover' and number < 3 and self.store.features()['automatic_failover']:
                         continue
                     if account and run.progress:
                         self._event(run, 'account_action_required', {'account_id': account['id'],
@@ -516,6 +525,7 @@ class Runtime(TaskRuntime):
                         if not self._closed:
                             self._settle_result(run.record["id"])
                         self.store.refresh_work_task(run.record['id'])
+                        self.store.compact_run_events(run.record['id'])
                 finally:
                     if run.record.get('work_task_id'):
                         with self.store.transaction():

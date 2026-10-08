@@ -5,6 +5,7 @@ import { accountStatus } from "../AccountSelection";
 import ProviderIcon from "../ProviderIcon";
 import { Empty, Icon } from "../ui";
 import { accountError, resetCountdown, quotaWindow } from "../accountDisplay";
+import ExperimentalFeatures, { useFeature } from "../ExperimentalFeatures";
 import NativeAccounts from "../NativeAccounts";
 import { exactTokens } from "../metrics";
 import { clearModelCatalog } from "../modelCatalog";
@@ -232,6 +233,7 @@ function AccountCard({
   onChanged: () => void;
   t: Translate;
 }) {
+  const nativeEnabled = useFeature("native_switching");
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(account.label);
   const [priority, setPriority] = useState(account.priority ?? 0);
@@ -440,7 +442,7 @@ function AccountCard({
           <button
             type="button"
             className="text-button"
-            disabled={busy || disabled || active}
+            disabled={busy || disabled || active || !nativeEnabled}
             aria-expanded={native}
             onClick={() => setNative(!native)}
           >
@@ -771,6 +773,12 @@ export default function Accounts({
           )}
         </Empty>
       )}
+      <ExperimentalFeatures
+        features={state.runtime.features ?? {}}
+        mutate={mutate}
+        busy={!!busy}
+        t={t}
+      />
     </div>
   );
 }

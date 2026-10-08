@@ -427,22 +427,33 @@ class TaskStore:
                 'recent_work':[{**r,'result':(r['result'] or '')[:1200]} for r in reversed(work)],
                 'history':history,'history_note':'Summaries may be truncated. Read task_history from after=0 to retrieve every durable record; task_result reads full run reports.'}
 
-    def task_history(self, run, after=0, offset=0):
-        from .store import Invalid
-        if type(after) is not int or after<0 or type(offset) is not int or offset<0: raise Invalid('Invalid history cursor')
+    def task_history(self, run, after=0, offset=0, limit=1):
+        from .errors import Invalid
+        if type(after) is not int or after < 0 or type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 20:
+            raise Invalid('Invalid history cursor')
         with self.lock:
-            task=self._task_run_authority(run)
-            records=self._all('SELECT * FROM task_journal WHERE task_id=? AND seq>? ORDER BY seq LIMIT 1',(task['id'],after))
-            if not records: return dict(record=None,next_after=None,next_offset=None)
-            record=records[0]; payload=record['payload']
-            refs={'input':('task_inputs','input_id'),'question':('task_questions','question_id'),
-                  'delivery':('task_deliveries','delivery_id'),'review':('task_reviews','review_id')}
-            if record['kind'] in refs:
-                table,key=refs[record['kind']]; payload=self._one(table,payload[key])
-            raw=json.dumps(payload,ensure_ascii=False)
-            more=len(raw)>offset+16000
-            return dict(seq=record['seq'],kind=record['kind'],text=raw[offset:offset+16000],
-                        next_after=after if more else record['seq'],next_offset=offset+16000 if more else 0)
+            task = self._task_run_authority(run)
+            rows = self._all('SELECT * FROM task_journal WHERE task_id=? AND seq>? ORDER BY seq LIMIT ?', (task['id'], after, limit))
+            if not rows: return dict(record=None, records=[], next_after=None, next_offset=None)
+            records, budget = [], 16000
+            refs = {'input': ('task_inputs', 'input_id'), 'question': ('task_questions', 'question_id'),
+                    'delivery': ('task_deliveries', 'delivery_id'), 'review': ('task_reviews', 'review_id')}
+            next_after, next_offset = after, offset
+            for row in rows:
+                payload = row['payload']
+                if row['kind'] in refs:
+                    table, key = refs[row['kind']]
+                    payload = self._one(table, payload[key])
+                raw = json.dumps(payload, ensure_ascii=False)
+                piece = raw[next_offset:next_offset + budget]
+                more = len(raw) > next_offset + len(piece)
+                records.append(dict(seq=row['seq'], kind=row['kind'], text=piece))
+                budget -= len(piece)
+                next_after, next_offset = (next_after, next_offset + len(piece)) if more else (row['seq'], 0)
+                if more or budget == 0: break
+            result = dict(records=records, next_after=next_after, next_offset=next_offset)
+            if limit == 1: result.update(records[0])
+            return result
 
     def task_result(self, run, result_run_id, offset=0):
         from .store import Forbidden, Invalid, Missing

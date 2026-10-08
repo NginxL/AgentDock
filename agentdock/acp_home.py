@@ -31,6 +31,19 @@ def _private(path):
     return path
 
 
+def seed_origin(relative, environment):
+    source = Path(environment.get('HOME') or Path.home()).expanduser()
+    if relative.startswith('.gemini/') and environment.get('GEMINI_CLI_HOME'):
+        return Path(environment['GEMINI_CLI_HOME']) / relative
+    roots = {'.pi/agent/': 'PI_CODING_AGENT_DIR', '.qwen/': 'QWEN_HOME',
+             '.grok/': 'GROK_HOME', '.cursor/': 'CURSOR_CONFIG_DIR',
+             '.config/': 'XDG_CONFIG_HOME', '.local/share/': 'XDG_DATA_HOME'}
+    for prefix, key in roots.items():
+        if relative.startswith(prefix) and environment.get(key):
+            return Path(environment[key]) / relative[len(prefix):]
+    return source / relative
+
+
 def prepare(provider, directory, environment):
     env = dict(environment)
     source = Path(env.get('HOME') or Path.home()).expanduser()
@@ -39,18 +52,7 @@ def prepare(provider, directory, environment):
     if marker.is_symlink(): raise ValueError('Invalid isolated CLI marker')
     if not marker.exists():
         for relative in SEEDS.get(provider, ()):
-            origin = source/relative
-            # Respect user-selected CLI roots when taking the initial snapshot.
-            if relative.startswith('.gemini/') and env.get('GEMINI_CLI_HOME'):
-                origin = Path(env['GEMINI_CLI_HOME'])/relative
-            else:
-                roots = {'.pi/agent/': 'PI_CODING_AGENT_DIR', '.qwen/': 'QWEN_HOME',
-                         '.grok/': 'GROK_HOME', '.cursor/': 'CURSOR_CONFIG_DIR',
-                         '.config/': 'XDG_CONFIG_HOME', '.local/share/': 'XDG_DATA_HOME'}
-                for prefix, key in roots.items():
-                    if relative.startswith(prefix) and env.get(key):
-                        origin = Path(env[key])/relative[len(prefix):]
-                        break
+            origin = seed_origin(relative, environment)
             if not origin.is_file() or origin.stat().st_size > 4*1024*1024: continue
             destination = target/relative
             # Never follow a CLI-created destination symlink back into native state.

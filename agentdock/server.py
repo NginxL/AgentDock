@@ -4,6 +4,7 @@ import argparse
 import hmac
 import json
 import os
+import re
 import secrets
 import signal
 import sys
@@ -13,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 from . import __version__
 from .store import Store, Invalid, Missing, Conflict, Forbidden
-from .registry import PROVIDERS, commands as resolve_commands, availability
+from .registry import ACP_PROVIDERS, PROVIDERS, commands as resolve_commands, availability
 
 MAX_BODY = 262144
 
@@ -52,6 +53,12 @@ class API:
                     return 200,self.runtime.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
                 return 200,self.store.respond_tool(token,payload.get("name"),payload.get("arguments",{}))
             if not hmac.compare_digest(token,self.admin_token): return 401,{"error":"Invalid workbench token"}
+            if method == 'POST' and re.fullmatch(r'/api/projects/[^/]+/policy', parsed.path):
+                payload = self._json(headers, body)
+                return 200, self.store.update_project_policy(parsed.path.split('/')[3], payload.get('confirm_dispatch'))
+            if method == 'POST' and parsed.path == '/api/features':
+                payload = self._json(headers, body)
+                return 200, self.store.set_feature(payload.get('name'), payload.get('enabled'), payload.get('acknowledged'))
             if method == 'GET' and parsed.path == '/api/state/version':
                 return 200, {'version': self.store.state_version()}
             if method == 'GET' and parsed.path == '/api/diagnostics':
@@ -106,7 +113,7 @@ class API:
                     state["quotas"]=[self._quota(q["provider"],q.get('environment_id','local')) or q for q in state["quotas"] if (q["provider"],q.get('environment_id','local')) in connections]
                 if 'subscriptions' in state:
                     state["subscriptions"]=[s for s in state["subscriptions"] if (s["provider"],s.get('environment_id','local')) in connections]
-                state["runtime"]={"enabled":self.execution_enabled,"version":__version__}
+                state["runtime"]={"enabled":self.execution_enabled,"version":__version__,"features":self.store.features()}
                 return 200,state
             parts=parsed.path.strip("/").split("/")
             if method=='GET' and len(parts)==3 and parts[:2]==['api','tasks']:
@@ -123,6 +130,7 @@ class API:
                 if not self.execution_enabled: raise Forbidden('Execution is disabled for review')
                 return 200, self.runtime.accounts.native_status(parts[2])
             if method=="GET" and len(parts)==3 and parts[:2]==["api","models"]:
+                if parts[2] in ACP_PROVIDERS: self.store.require_feature('acp_agents')
                 query=parse_qs(parsed.query)
                 environment_id=query.get('environment_id',['local'])[0]
                 account_id=query.get('account_id',[None])[0]

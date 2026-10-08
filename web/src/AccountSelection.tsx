@@ -9,6 +9,7 @@ import type {
   Session,
   Translate,
 } from "./types";
+import { useFeature } from "./ExperimentalFeatures";
 import { Icon } from "./ui";
 
 export const deviceAccount: AccountSettings = {
@@ -55,6 +56,7 @@ export default function AccountSelection({
   disabled?: boolean;
   t: Translate;
 }) {
+  const failoverEnabled = useFeature("automatic_failover");
   if (!supportsAccounts(provider)) return null;
   const matching = accounts.filter(
     (account) =>
@@ -115,7 +117,7 @@ export default function AccountSelection({
           >
             <option value="manual">{t("固定账号", "Fixed account")}</option>
             <option value="auto">{t("自动选择", "Automatic selection")}</option>
-            <option value="failover">
+            <option value="failover" disabled={!failoverEnabled}>
               {t("限额或登录失效时切换", "Switch on quota or sign-in failure")}
             </option>
           </select>

@@ -173,7 +173,7 @@ class AccountStore:
         if 'fetched_at' in quota: output['fetched_at'] = self._account_date(quota['fetched_at'])
         for key in ('checked_at', 'retry_at'):
             if key in quota: output[key] = self._account_date(quota[key])
-        if quota.get('error_code') in ('auth_expired', 'rate_limited', 'quota_unavailable', 'network_unavailable', 'network_configuration_unavailable'):
+        if quota.get('error_code') in ('auth_expired', 'rate_limited', 'quota_unavailable', 'network_unavailable', 'network_configuration_unavailable', 'experimental_disabled'):
             output['error_code'] = quota['error_code']
         if 'status' in quota:
             if quota['status'] not in ('ok', 'ready', 'unknown', 'stale', 'error', 'exhausted'): raise Invalid('Invalid quota status')
@@ -232,6 +232,7 @@ class AccountStore:
     def _account_settings(self, provider, environment_id, account_id=None, account_policy='manual', account_ids=None):
         from .store import Invalid
         if account_policy not in ('manual', 'auto', 'failover'): raise Invalid('Invalid account policy')
+        if account_policy == 'failover': self.require_feature('automatic_failover')
         account_ids = [] if account_ids is None else account_ids
         if not isinstance(account_ids, list) or len(account_ids) > 100 or any(not isinstance(v, str) for v in account_ids) or len(set(account_ids)) != len(account_ids):
             raise Invalid('Account pool must contain unique account identities')
@@ -284,6 +285,7 @@ class AccountStore:
     def _choose_account(self, provider, environment_id, settings, excluded=()):
         from .store import Conflict
         policy, chosen, pool = settings['account_policy'], settings['account_id'], settings['account_ids']
+        if policy == 'failover': self.require_feature('automatic_failover')
         if policy == 'manual' or (policy == 'auto' and chosen is not None):
             if chosen is None: return None
             account = self._one('accounts', chosen)
@@ -370,6 +372,7 @@ class AccountStore:
                 self.db.execute('UPDATE runs SET account_id=?,account_generation=?,account_branch=?,account_selection_pending=0 WHERE id=?',
                                 (account['id'], account['generation'], branch, run_id))
             if fallback:
+                self.require_feature('automatic_failover')
                 if run['account_policy'] != 'failover' or not attempts or attempts[-1]['status'] != 'rejected' or attempts[-1]['progress'] or len(attempts) >= 3:
                     raise Conflict('Automatic account fallback is not safe for this run')
                 provider = self._one('agents', run['agent_id'])['provider']

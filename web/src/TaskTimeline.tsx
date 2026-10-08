@@ -47,7 +47,13 @@ export function executionSteps(events: AgentEvent[]): Step[] {
   const keyed = new Map<string, Step>();
   for (const event of events) {
     const p = payload(event);
-    if (
+    if (event.kind === "output_truncated") {
+      steps.push({
+        id: event.id,
+        kind: "message",
+        text: typeof p.text === "string" ? p.text : "Progress truncated",
+      });
+    } else if (
       event.kind === "reasoning_chunk" ||
       event.kind === "reasoning_message"
     ) {

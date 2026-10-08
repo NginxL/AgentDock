@@ -89,7 +89,7 @@ class TaskRuntime:
     def _task_tool(self, caller, name, arguments):
         from .store import Invalid
         if name=='task_context': return self.store.task_context(caller)
-        if name=='task_history': return self.store.task_history(caller,arguments.get('after',0),arguments.get('offset',0))
+        if name=='task_history': return self.store.task_history(caller,arguments.get('after',0),arguments.get('offset',0),arguments.get('limit',20))
         if name=='task_result': return self.store.task_result(caller,arguments.get('run_id'),arguments.get('offset',0))
         if name=='task_ask': return self.store.task_question(caller,arguments.get('question'),arguments.get('options'))
         if name=='task_review': return self.store.task_review(caller,arguments.get('verdict'),arguments.get('summary'))

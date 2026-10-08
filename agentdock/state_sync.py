@@ -9,7 +9,7 @@ import uuid
 
 DOMAINS = {'projects', 'agents', 'sessions', 'messages', 'memories', 'proposals', 'runs',
            'approvals', 'quotas', 'subscriptions', 'accounts', 'environments', 'tasks', 'task_questions'}
-ALIASES = {'run_attempts': 'account_attempts', 'session_account_branches': 'sessions'}
+ALIASES = {'metadata': 'features', 'run_attempts': 'account_attempts', 'session_account_branches': 'sessions'}
 WRITE = re.compile(r'^\s*(?:INSERT(?: OR \w+)? INTO|REPLACE INTO|UPDATE(?: OR \w+)?|DELETE FROM)\s+["`\[]?(\w+)', re.I)
 
 

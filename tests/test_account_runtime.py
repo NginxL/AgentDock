@@ -20,6 +20,7 @@ class AccountRuntimeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / 'state.sqlite3'
         self.store = Store(self.path)
+        self.store.set_feature('automatic_failover', True, acknowledged=True)
         self.runtimes = []
         self.calls = []
         self.leases = []

@@ -23,6 +23,7 @@ class ACPTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.events, self.bound, self.approvals = [], [], []
         self.stop = threading.Event()
+        self.native_environment = {'HOME': str(self.root / 'native-empty')}
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -31,6 +32,7 @@ class ACPTests(unittest.TestCase):
         def approve(request, options):
             self.approvals.append((request, options))
             return options[0]['optionId']
+        extra.setdefault('base_environment', self.native_environment)
         return execute(provider, [sys.executable, FIXTURE, scenario], self.tmp.name, 'fixture prompt', native,
             {'command': sys.executable, 'args': ['-m', 'agentdock.mcp'], 'env': {'AGENTDOCK_CAPABILITY': 'private-token'}},
             self.stop, lambda kind, payload: self.events.append((kind, payload)), self.bound.append,
@@ -141,10 +143,10 @@ class ACPTests(unittest.TestCase):
     def test_model_discovery_is_cached_isolated_and_never_prompts(self):
         catalog = Catalog({'execution_enabled': True, 'commands': {'gemini': [sys.executable, FIXTURE, 'normal']}})
         try:
-            value = catalog.read('gemini')
+            value = catalog.read('gemini', environment=self.native_environment)
             self.assertEqual(value['models'], [{'id': 'fixture-model', 'name': 'Fixture model', 'efforts': ['high']}])
             with patch('agentdock.catalog._Pipe') as pipe:
-                self.assertEqual(catalog.read('gemini'), value)
+                self.assertEqual(catalog.read('gemini', environment=self.native_environment), value)
                 pipe.assert_not_called()
         finally: catalog.close()
 

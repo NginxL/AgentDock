@@ -123,6 +123,11 @@ class _Pipe:
                 # The native process retains the account lock if the controller
                 # dies, so a restarted controller cannot overwrite a refresh.
                 descriptors['pass_fds'] = (fd,)
+            credential_fd = native_env.pop('AGENTDOCK_CREDENTIAL_LOCK_FD', None)
+            if credential_fd is not None:
+                fd = int(credential_fd)
+                os.fstat(fd)
+                descriptors['pass_fds'] = (*descriptors.get('pass_fds', ()), fd)
             execution_fd=native_env.pop('AGENTDOCK_EXECUTION_LOCK_FD',None)
             if execution_fd is not None:
                 fd=int(execution_fd)
@@ -716,6 +721,14 @@ def execute(*args, **kwargs):
     from .execution_lease import lease
     try:
         with lease(home) as descriptor:
+            provider = args[0] if args else kwargs['provider']
+            if provider in ACP_PROVIDERS:
+                from .credential_lease import credentials
+                environment = kwargs.get('base_environment')
+                environment = dict(os.environ if environment is None else environment)
+                stop = args[6] if len(args) > 6 else kwargs['stop']
+                with credentials(provider, os.path.join(home, provider), environment, stop) as environment:
+                    return _execute(*args, **{**kwargs, 'base_environment': environment}, execution_fd=descriptor, acp_prepared=True)
             return _execute(*args,**kwargs,execution_fd=descriptor)
     except BlockingIOError:
         raise ProviderError('A previous native process still owns this conversation; wait before resuming.') from None
@@ -723,7 +736,7 @@ def execute(*args, **kwargs):
 
 def _execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop,
             emit, bind_session, approve, timeout=900, model=None, effort=None, inherit_process_cwd=False, permission_mode='ask', session_home=None,
-            base_environment=None, managed_account=False, control=None, execution_fd=None):
+            base_environment=None, managed_account=False, control=None, execution_fd=None, acp_prepared=False):
     """Run one turn and return final text, retaining native session identity.
 
     ``command`` is a trusted server-side argv prefix (``codex app-server`` or
@@ -802,11 +815,7 @@ def _execute(provider, command, cwd, prompt, native_session_id, mcp_config, stop
             raise ProviderError('ACP agents require an isolated AgentDock session directory.')
         if provider == 'pi' and permission_mode != 'full_access':
             raise ProviderError('Pi does not gate its tools through ACP. Select full access explicitly to use Pi.')
-        from .acp_home import prepare
-        try:
-            env = prepare(provider, os.path.join(session_home, provider), env)
-        except (OSError, ValueError):
-            raise ProviderError('Could not prepare isolated CLI storage; no prompt was sent.') from None
+        if not acp_prepared: raise ProviderError('ACP credential lease is required.')
         from .registry import acp_command
         argv = acp_command(provider, argv, cwd, env, stop)
         if provider == 'opencode':

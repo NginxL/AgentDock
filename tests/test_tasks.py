@@ -19,6 +19,26 @@ class TaskStoreTests(unittest.TestCase):
         self.worker=self.store.add_agent(self.project['id'],'Worker','claude')
         self.task=self.create()
 
+    def test_history_returns_multiple_records_without_losing_large_record_chunks(self):
+        current = self.start()
+        with self.store.transaction():
+            for index in range(30):
+                self.store.db.execute('INSERT INTO task_journal(task_id,kind,payload,created_at) VALUES(?,?,?,?)',
+                    (self.task['id'], 'fixture', json.dumps({'index': index, 'text': 'x' * (17000 if index == 5 else 20)}), '2026-10-08'))
+        after = offset = 0
+        chunks, complete, batch_sizes = {}, [], []
+        while True:
+            page = self.store.task_history(current, after, offset, 20)
+            if not page['records']: break
+            batch_sizes.append(len(page['records']))
+            self.assertLessEqual(sum(len(r['text']) for r in page['records']), 16000)
+            for record in page['records']:
+                chunks[record['seq']] = chunks.get(record['seq'], '') + record['text']
+            after, offset = page['next_after'], page['next_offset']
+        complete = [json.loads(value) for value in chunks.values()]
+        self.assertEqual([r['index'] for r in complete if 'index' in r], list(range(30)))
+        self.assertGreater(max(batch_sizes), 1)
+
     def tearDown(self):
         self.store.close(); self.tmp.cleanup()
 

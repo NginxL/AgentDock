@@ -24,9 +24,13 @@ from .account_store import AccountStore
 from .task_store import TaskStore
 from .deletions import DeletionStore
 from .state_sync import StateSync
+from .features import FeatureStore
+from .project_policy import ProjectPolicy
+from .memory_search import MemorySearch
+from .event_compaction import EventCompaction
 
 
-class Store(AccountStore, TaskStore, DeletionStore, StateSync):
+class Store(EventCompaction, ProjectPolicy, MemorySearch, FeatureStore, AccountStore, TaskStore, DeletionStore, StateSync):
     def __init__(self, path):
         self._existing_db = str(path) != ":memory:" and Path(path).expanduser().exists()
         self.lock = threading.RLock()
@@ -71,7 +75,8 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
                       self._migrate_environments, self._migrate_session_workspaces,
                       self._migrate_inference_settings, self._migrate_project_agents,
                       self._migrate_accounts, self._migrate_tasks, self._migrate_read_indexes,
-                      self._migrate_deletions, self._migrate_run_limits)
+                      self._migrate_deletions, self._migrate_run_limits,
+                      self._migrate_project_policy, self._migrate_memory_search)
         applied = self.db.execute('PRAGMA user_version').fetchone()[0]
         if applied > len(migrations):
             raise Conflict('This database requires a newer AgentDock version')
@@ -438,9 +443,9 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
             path=str(path.resolve())
         elif not path.startswith('/') or any(ord(c)<32 for c in path): raise Invalid('Use an absolute directory on the remote host')
         else: path=posixpath.normpath(path)
-        item = dict(id=str(uuid.uuid4()), name=text(name,"name",100), path=path, created_at=now(),environment_id=environment_id)
+        item = dict(id=str(uuid.uuid4()), name=text(name,"name",100), path=path, created_at=now(),environment_id=environment_id,confirm_dispatch=0)
         with self.transaction():
-            self.db.execute("INSERT INTO projects VALUES(:id,:name,:path,:created_at,:environment_id)",item)
+            self.db.execute("INSERT INTO projects(id,name,path,created_at,environment_id,confirm_dispatch) VALUES(:id,:name,:path,:created_at,:environment_id,:confirm_dispatch)",item)
         return item
 
     def add_agent(self, project_id, name, provider, role="", workspace=None, model=None, effort=None, environment_id='local', permission_mode='ask', account_id=None, account_policy='manual', account_ids=None, run_timeout=None):
@@ -615,6 +620,8 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
             return self._enqueue_run(session_id, prompt, origin, parent_run_id, root_run_id, depth, delivery_id)
 
     def _can_claim(self, run):
+        blocked = self.db.execute("SELECT 1 FROM approvals WHERE json_extract(request,'$.dispatch_run_id')=? AND (status!='resolved' OR picked_option_id!='accept') LIMIT 1", (run['id'],)).fetchone()
+        if blocked: return False
         if run["status"] != "queued": return False
         if run.get('work_task_id'):
             task=self._one('tasks',run['work_task_id'])
@@ -673,9 +680,10 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
             self.db.execute("UPDATE runs SET status=?,error=?,result=?,updated_at=? WHERE id=?",(status,error,result,now(),run_id))
             self._refresh_session(run["session_id"], status)
             self.db.execute("UPDATE capabilities SET revoked=1 WHERE run_id=?",(run_id,))
-            self.db.execute("UPDATE approvals SET status='cancelled' WHERE run_id=? AND status='pending'",(run_id,))
+            self.db.execute("UPDATE approvals SET status='cancelled' WHERE run_id=? AND status='pending' AND (? != 'completed' OR COALESCE(json_extract(request,'$.kind'),'') != 'dispatch')",(run_id,status))
             if run["delivery_id"] and run["origin"] != "reply":
                 self.db.execute("UPDATE messages SET status=?,error=?,result=?,updated_at=? WHERE id=?", ("waiting" if status == "completed" else status,error,result,now(),run["delivery_id"]))
+            self.db.execute("UPDATE approvals SET status='cancelled' WHERE json_extract(request,'$.dispatch_run_id')=? AND status='pending'", (run_id,))
             self._event(run["project_id"],run["session_id"],"run_finished",{"run_id":run_id,"status":status,"error":error,"delivery_id":run["delivery_id"]})
             if status in ("failed", "cancelled", "interrupted"):
                 self._cancel_queued_descendants(run["task_run_id"])
@@ -733,6 +741,7 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
             self._refresh_session(child["session_id"], "cancelled")
             if child["delivery_id"] and child["origin"] != "reply":
                 self.db.execute("UPDATE messages SET status='cancelled',error=?,updated_at=? WHERE id=?", (error,now(),child["delivery_id"]))
+            self.db.execute("UPDATE approvals SET status='cancelled' WHERE json_extract(request,'$.dispatch_run_id')=? AND status='pending'", (child['id'],))
             self._event(child["project_id"],child["session_id"],"run_finished",{"run_id":child["id"],"status":"cancelled","error":error,"delivery_id":child["delivery_id"]})
 
     def cancel_queued_run(self, run_id):
@@ -858,6 +867,7 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
             run = self._enqueue_run(recipient_session_id, body, "human" if sender_id == "human" else "delegate", parent_run_id=parent_run_id, delivery_id=identifier)
             item=dict(id=identifier,project_id=project_id,sender_id=sender_id,recipient_id=recipient_id,body=body,correlation_id=correlation_id,status="queued",idempotency_key=idempotency_key,created_at=now(),acknowledged_at=None,sender_session_id=sender_session_id,recipient_session_id=recipient_session_id,sender_run_id=parent_run_id,run_id=run["id"],reply_run_id=None,error=None,updated_at=now(),result=None)
             self.db.execute("INSERT INTO messages(id,project_id,sender_id,recipient_id,body,correlation_id,status,idempotency_key,created_at,acknowledged_at,sender_session_id,recipient_session_id,sender_run_id,run_id,reply_run_id,error,updated_at) VALUES(:id,:project_id,:sender_id,:recipient_id,:body,:correlation_id,:status,:idempotency_key,:created_at,:acknowledged_at,:sender_session_id,:recipient_session_id,:sender_run_id,:run_id,:reply_run_id,:error,:updated_at)",item)
+            if sender_id != 'human': self._dispatch_approval(item, parent)
             self._event(project_id,sender_session_id,"message_queued",{"message_id":identifier,"sender_id":sender_id,"recipient_id":recipient_id,"run_id":run["id"]})
             return item
 
@@ -982,8 +992,7 @@ class Store(AccountStore, TaskStore, DeletionStore, StateSync):
                 return self._all("SELECT id,name,provider,role,environment_id FROM agents WHERE project_id=? ORDER BY created_at",(project_id,))
             if name=="memory_search":
                 query=text(arguments.get("query",""),"query",300,True)
-                # Parameterization, literal substring matching, no user SQL or FTS operators.
-                return self._all("SELECT * FROM memories WHERE project_id=? AND archived=0 AND (instr(lower(key),lower(?))>0 OR instr(lower(content),lower(?))>0) ORDER BY updated_at DESC LIMIT 20",(project_id,query,query))
+                return self.search_memory(project_id, query)
             if name=="memory_propose":
                 if run.get('task_intent')=='discuss' or run.get('task_role')=='reviewer': raise Forbidden('Discussion and review cannot propose project memory changes')
                 p=dict(id=str(uuid.uuid4()),project_id=project_id,agent_id=agent_id,run_id=run["id"],key=text(arguments.get("key"),"key",160),content=text(arguments.get("content"),"content",16000),expected_version=version(arguments.get("expected_version")),status="pending",created_at=now())

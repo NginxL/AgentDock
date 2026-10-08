@@ -16,6 +16,8 @@ class AccountServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.temp.name)/'state.sqlite3')
+        self.store.set_feature('claude_quota', True, acknowledged=True)
+        self.store.set_feature('native_switching', True, acknowledged=True)
         self.runtime = Mock(enabled=True, config={'commands': {}}, _wake=Mock())
         self.service = AccountService(self.store, self.runtime)
         self.service.manager = Mock()

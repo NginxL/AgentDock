@@ -63,6 +63,7 @@ class AccountService:
         while not self._stop.wait(2):
             for account in self.store.accounts():
                 if self._stop.is_set(): return
+                if account['provider'] == 'claude' and account['status'] != 'pending' and not self.store.features()['claude_quota']: continue
                 try:
                     if account['status'] == 'pending': self.login_status(account['id'])
                     elif account['status'] in ('ready', 'cooldown') and time.monotonic() >= self._refresh_after.get(account['id'], 0):
@@ -184,6 +185,8 @@ class AccountService:
     def _refresh(self, identifier):
         account = self.store.get_account(identifier)
         self._enabled()
+        if account['provider'] == 'claude' and not self.store.features()['claude_quota']:
+            return self.store.set_account_quota(identifier, {'windows': [], 'status': 'unknown', 'error_code': 'experimental_disabled'})
         try: value = self._call(account, 'refresh')
         except (AccountError, OSError, TimeoutError):
             value = {'windows': [], 'error_code': 'quota_unavailable'}
@@ -230,10 +233,12 @@ class AccountService:
 
     def native_status(self, identifier):
         self._enabled()
+        self.store.require_feature('native_switching')
         return self.native.status(self.store.get_account(identifier))
 
     def native_action(self, identifier, operation, client):
         self._enabled()
+        self.store.require_feature('native_switching')
         if operation not in ('capture', 'switch', 'recover'): raise Invalid('Invalid native account operation')
         with self._lock:
             account = self.store.get_account(identifier)

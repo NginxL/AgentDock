@@ -12,6 +12,8 @@ export function ProjectHeader({
   onSelect,
   onView,
   t,
+  onPolicy,
+  busy,
 }: {
   project?: Project;
   projects: Project[];
@@ -22,6 +24,8 @@ export function ProjectHeader({
   onSelect: (id: string) => void;
   onView: (view: ProjectView) => void;
   t: Translate;
+  onPolicy?: (project: Project) => void;
+  busy?: boolean;
 }) {
   return (
     <section className="project-header">
@@ -63,6 +67,17 @@ export function ProjectHeader({
           </button>
         )}
       </div>
+      {project && onPolicy && (
+        <label className="account-check">
+          <input
+            type="checkbox"
+            checked={!!project.confirm_dispatch}
+            disabled={busy}
+            onChange={() => onPolicy(project)}
+          />
+          {t("Agent 派工需我确认", "Ask me before agents delegate work")}
+        </label>
+      )}
       {project && (
         <nav
           className="project-tabs"

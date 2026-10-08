@@ -94,6 +94,7 @@ export interface Environment {
   };
 }
 export interface Project {
+  confirm_dispatch?: boolean | number;
   environment_id?: string;
   id: string;
   name: string;
@@ -265,7 +266,11 @@ export interface DockState {
   quotas: Quota[] | Record<string, Quota>;
   approvals: Approval[];
   subscriptions: Subscription[] | Record<string, Subscription>;
-  runtime: { enabled: boolean; version: string };
+  runtime: {
+    enabled: boolean;
+    version: string;
+    features?: import("./ExperimentalFeatures").Features;
+  };
 }
 
 export type TaskIntent = "record" | "discuss" | "develop";
