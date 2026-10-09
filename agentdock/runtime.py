@@ -454,32 +454,38 @@ class Runtime(TaskRuntime):
         )
         serialized = serialized.replace(run.capability, "[redacted]")
         size = len(serialized.encode("utf-8"))
-        run.event_count += 1
-        run.output_bytes += size
-        if not essential(kind, payload) and (
-            run.output_truncated
-            or size > 131072
-            or run.output_bytes > 8388608
-            or run.event_count > 5000
-        ):
-            if not run.output_truncated:
-                run.output_truncated = True
-                self.store.append_event(
-                    run.record["project_id"],
-                    run.record["session_id"],
-                    "output_truncated",
+        if not essential(kind, payload):
+            if run.output_truncated:
+                return
+            if size > 131072:
+                kind = "output_truncated"
+                serialized = json.dumps(
                     {
                         "run_id": run.record["id"],
-                        "text": "Progress output was truncated. The task continues; its final reply is preserved.",
-                    },
+                        "scope": "event",
+                        "text": "One oversized progress event was omitted; subsequent progress continues.",
+                    }
                 )
-            return
+                size = len(serialized.encode())
+            if run.output_bytes + size > 8388608 or run.event_count >= 5000:
+                run.output_truncated = True
+                kind = "output_truncated"
+                serialized = json.dumps(
+                    {
+                        "run_id": run.record["id"],
+                        "scope": "run",
+                        "text": "Progress output was truncated. The task continues; its final reply is preserved.",
+                    }
+                )
+                size = len(serialized.encode())
         self.store.append_event(
             run.record["project_id"],
             run.record["session_id"],
             kind,
             json.loads(serialized),
         )
+        run.event_count += 1
+        run.output_bytes += size
 
     def _request_approval(self, run, request, options):
         if (

@@ -421,19 +421,27 @@ def work(path):
                 token, "[redacted]"
             )
             size = len(encoded.encode())
-            if not essential(kind, payload) and (
-                truncated
-                or size > 300000
-                or total + size > 8 * 1024 * 1024
-                or sequence >= 5000
-            ):
+            if not essential(kind, payload):
                 if truncated:
                     return
-                truncated = True
-                kind = "output_truncated"
-                encoded = json.dumps(
-                    {"text": "Progress display limit reached; the task continues."}
-                )
+                if size > 300000:
+                    kind = "output_truncated"
+                    encoded = json.dumps(
+                        {
+                            "scope": "event",
+                            "text": "One oversized progress event was omitted; subsequent progress continues.",
+                        }
+                    )
+                    size = len(encoded.encode())
+                if total + size > 8 * 1024 * 1024 or sequence >= 5000:
+                    truncated = True
+                    kind = "output_truncated"
+                    encoded = json.dumps(
+                        {
+                            "scope": "run",
+                            "text": "Progress display limit reached; the task continues.",
+                        }
+                    )
             total += len(encoded.encode())
             sequence += 1
             with (path / "events.jsonl").open("a") as output:
