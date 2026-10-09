@@ -31,4 +31,16 @@ class LiveVerificationGateTests(unittest.TestCase):
             env=env,
         )
         self.assertEqual(blocked.returncode, 2)
-        self.assertIn("dedicated runner", blocked.stderr)
+        self.assertIn("trusted machine", blocked.stderr)
+
+    def test_ci_cannot_enable_live_credentials_with_the_model_usage_opt_in(self):
+        script = Path(__file__).resolve().parents[1] / "scripts/live-e2e.py"
+        blocked = subprocess.run(
+            [sys.executable, str(script), "--live"],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "AGENTDOCK_LIVE_E2E": "1", "GITHUB_ACTIONS": "true"},
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("outside GitHub Actions", blocked.stderr)
+        self.assertEqual(blocked.stdout, "")

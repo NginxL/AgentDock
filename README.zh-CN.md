@@ -33,7 +33,7 @@ macOS 源码安装运行 `.venv/bin/python scripts/install-macos.py`，需要 ma
 - [项目任务](docs/TASKS.zh-CN.md)、[账号](docs/ACCOUNTS.zh-CN.md)、[服务](docs/PROVIDERS.zh-CN.md)、[SSH](docs/SSH.zh-CN.md)。
 - [架构](docs/ARCHITECTURE.zh-CN.md)、[接口](docs/API.zh-CN.md)、[凭据保护](docs/CREDENTIALS.md)。
 - [审查整改与测量](docs/REMEDIATION.md)、[验证记录](docs/REVIEW.zh-CN.md)、[变更记录](CHANGELOG.md)。
-- [可选真实 CLI 验证](docs/DISTRIBUTION.md#live-cli-verification)：需专用设备和显式开启，默认不运行。
+- [可选真实 CLI 验证](docs/DISTRIBUTION.md#live-cli-verification)：在 GitHub Actions 之外的可信设备手动运行，公开仓库不接入真实账号 runner。
 
 ## 开发检查
 

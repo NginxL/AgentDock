@@ -5,7 +5,7 @@
 - Require Python 3.11+, use the standard TOML parser and derive all build versions from one source.
 - Allocate loopback ports automatically and avoid reverse-DNS lookups during local/SSH startup.
 - Bundle frontend assets/notices in Python distributions, add the agentdock command and verify an isolated wheel installation.
-- Build relocatable macOS apps with embedded Python; add optional Developer ID signing/notarization and explicit opt-in live CLI workflows.
+- Build relocatable macOS apps with embedded Python; add optional Developer ID signing/notarization and manual live CLI verification.
 - Keep native bundle resources immutable at runtime; add compatible-interpreter fallback for source installs.
 - Keep dispatcher locks free during external cleanup and record sanitized background failures.
 - Split quick-start READMEs from detailed bilingual user guides and document remaining acceptance boundaries.

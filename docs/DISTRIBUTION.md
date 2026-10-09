@@ -52,12 +52,14 @@ Sources: [GitHub runner architectures](https://docs.github.com/en/actions/refere
 
 ## Live CLI verification
 
-`python3 scripts/live-e2e.py` prints the verification plan and performs no model requests. Executing it requires both `--live` and `AGENTDOCK_LIVE_E2E=1` on a **dedicated** runner with separately provisioned Codex and Claude Code logins:
+`python3 scripts/live-e2e.py` prints the verification plan and performs no model requests. Executing it requires both `--live` and `AGENTDOCK_LIVE_E2E=1` on a **trusted machine outside GitHub Actions**, with separately provisioned Codex and Claude Code logins and a reviewed checkout:
 
 - Two turns for each provider verify dialogue and native resume.
 - A project owner delegates a bounded acknowledgement to a worker, receives its result, submits delivery and reaches acceptance.
 - The test has a total deadline, fails on unexpected approvals and never automatically grants full access, retries another account or performs account switching.
 
-The **Optional live CLI verification** workflow requires an `agentdock-live` self-hosted runner. Manual runs require the explicit model-usage confirmation. Nightly runs are skipped unless repository variable `LIVE_E2E_ENABLED=true`. Pull requests cannot trigger it. It consumes provider quota when enabled.
+This public repository has no live CLI workflow. Its CI uses GitHub-hosted disposable machines and simulated CLIs only. Do not register a machine containing CLI logins as a repository runner, or grant this repository access to an organization runner group containing one. A fork can change a workflow to target an available runner; event filters, labels and a model-usage confirmation are not a credential boundary. See [GitHub's runner security guidance](https://docs.github.com/en/actions/how-tos/manage-runners/self-hosted-runners/manage-access).
 
-Only stage/status metadata is printed. Temporary databases, prompts, transcripts, authentication data and raw provider errors are not uploaded. CLI authentication and proxy configuration must be provisioned on the dedicated runner; the workflow does not contain them. Current automated verification covers the opt-in gate and fake-protocol collaboration; **real execution of this new workflow remains unverified**. Native account switching and actual OAuth refresh remain manual acceptance items.
+If an `agentdock-live` runner was registered for an older revision, remove that registration in **Settings → Actions → Runners** and remove any organization runner-group access for this repository before using its credentials again. Removing the YAML workflow alone does not unregister a runner. Repository runner registrations are deployment settings and cannot be verified from a source checkout. The former `LIVE_E2E_ENABLED` variable no longer enables anything.
+
+Only stage/status metadata is printed. Temporary databases, prompts, transcripts, authentication data and raw provider errors are not uploaded. CLI authentication and proxy configuration stay on the trusted machine. Automated verification covers the opt-in/CI refusal gates and fake-protocol collaboration; **real execution of this script remains unverified**. Native account switching and actual OAuth refresh remain manual acceptance items.

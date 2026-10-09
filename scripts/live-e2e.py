@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in smoke test for a dedicated runner with separately provisioned CLI logins."""
+"""Manual smoke test on a trusted machine with separately provisioned CLI logins."""
 
 import argparse
 import json
@@ -172,7 +172,7 @@ def main():
     parser.add_argument(
         "--live",
         action="store_true",
-        help="Consume real model quota on the dedicated runner",
+        help="Consume real model quota on a trusted machine outside GitHub Actions",
     )
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args()
@@ -180,7 +180,9 @@ def main():
         print(json.dumps({"live": False, "stages": STAGES}))
         return
     if os.environ.get("AGENTDOCK_LIVE_E2E") != "1":
-        parser.error("Live tests require AGENTDOCK_LIVE_E2E=1 and a dedicated runner")
+        parser.error("Live tests require AGENTDOCK_LIVE_E2E=1 and a trusted machine")
+    if os.environ.get("GITHUB_ACTIONS", "").lower() == "true":
+        parser.error("Live CLI verification must run outside GitHub Actions")
     if not 60 <= args.timeout <= 900:
         parser.error("timeout must be between 60 and 900 seconds")
     try:

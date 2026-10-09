@@ -33,7 +33,7 @@ For a macOS source installation, run `.venv/bin/python scripts/install-macos.py`
 - [Project tasks](docs/TASKS.md), [accounts](docs/ACCOUNTS.md), [providers](docs/PROVIDERS.md), [SSH](docs/SSH.md).
 - [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [credential protection](docs/CREDENTIALS.md).
 - [Review fixes and measurements](docs/REMEDIATION.md), [validation](docs/REVIEW.md), [changelog](CHANGELOG.md).
-- [Optional real CLI verification](docs/DISTRIBUTION.md#live-cli-verification): disabled until explicitly enabled on a dedicated runner.
+- [Optional real CLI verification](docs/DISTRIBUTION.md#live-cli-verification): manual, on a trusted machine outside GitHub Actions.
 
 ## Development
 
