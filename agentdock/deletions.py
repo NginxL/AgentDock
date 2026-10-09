@@ -3,7 +3,7 @@
 import threading
 from contextlib import contextmanager
 
-from .errors import Conflict, now
+from .errors import Conflict
 
 
 class DeletionStore:
@@ -40,26 +40,29 @@ class DeletionStore:
         finally:
             guard.release()
 
-    def _cleanup_target(self, session):
+    def _cleanup_target(self, session, preflight=None):
         runs = [
             row["id"]
             for row in self.db.execute(
                 "SELECT id FROM runs WHERE session_id=?", (session["id"],)
             )
         ]
+        if preflight:
+            # Only local admission checks belong here, never cleanup or network IO.
+            preflight(session, runs)
         self.db.execute(
-            "UPDATE sessions SET deleting=1,status='deleting',updated_at=? WHERE id=?",
-            (now(), session["id"]),
+            "UPDATE sessions SET deleting=1,status='deleting' WHERE id=?",
+            (session["id"],),
         )
         return session, runs
 
-    def delete_session(self, session_id, cleanup):
+    def delete_session(self, session_id, cleanup, *, preflight=None):
         agent_id = self.get_session(session_id)["agent_id"]
         with self._deletion_guard(agent_id):
             with self.transaction():
                 session = self._one("sessions", session_id)
                 self._check_session_deletion(session_id)
-                target = self._cleanup_target(session)
+                target = self._cleanup_target(session, preflight)
             cleanup(*target)  # Idempotent cleanup outside the database transaction.
             with self.transaction():
                 self._delete_session_records(session)
@@ -161,9 +164,9 @@ class DeletionStore:
         self.db.execute("DELETE FROM runs WHERE session_id=?", (session_id,))
         self.db.execute("DELETE FROM sessions WHERE id=?", (session_id,))
 
-    def delete_agent(self, agent_id, cleanup):
+    def delete_agent(self, agent_id, cleanup, *, preflight=None):
         with self._deletion_guard(agent_id):
-            targets = self._mark_agent_deletion(agent_id)
+            targets = self._mark_agent_deletion(agent_id, preflight)
             for target in targets:
                 cleanup(*target)
             with self.transaction():
@@ -177,7 +180,7 @@ class DeletionStore:
                 self.db.execute("DELETE FROM agents WHERE id=?", (agent_id,))
         return {"ok": True}
 
-    def _mark_agent_deletion(self, agent_id):
+    def _mark_agent_deletion(self, agent_id, preflight=None):
         with self.transaction():
             self._one("agents", agent_id)
             if self.db.execute(
@@ -210,4 +213,4 @@ class DeletionStore:
             for session in sessions:
                 self._check_session_deletion(session["id"])
             self.db.execute("UPDATE agents SET deleting=1 WHERE id=?", (agent_id,))
-            return [self._cleanup_target(session) for session in sessions]
+            return [self._cleanup_target(session, preflight) for session in sessions]

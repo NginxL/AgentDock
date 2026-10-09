@@ -135,6 +135,22 @@ class Runtime(TaskRuntime):
             self._notify()
             return record
 
+    def _check_session_cleanup(self, session, runs):
+        """Validate local preconditions before a deletion tombstone is committed."""
+        self.store.get_environment(session["environment_id"])
+        if session["environment_id"] != "local":
+            if (runs or session.get("native_session_id")) and not self.enabled:
+                raise Forbidden(
+                    "Enable execution to clean up a remote session",
+                    code="enable_execution_to_clean_up_a_remote_session",
+                )
+        elif (
+            not session.get("account_id")
+            and session.get("native_session_id")
+            and self.store.get_agent(session["agent_id"])["provider"] == "codex"
+        ):
+            self._command("codex")
+
     def _cleanup_session(self, session, runs):
         from .session_storage import remove_session_directory
 
@@ -224,13 +240,17 @@ class Runtime(TaskRuntime):
                 run.record["session_id"] == session_id for run in self._runs.values()
             ):
                 raise RuntimeFailure("Stop active tasks before deleting a session")
-        return self.store.delete_session(session_id, self._cleanup_session)
+        return self.store.delete_session(
+            session_id, self._cleanup_session, preflight=self._check_session_cleanup
+        )
 
     def delete_agent(self, agent_id):
         with self._lock:
             if any(run.record["agent_id"] == agent_id for run in self._runs.values()):
                 raise RuntimeFailure("Stop active tasks before deleting an agent")
-        return self.store.delete_agent(agent_id, self._cleanup_session)
+        return self.store.delete_agent(
+            agent_id, self._cleanup_session, preflight=self._check_session_cleanup
+        )
 
     def send_message(
         self,

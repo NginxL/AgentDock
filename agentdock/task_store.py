@@ -280,7 +280,7 @@ class TaskStore:
             if fresh
             else self.db.execute(
                 """SELECT id FROM sessions WHERE work_task_id=? AND agent_id=?
-            AND task_role=? AND task_intent=? ORDER BY rowid DESC LIMIT 1""",
+            AND task_role=? AND task_intent=? AND deleting=0 ORDER BY rowid DESC LIMIT 1""",
                 (task["id"], agent_id, role, intent),
             ).fetchone()
         )

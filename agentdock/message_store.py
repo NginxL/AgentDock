@@ -126,7 +126,7 @@ class MessageStore:
                     )["id"]
                 else:
                     latest = self.db.execute(
-                        "SELECT id FROM sessions WHERE agent_id=? AND environment_id=? AND work_task_id IS NULL ORDER BY updated_at DESC,rowid DESC LIMIT 1",
+                        "SELECT id FROM sessions WHERE agent_id=? AND environment_id=? AND work_task_id IS NULL AND deleting=0 ORDER BY updated_at DESC,rowid DESC LIMIT 1",
                         (recipient_id, recipient["environment_id"]),
                     ).fetchone()
                     recipient_session_id = (
