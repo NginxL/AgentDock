@@ -17,9 +17,13 @@ OpenAI 条款禁止规避限流和限制；Anthropic 消费者条款也对未经
 
 ## ACP credential lifetime / ACP 凭据生命周期
 
-Runs and model discovery acquire a lock for the same native credential source. Seed files are copied into private storage only for that operation. Refreshed authentication files are copied back after checking source fingerprints; settings and proxy files are never copied back. All seed copies are removed after successful reconciliation. An interrupted copy retains a metadata journal for retry, without credential contents. A concurrent native login preserves both sides and blocks automatic overwrite. The native child inherits the lease, so a crashed controller cannot recover while the child still uses credentials.
+Runs and model discovery acquire a lock for the same native credential source. Seed files are copied into private storage only for that operation. Refreshed authentication files are copied back after checking source fingerprints; settings and proxy files are never copied back. All seed copies are removed after successful reconciliation. An interrupted copy retains a metadata journal for retry, without credential contents. The native child inherits the lease, so a crashed controller cannot recover while the child still uses credentials.
 
-运行及模型读取会锁定同一凭据来源，仅在操作期间保留私有副本。刷新认证文件在核对源指纹后回写，设置及代理文件不回写；核对并回写成功后清理全部种子文件。复制中断保留不含凭据内容的恢复日志，可重试。外部并发登录时保留两侧并阻止自动覆盖。子进程继承锁，控制端崩溃也不会在原生进程仍运行时回收凭据。
+运行及模型读取会锁定同一凭据来源，仅在操作期间保留私有副本。刷新认证文件在核对源指纹后回写，设置及代理文件不回写；核对并回写成功后清理全部种子文件。复制中断保留不含凭据内容的恢复日志，可重试。子进程继承锁，控制端崩溃也不会在原生进程仍运行时回收凭据。
+
+If an external CLI changes the native login during a lease, later runs use that current native login. Unchanged child copies are discarded. When both sides changed, the child's complete authentication bundle is preserved under `~/.local/share/agentdock/credential-leases/<profile>/conflicts/<digest>/` with private permissions; it is never automatically restored. The active journal is cleared only after preservation succeeds. Old conflicting journals recover the same way, so one external refresh does not permanently block the provider. A failed disk write retains the journal for retry.
+
+租约期间原生 CLI 若更新登录，后续运行沿用当前原生登录。子进程未改变凭据时直接清理副本；两侧均改变时，将子进程的完整认证文件组保存在上述私有 `conflicts` 目录，避免混用账号或覆盖原生登录，也不自动恢复该副本。保存成功后清理活动恢复日志，旧版遗留的冲突日志按相同规则恢复。磁盘写入失败仍保留日志供重试，正常外部刷新不会永久锁住服务。
 
 ## Project delegation / 项目派工
 

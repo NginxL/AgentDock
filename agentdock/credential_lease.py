@@ -81,6 +81,27 @@ def catalog_home(provider, environment):
     return _private(path / "catalog-home")
 
 
+def preserve_conflict(path, pending, cached_files):
+    """Save the child's whole auth bundle before releasing a divergent lease.
+
+    A deterministic directory makes a retry after a partial archive idempotent.
+    It is outside the active session and never becomes a new login source.
+    """
+    hashes = {relative: fingerprint(cached) for relative, cached in cached_files}
+    identity = hashlib.sha256(
+        json.dumps([pending, hashes], sort_keys=True).encode()
+    ).hexdigest()
+    archive = _private(_private(path / "conflicts") / identity)
+    backups = dict(destinations(archive, hashes))
+    for relative, cached in cached_files:
+        saved = backups[relative]
+        existing = fingerprint(saved)
+        if existing is not None and existing != hashes[relative]:
+            raise Conflict("Preserved credential recovery data was modified")
+        if cached.exists() and existing is None:
+            replace(cached, saved)
+
+
 @contextmanager
 def credentials(provider, directory, environment, stop):
     """Serialize refreshes for the same source identity, retaining no idle copies."""
@@ -106,19 +127,32 @@ def credentials(provider, directory, environment, stop):
             if not target.is_absolute() or target.is_symlink() or not target.is_dir():
                 raise Conflict("Credential refresh recovery directory is unavailable")
             original = pending["hashes"]
-            # Validate every source before copying any refreshed credential.
-            for relative, cached in destinations(target, seeds):
-                if Path(relative).name in AUTH_NAMES:
-                    if fingerprint(origins[relative]) not in (
-                        original[relative],
-                        fingerprint(cached),
-                    ):
-                        raise Conflict(
-                            "Native credentials changed concurrently; pending refresh has been preserved"
-                        )
-            for relative, cached in destinations(target, seeds):
-                if Path(relative).name in AUTH_NAMES:
-                    replace(cached, origins[relative])
+            cached_files = [
+                (relative, cached)
+                for relative, cached in destinations(target, seeds)
+                if Path(relative).name in AUTH_NAMES
+            ]
+            current = {key: fingerprint(origins[key]) for key, _ in cached_files}
+            cached_hashes = {key: fingerprint(cached) for key, cached in cached_files}
+            native_changed = any(
+                current[key] not in (original[key], cached_hashes[key])
+                for key, _ in cached_files
+            )
+            if native_changed:
+                # An external CLI login is authoritative for future work. If our
+                # child also changed credentials, preserve its entire auth bundle
+                # separately, without mixing identities or poisoning pending.json.
+                if any(
+                    cached_hashes[key] is not None
+                    and cached_hashes[key] not in (original[key], current[key])
+                    for key, _ in cached_files
+                ):
+                    preserve_conflict(path, pending, cached_files)
+            else:
+                # Validate the whole bundle before copying any refreshed file.
+                for relative, cached in cached_files:
+                    if cached_hashes[relative] != current[relative]:
+                        replace(cached, origins[relative])
             for relative, cached in destinations(target, seeds):
                 cached.unlink(missing_ok=True)
             (target / ".agentdock-settings-copied").unlink(missing_ok=True)
