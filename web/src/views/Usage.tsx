@@ -17,6 +17,7 @@ import { DateText, Empty, Icon, PageTitle } from "../ui";
 import ProviderIcon from "../ProviderIcon";
 import { providerNames } from "../ProviderIcon";
 import { usageTargets } from "../usageTargets";
+import { quotaSource } from "../accountDisplay";
 import { accountStatus } from "../AccountSelection";
 
 export default function Usage({
@@ -111,7 +112,7 @@ export default function Usage({
             ? account?.quota
               ? {
                   provider,
-                  source: "managed-account",
+                  source: account.quota.source ?? "managed-account",
                   status: account.quota.status ?? "unknown",
                   fetched_at: account.quota.fetched_at,
                   plan: account.identity?.plan,
@@ -231,17 +232,19 @@ export default function Usage({
               </div>
               <div className="quota-source">
                 <span>
-                  {managed
-                    ? t(...uiMessages.usage_account_quota_107b7b)
-                    : quota?.source === "demo"
-                      ? t(...uiMessages.usage_demo_data_9029c5)
-                      : quota?.source === "claude-desktop-snapshot"
-                        ? t(...uiMessages.usage_claude_local_snapshot_b92980)
-                        : provider === "codex"
-                          ? "Codex"
-                          : t(
-                              ...uiMessages.usage_previously_saved_data_ff28d7,
-                            )}{" "}
+                  {provider === "claude" && quota?.source !== "demo"
+                    ? quotaSource(quota?.source, quota?.fetched_at, t)
+                    : managed
+                      ? t(...uiMessages.usage_account_quota_107b7b)
+                      : quota?.source === "demo"
+                        ? t(...uiMessages.usage_demo_data_9029c5)
+                        : quota?.source === "claude-desktop-snapshot"
+                          ? t(...uiMessages.usage_claude_local_snapshot_b92980)
+                          : provider === "codex"
+                            ? "Codex"
+                            : t(
+                                ...uiMessages.usage_previously_saved_data_ff28d7,
+                              )}{" "}
                   · {t(...uiMessages.usage_data_updated_1bf097)}{" "}
                   <DateText date={quota?.fetched_at} lang={lang} />
                 </span>
@@ -414,6 +417,10 @@ export function QuotaWindow({
     "5-hour": t(...uiMessages.usage_5_hour_d96bae),
     Session: t(...uiMessages.usage_session_449fbc),
     Quota: t(...uiMessages.usage_quota_5b9897),
+    "Sonnet 7-day limit": t(
+      ...uiMessages.accountdisplay_sonnet_7_day_limit_bc45b0,
+    ),
+    "Opus 7-day limit": t(...uiMessages.accountdisplay_opus_7_day_limit_42d58b),
     每周额度: t(...uiMessages.usage_weekly_window_d98769),
     "5 小时额度": t(...uiMessages.usage_5_hour_window_d8f429),
   };

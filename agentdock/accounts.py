@@ -32,11 +32,7 @@ from urllib.parse import parse_qs, urlsplit
 from .account_network import (
     NETWORK_ENV as _NETWORK_ENV,
 )
-from .account_network import (
-    NetworkError,
-    claude_get,
-    claude_network,
-)
+from .account_network import claude_network
 from .errors import Invalid
 
 
@@ -676,52 +672,19 @@ class AccountManager:
             return self._check(account)
 
     def refresh(self, account):
+        if account["provider"] == "claude":
+            return {
+                "provider": "claude",
+                "source": "cli_event",
+                "status": "unknown",
+                "windows": [],
+                "fetched_at": None,
+            }
         with self.lease(account, timeout=0):
             result = self._check(account)
             result.update(provider=account["provider"], fetched_at=_now(), windows=[])
             if not result["logged_in"]:
                 return result
-            if account["provider"] != "codex":
-                from .account_keychain import KeychainError, claude_credentials
-                from .registry import commands
-
-                try:
-                    network = claude_network(
-                        os.environ,
-                        commands(self.commands_config).get("claude", ()),
-                        strict=True,
-                    )
-                    credentials = claude_credentials(self.environment(account))
-                    token = credentials.get("claudeAiOauth", {}).get("accessToken")
-                    if not isinstance(token, str) or not token:
-                        return dict(result, error_code="quota_unavailable")
-                    raw = claude_get("usage", token, network)
-                    for key, name, minutes in (
-                        ("five_hour", "session", 300),
-                        ("seven_day", "weekly", 10080),
-                        ("seven_day_sonnet", "weekly_sonnet", 10080),
-                        ("seven_day_opus", "weekly_opus", 10080),
-                    ):
-                        window = raw.get(key)
-                        if (
-                            isinstance(window, dict)
-                            and _number(window.get("utilization"), 0, 100) is not None
-                        ):
-                            result["windows"].append(
-                                {
-                                    "name": name,
-                                    "used_percent": window["utilization"],
-                                    "duration_mins": minutes,
-                                    "resets_at": window.get("resets_at"),
-                                }
-                            )
-                    return result
-                except NetworkError as error:
-                    return dict(
-                        result, error_code=error.code, retry_after=error.retry_after
-                    )
-                except (KeychainError, OSError, ValueError, AttributeError):
-                    return dict(result, error_code="quota_unavailable")
             raw = self._codex(account, "account/rateLimits/read", {})
             buckets = raw.get("rateLimitsByLimitId")
             rate = raw.get("rateLimits", {})

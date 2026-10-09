@@ -171,7 +171,7 @@ describe("desktop connection and built-in usage", () => {
         quotas: [
           {
             provider: "claude",
-            source: "claude-desktop-snapshot",
+            source: "legacy_snapshot",
             windows: [],
             status: "stale",
             fetched_at: "2026-01-01T00:00:00Z",
@@ -183,7 +183,7 @@ describe("desktop connection and built-in usage", () => {
     await connect();
     fireEvent.click(screen.getByRole("button", { name: "额度与订阅" }));
     expect(screen.queryByRole("button", { name: /连接 Claude/ })).toBeNull();
-    expect(screen.getByText(/Claude 本地快照/)).toBeTruthy();
+    expect(screen.getByText(/来源：升级前记录/)).toBeTruthy();
     expect(
       fetchMock.mock.calls.every(([path]) => path !== "/api/quotas/authorize"),
     ).toBe(true);

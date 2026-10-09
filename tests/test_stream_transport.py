@@ -212,7 +212,13 @@ class StreamTransportTests(unittest.TestCase):
                 stop=cancelled,
             )
             try:
-                time.sleep(0.1)
+                deadline = time.monotonic() + 5
+                while (
+                    not (self.fixture.home / "fake-pid").exists()
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.02)
+                self.assertTrue((self.fixture.home / "fake-pid").exists())
                 start = time.monotonic()
                 self.manager.rpc(self.environment, {**identities[0], "op": "cancel"})
                 self.assertLess(time.monotonic() - start, 0.8)
@@ -267,7 +273,6 @@ class StreamTransportTests(unittest.TestCase):
             ("check", "codex"),
             ("check", "claude"),
             ("refresh", "codex"),
-            ("refresh", "claude"),
             ("remove", "claude"),
             ("quota", "codex"),
             ("delete_session", "codex"),
@@ -356,6 +361,37 @@ class StreamTransportTests(unittest.TestCase):
                             os.killpg(pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
+
+    def test_remote_claude_quota_refresh_never_launches_a_cli(self):
+        self.connect("descendant")
+        controller = self.fixture.store.controller_id
+        account = {
+            "id": str(uuid.uuid4()),
+            "provider": "claude",
+            "generation": 1,
+        }
+        result = self.manager.rpc(
+            self.environment,
+            {
+                "op": "account",
+                "action": "refresh",
+                "controller": controller,
+                "account": account,
+            },
+        )
+        self.assertEqual(result["source"], "cli_event")
+        self.assertEqual(result["status"], "unknown")
+        self.assertIsNone(result["fetched_at"])
+        directory = (
+            self.fixture.home
+            / ".local/share/agentdock/ssh/controllers"
+            / controller
+            / "accounts"
+            / account["id"]
+            / "claude"
+        )
+        self.assertFalse((directory / "fake-pid").exists())
+        self.assertFalse((directory / "fake-child-pid").exists())
 
 
 if __name__ == "__main__":

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### C1: Passive Claude quota / Claude 被动额度
+
+- Remove direct Claude OAuth quota/profile requests, the quota credential reader, desktop quota snapshot probing and the quota experiment. Claude native switching is unavailable; remaining native switching removal is tracked by C2.
+- Record bounded `rate_limit_event` observations for local/SSH device logins and managed accounts, without active quota probes. Preserve source and sampling time; absent percentages and reset times stay unknown.
+- Migrate historical readings without relabeling them as run events; keep existing CLI proxy/certificate inheritance unchanged.
+- 删除 Claude OAuth 额度／资料直连、额度凭据读取、桌面快照探测及额度实验开关；额度从本机／SSH 运行事件采集，界面显示来源和采样时间。旧值保留并标注升级前记录，原有代理及证书来源不变。
+
 ### Progress and final reply regressions
 
 - Omit only an oversized individual progress event; keep later local and SSH tool/message progress visible until the cumulative display budget is reached.

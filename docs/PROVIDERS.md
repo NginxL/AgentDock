@@ -53,7 +53,7 @@ A remote device can override entries in its private `~/.local/share/agentdock/ss
 
 ## Usage and validation
 
-Quota readers remain specific to Codex and Claude. Other providers show unknown quota instead of another provider's snapshot. ACP context occupancy is not cumulative token consumption; it is never added to token totals or TPS. Throughput without an output-token sample remains unknown during execution.
+Codex quota comes from its App Server; Claude quota comes only from events during actual CLI runs. Other providers show unknown quota instead of another provider's snapshot. ACP context occupancy is not cumulative token consumption; it is never added to token totals or TPS. Throughput without an output-token sample remains unknown during execution.
 
 Offline checks exercise every ACP registry entry with deterministic peers: model configuration, two-turn continuation, streaming phases, permission options, cancellation, malformed messages, private storage and deletion. An isolated SSH worker check covers discovery, models and continued ACP conversations without contacting production infrastructure. Local Trae verification passed model discovery and two consecutive turns with unchanged original configuration hashes. Codex and Claude live checks are documented in [Validation](REVIEW.md). Other ACP entries have protocol-fixture coverage; live account, authentication and tool execution compatibility remains unverified.
 

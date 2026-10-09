@@ -101,7 +101,7 @@ All account suffix POST routes require execution enabled. The metadata routes ca
 | `quota`, `cooldown_until` | Normalized snapshot and known retry deadline. `quota` contains `status`, optional `fetched_at`, and `windows`; windows may contain `name`, `used_percent`, `remaining_percent`, `duration_minutes`/`window_minutes`, `resets_at`/`reset_at`. Unknown values are omitted. |
 | `usage`, timestamps | Read-only sums of `input_tokens`, `output_tokens`, `total_tokens` across this account's retained native conversation branches; `created_at`, `updated_at`. Deleting a conversation removes its counted records. |
 
-Codex obtains quota through its account App Server. Managed Claude accounts read the OAuth usage endpoint through existing CLI network settings, without a model prompt or token rotation. A failed query preserves the last sample as stale and updates checked_at, error_code and retry_at. Concurrent reads coalesce; normal refresh is every ten minutes, with failure backoff and server Retry-After respected even for manual refresh. Unknown and stale readings never count as full quota. Device-login and manual billing data remain separate.
+Codex obtains quota through its account App Server, with coalescing and backoff. Claude account refresh and device-login refresh return cached execution observations only; they do not call a CLI, SSH quota probe or provider endpoint. Claude `quota.source` is `cli_event` for new `rate_limit_event` observations and `legacy_snapshot` for retained pre-upgrade samples. `fetched_at` is the observation time, not the page refresh time; without an observation the status is `unknown`. Missing remaining percentages and reset times are omitted. Provider allowance, measured tokens and manual billing records remain separate.
 
 `account_id` (nullable), `account_policy` (`manual` by default, `auto`, or `failover`) and `account_ids` (ordered, unique pool, default `[]`, at most 100) are accepted on agents and sessions. All referenced accounts must match the service/device; removed accounts are rejected. A manual policy has no pool. A selected default must belong to a nonempty pool.
 
@@ -140,7 +140,7 @@ Sessions copy agent account settings at creation; later agent edits do not rebin
 | `POST /api/proposals/{id}/approve` | `expected_version`. Must match both the proposal's expected version and the current memory version. |
 | `POST /api/proposals/{id}/reject` | Empty object. Rejects a pending proposal. |
 | `POST /api/approvals/{id}` | `option_id`, one of the still-pending options returned by AgentDock. |
-| `POST /api/quotas/refresh` | `provider`. Codex/Claude have native readers; other registered providers return unknown quota without a probe. Invoked when selecting Usage & billing; requires execution enabled. Shares the provider throttle with the service-owned timer. |
+| `POST /api/quotas/refresh` | `provider`, optional `environment_id`. Codex uses its native reader with rate limiting. Claude returns the saved CLI observation without a probe; no observation means unknown. |
 | `POST /api/subscriptions` | `provider`; optional `plan`, `renewal_date` (`YYYY-MM-DD` or null), `monthly_cost` (nonnegative finite number or null), `currency` (three letters, defaults to `USD`). |
 
 Cancellation acknowledgment means the stop request was accepted. Poll `runs` for the final state. Active runs lose MCP authority immediately; their native process groups are interrupted and terminated. A queued run never launches after cancellation. Cancelling work does not roll back filesystem changes already made by a CLI.

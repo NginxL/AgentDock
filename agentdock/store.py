@@ -109,6 +109,7 @@ class Store(
             self._migrate_run_limits,
             self._migrate_project_policy,
             self._migrate_memory_search,
+            self._migrate_claude_quota_events,
         )
         applied = self.db.execute("PRAGMA user_version").fetchone()[0]
         if applied > len(migrations):

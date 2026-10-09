@@ -419,10 +419,28 @@ class Runtime(TaskRuntime):
             "tool_output",
         ):
             self._mark_progress(run)
-        if kind == "account_rate_limit" and run.record.get("account_id"):
-            self._account_limit(
-                run.record["account_id"], payload, run.record.get("account_generation")
-            )
+        if kind == "account_rate_limit":
+            agent = self.store.get_agent(run.record["agent_id"])
+            if agent["provider"] == "claude":
+                if run.record.get("account_id"):
+                    self._account_limit(
+                        run.record["account_id"],
+                        payload,
+                        run.record.get("account_generation"),
+                    )
+                else:
+                    from .quota_events import device_snapshot, observe
+
+                    session = self.store.get_session(run.record["session_id"])
+                    environment = session["environment_id"]
+                    with self.store.lock:
+                        quota = observe(
+                            payload, self.store.get_quota("claude", environment) or {}
+                        )
+                        if quota:
+                            self.store.set_quota(
+                                "claude", device_snapshot(quota), environment
+                            )
         if kind == "token_usage":
             from .metrics import record
 
@@ -590,58 +608,26 @@ class Runtime(TaskRuntime):
                 generation is not None and account["generation"] != generation
             ):
                 return
-            reset = payload.get("resetsAt")
-            utilization = payload.get("utilization")
-            if payload.get("status") == "rejected":
-                utilization = 1
-            if (
-                isinstance(utilization, (int, float))
-                and not isinstance(utilization, bool)
-                and 0 <= utilization <= 1
-            ):
-                observed = time.time()
-                valid_reset = (
-                    isinstance(reset, (int, float))
-                    and not isinstance(reset, bool)
-                    and observed - 86400 < reset < observed + 604800
-                )
-                # Some Claude versions omit resetsAt on a rejected limit. Keep
-                # that observation bounded so a future probe can use the account.
-                if utilization == 1 and not valid_reset:
-                    reset, valid_reset = observed + 60, True
-                account = self.store.get_account(account_id)
-                name = {"five_hour": "session", "seven_day": "weekly"}.get(
-                    payload.get("rateLimitType"), "primary"
-                )
-                windows = [
-                    w
-                    for w in account["quota"].get("windows", [])
-                    if w.get("name") != name
-                ]
-                window = {"name": name, "remaining_percent": 100 * (1 - utilization)}
-                if valid_reset:
-                    window["reset_at"] = datetime.fromtimestamp(
-                        reset, timezone.utc
-                    ).isoformat()
-                self.store.set_account_quota(
-                    account_id,
-                    {
-                        "windows": (windows + [window])[-10:],
-                        "status": "ok",
-                        "fetched_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-            if payload.get("status") != "rejected":
+            from .quota_events import observe
+
+            quota = observe(payload, account["quota"])
+            if quota is None:
                 return
-            if isinstance(reset, (int, float)) and not isinstance(reset, bool):
-                if time.time() < reset < time.time() + 604800:
-                    self.store.set_account_status(
-                        account_id,
-                        "cooldown",
-                        cooldown_until=datetime.fromtimestamp(
-                            reset, timezone.utc
-                        ).isoformat(),
-                    )
+            self.store.set_account_quota(account_id, quota)
+            if payload.get("status") == "rejected":
+                # A local retry delay is not a provider reset time. Keep it out
+                # of the displayed quota window when the CLI omitted resetsAt.
+                reset = quota["windows"][-1].get("reset_at")
+                reset_at = datetime.fromisoformat(reset).timestamp() if reset else 0
+                if reset_at <= time.time():
+                    reset_at = time.time() + 60
+                self.store.set_account_status(
+                    account_id,
+                    "cooldown",
+                    cooldown_until=datetime.fromtimestamp(
+                        reset_at, timezone.utc
+                    ).isoformat(),
+                )
 
     def _account_failure(self, account_id, error, generation=None):
         if not account_id or not error.code:

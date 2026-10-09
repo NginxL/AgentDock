@@ -10,6 +10,40 @@ from .errors import Conflict, Invalid, text
 
 
 class AccountStore:
+    def _migrate_claude_quota_events(self):
+        from .quota_events import legacy
+
+        with self.transaction():
+            for row in self.db.execute(
+                "SELECT id,quota FROM accounts WHERE provider='claude'"
+            ).fetchall():
+                self.db.execute(
+                    "UPDATE accounts SET quota=? WHERE id=?",
+                    (json.dumps(legacy(json.loads(row["quota"]))), row["id"]),
+                )
+            for row in self.db.execute(
+                "SELECT provider,payload FROM quotas"
+            ).fetchall():
+                value = json.loads(row["payload"])
+                if (
+                    value.get("provider") == "claude"
+                    or row["provider"].split(":")[-1] == "claude"
+                ):
+                    self.db.execute(
+                        "UPDATE quotas SET payload=? WHERE provider=?",
+                        (json.dumps({**value, **legacy(value)}), row["provider"]),
+                    )
+            row = self.db.execute(
+                "SELECT value FROM metadata WHERE key='experimental_features'"
+            ).fetchone()
+            if row:
+                settings = json.loads(row[0])
+                settings.pop("claude_quota", None)
+                self.db.execute(
+                    "UPDATE metadata SET value=? WHERE key='experimental_features'",
+                    (json.dumps(settings),),
+                )
+
     def _migrate_accounts(self):
         with self.transaction():
             self.db.execute("""CREATE TABLE IF NOT EXISTS accounts(
@@ -151,6 +185,13 @@ class AccountStore:
                 VALUES(:id,:label,:provider,:environment_id,:priority,:created_at,:updated_at)""",
                 item,
             )
+            if provider == "claude":
+                from .quota_events import unknown
+
+                self.db.execute(
+                    "UPDATE accounts SET quota=? WHERE id=?",
+                    (json.dumps(unknown()), item["id"]),
+                )
             return self._one("accounts", item["id"])
 
     def _account_in_use(self, account_id):
@@ -249,9 +290,15 @@ class AccountStore:
                 raise Conflict("This account was removed")
             if self._account_in_use(account_id):
                 raise Conflict("Wait for account tasks before replacing its login")
+            from .quota_events import unknown
+
             self.db.execute(
-                "UPDATE accounts SET generation=generation+1,status='ready',error=NULL,cooldown_until=NULL,quota='{}',updated_at=? WHERE id=?",
-                (self._account_now(), account_id),
+                "UPDATE accounts SET generation=generation+1,status='ready',error=NULL,cooldown_until=NULL,quota=?,updated_at=? WHERE id=?",
+                (
+                    json.dumps(unknown() if account["provider"] == "claude" else {}),
+                    self._account_now(),
+                    account_id,
+                ),
             )
             return self._one("accounts", account_id)
 
@@ -276,6 +323,8 @@ class AccountStore:
         if not isinstance(quota, dict):
             raise Invalid("Invalid account quota")
         output = {}
+        if quota.get("source") in ("cli_event", "legacy_snapshot"):
+            output["source"] = quota["source"]
         if "fetched_at" in quota:
             output["fetched_at"] = self._account_date(quota["fetched_at"])
         for key in ("checked_at", "retry_at"):

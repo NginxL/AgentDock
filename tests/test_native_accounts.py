@@ -2,11 +2,7 @@
 
 import base64
 import copy
-import hashlib
 import json
-import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
 import uuid
@@ -18,7 +14,6 @@ from agentdock.native_accounts import (
     MacClients,
     NativeAccounts,
     _codex_identity,
-    _desktop_token,
     _encode,
 )
 
@@ -413,34 +408,6 @@ class NativeStorageTests(unittest.TestCase):
             )["account_id"],
             "org-one",
         )
-
-    @unittest.skipUnless(
-        sys.platform == "darwin" and shutil.which("openssl"), "macOS crypto fixture"
-    )
-    def test_desktop_safestorage_fixture_decrypts_without_real_keychain(self):
-        password = b"fictional-fixture-password"
-        self.key.read.return_value = password
-        key = hashlib.pbkdf2_hmac("sha1", password, b"saltysalt", 1003, 16)
-        payload = {
-            "acct:one|client:org:audience:user:profile": {
-                "token": "fictional-access-token",
-                "expiresAt": 4000000000000,
-            },
-            "acct:other|client:org:audience:user:profile": {
-                "token": "other-token",
-                "expiresAt": 5000000000000,
-            },
-        }
-        encrypted = subprocess.run(
-            ["openssl", "enc", "-aes-128-cbc", "-K", key.hex(), "-iv", "20" * 16],
-            input=json.dumps(payload).encode(),
-            capture_output=True,
-            check=True,
-        ).stdout
-        self.assertEqual(
-            _desktop_token(_encode(b"v10" + encrypted), "one"), "fictional-access-token"
-        )
-        self.key.read.assert_called_once_with("Claude Safe Storage", "Claude")
 
 
 if __name__ == "__main__":

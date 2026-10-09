@@ -5,7 +5,12 @@ import { request, remainingPercent } from "../api";
 import { accountStatus } from "../AccountSelection";
 import ProviderIcon from "../ProviderIcon";
 import { Empty, Icon } from "../ui";
-import { accountError, resetCountdown, quotaWindow } from "../accountDisplay";
+import {
+  accountError,
+  resetCountdown,
+  quotaWindow,
+  quotaSource,
+} from "../accountDisplay";
 import ExperimentalFeatures, { useFeature } from "../ExperimentalFeatures";
 import NativeAccounts from "../NativeAccounts";
 import { exactTokens } from "../metrics";
@@ -327,6 +332,11 @@ function AccountCard({
             {t(...uiMessages.accounts_quota_not_available_yet_1f4190)}
           </p>
         )}
+        {account.provider === "claude" && (
+          <small className="muted">
+            {quotaSource(account.quota?.source, account.quota?.fetched_at, t)}
+          </small>
+        )}
         {account.quota?.fetched_at && (
           <small className="muted">
             {t(...uiMessages.accounts_updated_a4e7c7)}{" "}
@@ -412,14 +422,16 @@ function AccountCard({
         >
           {t(...uiMessages.accounts_check_sign_in_43ef4c)}
         </button>
-        <button
-          type="button"
-          className="text-button"
-          disabled={busy || disabled}
-          onClick={() => void mutate(`${path}/refresh`, {})}
-        >
-          {t(...uiMessages.accounts_refresh_quota_a4ee28)}
-        </button>
+        {account.provider === "codex" && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy || disabled}
+            onClick={() => void mutate(`${path}/refresh`, {})}
+          >
+            {t(...uiMessages.accounts_refresh_quota_a4ee28)}
+          </button>
+        )}
         <button
           type="button"
           className="text-button"
@@ -434,7 +446,7 @@ function AccountCard({
         >
           {t(...uiMessages.accounts_settings_40e3fb)}
         </button>
-        {account.environment_id === "local" && (
+        {account.environment_id === "local" && account.provider === "codex" && (
           <button
             type="button"
             className="text-button"

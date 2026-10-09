@@ -174,3 +174,33 @@ it("refreshes each actual identity once and retains a moved conversation's devic
     ),
   ).toEqual([]);
 });
+
+it.each(["cli_event", "legacy_snapshot"])(
+  "shows Claude observation source %s and sample time",
+  (source) => {
+    setup(
+      [{ ...agent, provider: "claude" }],
+      [],
+      [
+        {
+          ...personal,
+          provider: "claude",
+          quota: {
+            source,
+            status: "ok",
+            fetched_at: "2026-10-09T08:00:00Z",
+            windows: [{ name: "session", remaining_percent: 15 }],
+          },
+        },
+      ],
+    );
+    expect(
+      screen.getByText(
+        source === "cli_event"
+          ? /Source: last run/
+          : /Source: pre-upgrade record/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/15%/)).toBeTruthy();
+  },
+);

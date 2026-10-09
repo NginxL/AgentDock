@@ -134,27 +134,10 @@ func runProviderChecks() async throws {
         print("PASS Codex \(mode), child cleaned up (\(String(format: "%.2f", duration))s)")
     }
 
-    let snapshotFile = directory.appendingPathComponent("quota.json")
-    let claude = ClaudeProvider(snapshotURL: snapshotFile)
-    let stamp = Date().timeIntervalSince1970 * 1000 - 3_600_000
-    let valid: [String: Any] = ["version": 2, "samples": [["t": stamp, "org": "fixture-org", "u": ["fh": 25, "sd": 70]]]]
-    try JSONSerialization.data(withJSONObject: valid).write(to: snapshotFile)
-    let result = try await claude.fetch()
-    try require(result.windows.map(\.usedPercent) == [25, 70], "Wrong local usage")
-    try require(result.windows.allSatisfy { $0.resetsAt == nil }, "Do not invent reset times")
-    try require(abs(result.fetchedAt.timeIntervalSince1970 - stamp / 1000) < 0.001, "Do not replace the source timestamp")
-    try require(result.accountID == nil, "Do not expose org identity")
-    checks += 1
-    for invalid: [String: Any] in [
-        ["version": 3, "samples": []],
-        ["version": 2, "samples": [["t": stamp, "org": "a", "u": ["fh": true]]]],
-        ["version": 2, "samples": [["t": stamp, "org": "a", "u": ["fh": 101]]]],
-        ["version": 2, "samples": [["t": stamp, "org": "a", "u": ["fh": 10]], ["t": stamp, "org": "b", "u": ["fh": 30]]]]
-    ] {
-        let data = try JSONSerialization.data(withJSONObject: invalid)
-        var rejected = false
-        do { _ = try ClaudeProvider.parse(data) } catch { rejected = true }
-        try require(rejected, "Invalid or ambiguous quota must be rejected")
+    do {
+        _ = try await ClaudeProvider().fetch()
+        throw CheckFailure(description: "Claude must not actively query quota")
+    } catch MeterFailure.unavailable {
         checks += 1
     }
     print("\(checks) provider checks, 0 failures; no real credentials or account requests")

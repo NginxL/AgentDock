@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agentdock.account_keychain import KeychainError
-from agentdock.account_network import NetworkError
 from agentdock.accounts import AccountError
 from agentdock.errors import PublicError
 from agentdock.runtime import Runtime
@@ -71,7 +70,6 @@ class AccountPublicErrorTests(unittest.TestCase):
             ),
             (AccountError("Account storage is invalid."), "account_error"),
             (KeychainError(), "keychain_unavailable"),
-            (NetworkError("network_unavailable"), "network_unavailable"),
         ):
             with (
                 self.subTest(code=code),

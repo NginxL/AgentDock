@@ -90,11 +90,7 @@ class AccountService:
             for account in self.store.accounts():
                 if self._stop.is_set():
                     return
-                if (
-                    account["provider"] == "claude"
-                    and account["status"] != "pending"
-                    and not self.store.features()["claude_quota"]
-                ):
+                if account["provider"] == "claude" and account["status"] != "pending":
                     continue
                 try:
                     if account["status"] == "pending":
@@ -254,6 +250,14 @@ class AccountService:
 
     def refresh(self, identifier, force=False):
         """Coalesce simultaneous readers and respect vendor retry times."""
+        self._enabled()
+        current = self.store.get_account(identifier)
+        if current["status"] == "removed":
+            raise Conflict("This account was removed; choose another account")
+        if current["provider"] == "claude":
+            # Only execution events supply Claude quota. Even an explicit refresh
+            # must not start a CLI, inspect credentials, or contact an SSH host.
+            return current
         with self._lock:
             now = time.monotonic()
             current = self.store.get_account(identifier)
@@ -283,18 +287,6 @@ class AccountService:
     def _refresh(self, identifier):
         account = self.store.get_account(identifier)
         self._enabled()
-        if (
-            account["provider"] == "claude"
-            and not self.store.features()["claude_quota"]
-        ):
-            return self.store.set_account_quota(
-                identifier,
-                {
-                    "windows": [],
-                    "status": "unknown",
-                    "error_code": "experimental_disabled",
-                },
-            )
         try:
             value = self._call(account, "refresh")
         except (AccountError, OSError, TimeoutError):

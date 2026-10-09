@@ -1,15 +1,18 @@
 # Experimental integrations / 实验功能
 
-The Accounts page contains four separate switches. All default to off, including when upgrading an existing database. Enabling requires acknowledging the displayed limitations. Disabling waits until queued and running work has stopped. Daily conversations, project tasks and manually selected managed accounts remain available.
+Claude quota is no longer an experimental query. It is collected passively during CLI execution; the former quota flag is removed on upgrade. Claude native switching is unavailable because its direct identity query was removed. C3 and C2 in the [development plan](DEVELOPMENT-PLAN.md) remove the remaining automatic account and native Codex switching features.
 
-账号页有四个独立开关，新安装和旧库升级均默认关闭。开启前需了解对应限制；有排队或运行任务时不能停用。日常对话、项目任务及手动选择托管账号仍可使用。
+Claude 额度不再是实验查询功能，只在 CLI 执行时被动采集，旧额度开关在升级时移除。Claude 本机换号因其直接资料查询已删除而停止提供；剩余自动选号和 Codex 本机换号按[开发计划](DEVELOPMENT-PLAN.md) C3、C2 删除。
+
+The Accounts page contains three separate switches. All default to off, including when upgrading an existing database. Enabling requires acknowledging the displayed limitations. Disabling waits until queued and running work has stopped. Daily conversations, project tasks and manually selected managed accounts remain available.
+
+账号页有三个独立开关，新安装和旧库升级均默认关闭。开启前需了解对应限制；有排队或运行任务时不能停用。日常对话、项目任务及手动选择托管账号仍可使用。
 
 | Feature / 功能 | Boundary / 边界 |
 | --- | --- |
 | Automatic failover / 自动换号 | Only a structured rejection before any progress permits an attempt with another explicitly allowed account. Existing failover settings are also gated. Account rotation must not be used to evade service limits. / 仅在明确拒绝且尚无进展时尝试允许的其他账号，旧策略也受开关限制，不得用于规避服务限制。 |
-| Native client switching / 本机客户端换号 | Explicit capture, switch and recovery can quit/reopen the chosen client. Snapshots are encrypted; native acceptance remains manual. / 显式保存、切换和恢复可能退出并重开所选客户端；快照已加密，真实换号需人工验收。 |
+| Codex native client switching / Codex 本机客户端换号 | Explicit capture, switch and recovery can quit/reopen the chosen client. Snapshots are encrypted; native acceptance remains manual. / 显式保存、切换和恢复可能退出并重开所选客户端；快照已加密，真实换号需人工验收。 |
 | Additional ACP agents / 更多 Agent | Fixture coverage proves protocol behavior; installed client versions and real model execution need acceptance. / 协议测试覆盖不等于已验证所有 CLI 版本和真实模型任务。 |
-| Claude subscription quota / Claude 订阅额度 | Uses undocumented OAuth usage endpoints. Failure means unknown quota, not zero. Claude Code's proxy settings remain the source. / 使用非公开接口，失败显示未知而非零额度；继续沿用 Claude Code 自身代理。 |
 
 [OpenAI's terms](https://openai.com/policies/terms-of-use/) prohibit circumventing rate limits and restrictions. [Anthropic's consumer terms](https://www.anthropic.com/legal/consumer-terms) constrain automated access except where permitted. These are implementation boundaries, not a determination that every multi-account use violates a contract. A switch being available is not provider authorization.
 

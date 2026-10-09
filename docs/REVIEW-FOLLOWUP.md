@@ -1,5 +1,7 @@
 # 二次审查修复与复验
 
+账号和凭据相关目标已由[开发计划](DEVELOPMENT-PLAN.md)取代；下表保留历史修复证据。C1 已删除 Claude 额度／资料直连及其 `NetworkError`，其余公开错误码约定保留。
+
 审查基线：[`c183c5a`](https://github.com/NginxL/AgentDock/commit/c183c5a)。下表按原审查编号列出行为、验证入口和提交。测试使用临时数据库、虚构凭据及模拟 CLI；真实账号换号、OAuth 刷新和生产 SSH 验收仍由使用者完成。
 
 ## 修复对应表

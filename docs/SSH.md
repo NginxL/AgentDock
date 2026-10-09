@@ -70,7 +70,7 @@ Events and final state use private storage with bounded event sizes and counts. 
 | CLI credentials | Existing login on the selected host. SSH agent sockets, X11 and ports are not forwarded. The execution identity is the SSH user and that user's native CLI account. |
 | Codex trust | Each conversation reads a private copy of the original settings. Native trust changes affect that copy only; the actual working directory is checked before a prompt is sent. |
 | Tokens and TPS | Remote accounting uses live events from AgentDock-managed turns, without scanning unrelated remote conversations. Environment-scoped identities avoid mixing local and remote sessions. |
-| Usage and billing | Stored by environment and provider. Remote Codex queries its own App Server. Remote Claude currently remains unknown, without falling back to local data or reading credentials. |
+| Usage and billing | Stored by environment and provider. Remote Codex queries its own App Server. Remote Claude records quota events during execution and stays unknown without them; quota display does not fall back to local data or read credentials. |
 
 The SSH component does not edit CLI, SSH or Git configuration or install system services. Native CLIs still save their own conversations and runtime records. Tool permissions follow CLI policy, sandboxing and user decisions. Working directories are not OS isolation; use a dedicated low-privilege account and separate workspace for production access.
 

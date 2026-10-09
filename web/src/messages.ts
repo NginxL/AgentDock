@@ -2267,3 +2267,16 @@ export const workspaceheading_add_agent_3bb60f = [
   "添加 Agent",
   "Add agent",
 ] as const;
+
+export const quota_source_last_run = [
+  "来源：上次运行",
+  "Source: last run",
+] as const;
+export const quota_source_legacy = [
+  "来源：升级前记录",
+  "Source: pre-upgrade record",
+] as const;
+export const quota_source_waiting = [
+  "额度未知，等待运行中的 CLI 返回数据。",
+  "Quota unknown; waiting for a CLI observation during a run.",
+] as const;

@@ -51,7 +51,7 @@ class FeatureTests(unittest.TestCase):
         finally:
             service.close()
 
-    def test_claude_private_quota_endpoint_needs_separate_opt_in(self):
+    def test_claude_quota_has_no_active_query_or_experimental_switch(self):
         runtime = Mock(enabled=True, config={})
         service = AccountService(self.store, runtime)
         service.manager = Mock()
@@ -61,6 +61,10 @@ class FeatureTests(unittest.TestCase):
             )
             value = service.refresh(account["id"], force=True)
             service.manager.refresh.assert_not_called()
-            self.assertEqual(value["quota"]["error_code"], "experimental_disabled")
+            self.assertEqual(value["quota"], account["quota"])
+            self.assertEqual(value["quota"]["status"], "unknown")
+            self.assertNotIn("claude_quota", self.store.features())
+            with self.assertRaises(Invalid):
+                self.store.set_feature("claude_quota", True, acknowledged=True)
         finally:
             service.close()

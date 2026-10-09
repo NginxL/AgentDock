@@ -1,5 +1,9 @@
 # Native credential boundary
 
+Credential mechanisms below are pending deletion under [C2/C4](DEVELOPMENT-PLAN.md). C1 has removed Claude quota/profile requests and quota credential reads; Claude native switching is unavailable. Remaining Codex snapshots and task credential leases are not evidence that phase 0 is complete.
+
+以下凭据机制按[开发计划 C2／C4](DEVELOPMENT-PLAN.md)待删除。C1 已删除 Claude 额度／资料请求及额度凭据读取，Claude 本机换号停止提供。剩余 Codex 快照和任务凭据租约尚不满足阶段 0 的最终边界。
+
 | Evidence | Verified behavior | Boundary |
 | --- | --- | --- |
 | `CredentialCore/CredentialVault.swift` | Keychain reads and writes run inside the signed AgentDock desktop process. Snapshot AES-256-GCM keys stay in that process and its own Keychain entry. | Python never loads Security.framework. Previously granted Python Keychain permissions remain macOS settings; this upgrade cannot safely revoke another client's permissions. |

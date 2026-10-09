@@ -8,7 +8,7 @@ AgentDock is a local, single-user workbench for Codex and Claude Code CLIs on yo
 
 ![Workspace with fictional demo data](docs/images/workspace.en.jpg)
 
-**Developer preview.** The backend uses Python's standard library and SQLite; the interface uses React, and the macOS shell uses Swift. Additional ACP providers, automatic failover, native client switching and undocumented Claude quota queries are separate, default-off experiments. [Capabilities and boundaries](docs/EXPERIMENTS.md).
+**Developer preview.** The backend uses Python's standard library and SQLite; the interface uses React, and the macOS shell uses Swift. Additional ACP providers, automatic failover and Codex native client switching remain default-off experiments while the [development plan](docs/DEVELOPMENT-PLAN.md) is implemented in reviewed batches. Claude quota comes only from running CLI sessions. [Capabilities and boundaries](docs/EXPERIMENTS.md).
 
 ## Quick start
 

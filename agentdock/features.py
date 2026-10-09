@@ -4,7 +4,7 @@ import json
 
 from .errors import Conflict, Forbidden, Invalid
 
-FEATURES = ("automatic_failover", "native_switching", "acp_agents", "claude_quota")
+FEATURES = ("automatic_failover", "native_switching", "acp_agents")
 
 
 class FeatureStore:

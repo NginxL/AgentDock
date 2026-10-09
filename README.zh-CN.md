@@ -8,7 +8,7 @@ AgentDock 是本地单用户的 Agent CLI 工作台，连接本机或 SSH 设备
 
 ![工作台，展示虚构演示数据](docs/images/workspace.zh-CN.jpg)
 
-**开发预览版。** 后端使用 Python 标准库与 SQLite，界面使用 React，macOS 外壳使用 Swift。更多 ACP Agent、自动换号、本机客户端换号及非公开 Claude 额度查询有各自的实验开关，默认关闭。见[功能边界](docs/EXPERIMENTS.md)。
+**开发预览版。** 后端使用 Python 标准库与 SQLite，界面使用 React，macOS 外壳使用 Swift。更多 ACP Agent、自动换号、Codex 本机客户端换号仍为默认关闭的实验功能，[开发计划](docs/DEVELOPMENT-PLAN.md)按批实施与复核。Claude 额度仅来自运行中的 CLI。见[功能边界](docs/EXPERIMENTS.md)。
 
 ## 快速开始
 

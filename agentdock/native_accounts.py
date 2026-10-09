@@ -6,7 +6,6 @@ refresh token. No background task reads or writes a native login.
 """
 
 import base64
-import ctypes
 import fcntl
 import hashlib
 import json
@@ -24,10 +23,8 @@ from pathlib import Path
 
 from . import credential_broker
 from .account_keychain import Keychain, KeychainError, claude_service
-from .account_network import NetworkError, claude_get, claude_network
 from .accounts import AccountError, _directory, _identity, _now
 from .diagnostics import failure
-from .registry import commands
 
 _AUTH_KEYS = ("oauth:tokenCache", "oauth:tokenCacheV2", "lastKnownAccountUuid")
 _COOKIES = (
@@ -128,63 +125,6 @@ def _codex_identity(value):
         raise AccountError(
             "Cannot identify the native Codex subscription login."
         ) from None
-
-
-def _desktop_token(cache, account_id):
-    """Decode Electron safeStorage only in memory; saved snapshots stay encrypted."""
-    encrypted = _decode(cache)
-    if not encrypted or encrypted[:3] != b"v10" or len(encrypted[3:]) % 16:
-        raise AccountError("This Claude desktop login format is not supported.")
-    password = Keychain().read("Claude Safe Storage", "Claude")
-    if password is None:
-        raise KeychainError()
-    key = hashlib.pbkdf2_hmac("sha1", password, b"saltysalt", 1003, 16)
-    library = ctypes.CDLL("/usr/lib/system/libcommonCrypto.dylib")
-    library.CCCrypt.argtypes = [
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_uint32,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.POINTER(ctypes.c_size_t),
-    ]
-    output = ctypes.create_string_buffer(len(encrypted))
-    count = ctypes.c_size_t()
-    if library.CCCrypt(
-        1,
-        0,
-        1,
-        key,
-        16,
-        b" " * 16,
-        encrypted[3:],
-        len(encrypted) - 3,
-        output,
-        len(output),
-        ctypes.byref(count),
-    ):
-        raise AccountError("Cannot read the Claude desktop login.")
-    values = _json(output.raw[: count.value])
-    candidates = [
-        v
-        for k, v in values.items()
-        if k.startswith("acct:" + account_id + "|")
-        and "user:profile" in k
-        and isinstance(v, dict)
-        and isinstance(v.get("expiresAt"), (int, float))
-        and v["expiresAt"] > time.time() * 1000
-        and isinstance(v.get("token"), str)
-    ]
-    if not candidates:
-        raise AccountError(
-            "Open Claude desktop to refresh its login, then save it again."
-        )
-    return max(candidates, key=lambda v: v["expiresAt"])["token"]
 
 
 class MacClients:
@@ -357,59 +297,10 @@ class MacClients:
                 else snapshot["keychain"] or snapshot["auth"]
             )
             return _codex_identity(_json(_decode(active)))
-        if client == "claude_code":
-            metadata = snapshot.get("oauthAccount") or {}
-            if (
-                not online
-                and metadata.get("accountUuid")
-                and metadata.get("emailAddress")
-            ):
-                return {
-                    "email": _email(metadata["emailAddress"]),
-                    "account_id": metadata["accountUuid"],
-                    "organization_id": metadata.get("organizationUuid"),
-                }
-            credentials = _json(_decode(snapshot["keychain"] or snapshot["auth"]))
-            token = credentials.get("claudeAiOauth", {}).get("accessToken")
-            if not token:
-                raise AccountError("Sign in to Claude Code with a subscription first.")
-        else:
-            config = snapshot["config"]
-            token = _desktop_token(
-                config.get("oauth:tokenCacheV2"), config.get("lastKnownAccountUuid", "")
-            )
-        network = claude_network(
-            self.environment,
-            commands(self.commands_config).get("claude", ()),
-            strict=True,
+        raise AccountError(
+            "Manage Claude sign-in in the official client.",
+            code="native_claude_switching_removed",
         )
-        try:
-            profile = claude_get("profile", token, network)
-        except NetworkError:
-            raise AccountError(
-                "Cannot verify the native Claude login through its existing network configuration."
-            ) from None
-        value = profile.get("account", {})
-        identifier = value.get("uuid")
-        if not isinstance(identifier, str) or not identifier:
-            raise AccountError("Cannot identify this native login.")
-        if client == "claude_desktop" and identifier != snapshot["config"].get(
-            "lastKnownAccountUuid"
-        ):
-            raise AccountError(
-                "Claude desktop identity changed. Open it and save its login again."
-            )
-        if client == "claude_code" and (snapshot.get("oauthAccount") or {}).get(
-            "accountUuid"
-        ) not in (None, identifier):
-            raise AccountError(
-                "Claude Code identity metadata is out of date. Sign in in that client and save it again."
-            )
-        return {
-            "email": _email(value.get("email")),
-            "account_id": identifier,
-            "organization_id": profile.get("organization", {}).get("uuid"),
-        }
 
     def app(self, client):
         names = ("ChatGPT.app", "Codex.app") if client == "codex" else ("Claude.app",)
@@ -521,6 +412,11 @@ class NativeAccounts:
                 failure(error, "accounts")
 
     def _client(self, account, client):
+        if account.get("provider") == "claude":
+            raise AccountError(
+                "Manage Claude sign-in in the official client.",
+                code="native_claude_switching_removed",
+            )
         if account.get("environment_id") != "local" or client not in _CLIENTS.get(
             account.get("provider"), ()
         ):
@@ -624,6 +520,7 @@ class NativeAccounts:
     def status(self, account):
         available = (
             sys.platform == "darwin"
+            and account["provider"] == "codex"
             and account["environment_id"] == "local"
             and self.vault.available()
         )

@@ -8,7 +8,7 @@ AgentDock can manage multiple **Codex / ChatGPT** and **Claude Code / Claude.ai*
 
 *Actual interface preview with isolated fictional data; no real accounts or authorization were used.*
 
-Native switching, automatic failover and undocumented Claude quota reads require their separate default-off switches in Accounts → Experimental features. Saved native snapshots and recovery journals use authenticated encryption with a Keychain-held key; the signed desktop host owns Keychain authorization. See [credential protection](CREDENTIALS.md) and [experimental boundaries](EXPERIMENTS.md).
+Native Codex switching and automatic failover remain default-off experiments; their removal is tracked by [C2 and C3](DEVELOPMENT-PLAN.md). Claude native switching and direct quota queries are no longer available. Remaining credential mechanisms are described in [credential protection](CREDENTIALS.md) and [experimental boundaries](EXPERIMENTS.md); the development plan takes precedence for the target boundary.
 
 ## Add and use an account
 
@@ -52,21 +52,19 @@ A logical run has at most **three distinct account attempts**, recorded with the
 | **Disabled** (`disabled`) | Excluded from selection until enabled and checked again. |
 | **Removed** (`removed`) | Managed credentials were deleted. A historical metadata record remains for attribution. |
 
-The Accounts page shows the CLI-reported email and plan when available, quota windows, reset countdowns, and measured tokens for AgentDock conversations using that account. **Refresh quota** reads login and subscription metadata without sending a model task. With execution enabled, the service checks pending logins and periodically refreshes ready/cooling accounts, including when their panel is closed.
+The Accounts page shows the CLI-reported email and plan when available, quota windows, reset countdowns, and measured tokens from AgentDock conversations. **Check sign-in** uses Claude Code's `auth status --json` or Codex App Server. It does not parse tokens to identify an account. **Refresh quota** is available for Codex; pending login checks remain separate from quota observations.
 
-Codex reads its App Server account and rate-limit metadata. Claude queries `api.anthropic.com/api/oauth/usage` with that managed account’s OAuth credential, showing five-hour, seven-day and any model-specific limits. A model-specific window does not cool down the entire account. This is not a stable public API: unsupported, expired or failed reads report unknown/error and retain previous observations as stale. The native CLI still owns Claude token renewal; quota queries do not rotate OAuth credentials, submit model prompts or substitute another account’s or desktop app’s login.
+Codex reads account and rate-limit metadata through its native App Server. Claude quota is collected passively from `rate_limit_event` during actual CLI runs, for both managed accounts and device login, locally and over SSH. It is labeled **Source: last run** with the observation time. The UI does not query an OAuth endpoint, launch a quota-only Claude run, read a Claude desktop snapshot, or ask for Keychain access to read quota. Missing percentages and reset times stay unknown. A local temporary cooldown is not presented as a provider reset time.
 
-Concurrent reads of an account are coalesced. Normal background refresh is every ten minutes; errors back off, respecting server `Retry-After` even for manual refresh. `fetched_at` remains the last successful sample time; `checked_at` records the latest attempt. Provider allowance and measured AgentDock tokens are distinct.
+Concurrent Codex reads are coalesced; normal background refresh is every ten minutes with error backoff. Claude has no active quota refresh. Opening or refreshing the page preserves the saved observation time. Historical pre-upgrade Claude samples retain their values and timestamps and are labeled **Source: pre-upgrade record**, not misrepresented as CLI events. Without data, quota is unknown. Provider allowance and measured AgentDock tokens are distinct.
 
 ## Switch native CLI and desktop accounts
 
-Open **Accounts → Native clients**. Ordinary conversation account selection does not modify a native login; only explicit save, switch and recovery actions in this panel do so.
+For Codex only, open **Accounts → Native clients**. Manage Claude Code and Claude desktop sign-in inside their official clients. Ordinary conversation account selection does not modify a native login. Removal of the remaining Codex switching panel is tracked by C2.
 
 | Client | Saved sign-in and switch scope |
 | --- | --- |
 | Codex CLI / macOS | Shared login in default `~/.codex`, affecting newly opened CLI instances and the desktop app. Supports `file` and direct-Keychain `keyring`/`auto`. Custom `CODEX_HOME` and other Keychain backends are rejected. |
-| Claude Code CLI | Separately saves native OAuth credentials and `oauthAccount` identity metadata. Settings, projects and history are preserved. API key, Relay and API-key-helper configurations reject subscription switching. |
-| Claude macOS | Separately saves the desktop app’s encrypted OAuth cache and cookie files. Supports both `Cookies` and `Network/Cookies`. CLI OAuth tokens are never converted into desktop credentials. |
 
 1. Sign in to the account in AgentDock and separately in the target native client.
 2. Finish its CLI and desktop tasks. On the matching account card open **Native clients → Save current sign-in**. macOS may request Keychain access. The capture verifies email and records native identity.
@@ -77,9 +75,9 @@ Native snapshots and managed task credentials are never copied into each other, 
 
 ## Inherit the existing proxy
 
-There is no per-account proxy configuration. Local managed Claude accounts inherit the CLI’s current proxy, certificate and DNS environment settings. Literal network exports in a simple existing shell launcher are supported. Queries never execute shell configuration; an ambiguous dynamic launcher stops quota reads with an explanation while preserving the original CLI launch path.
+There is no per-account proxy configuration. Local managed Claude accounts continue to inherit the CLI's existing proxy, certificate and DNS environment settings. Literal network exports in existing shell launchers are preserved; dynamic expressions are left to the CLI launcher and are not evaluated by AgentDock. Removing direct quota requests does not change those sources.
 
-Switching replaces login identity only. It neither snapshots nor changes system proxies, routing rules, nodes or exit IPs. Claude desktop retains its own existing network settings. Quota and Claude identity reads use the shared CLI networking; a failed proxy request is never retried directly. Authenticated HTTPS requests refuse redirects, and a denied Keychain read never falls back to stale credential files.
+Claude network requests, including official CLI identity checks, are made by the CLI using its existing network setup. AgentDock does not make separate Claude quota or profile requests and does not change system proxies, routing rules, nodes or exit IPs.
 
 ## Storage and deletion
 

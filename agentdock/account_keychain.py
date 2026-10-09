@@ -3,10 +3,8 @@
 import base64
 import getpass
 import hashlib
-import json
 import sys
 import unicodedata
-from pathlib import Path
 
 from . import credential_broker
 from .errors import Invalid
@@ -58,24 +56,3 @@ def claude_service(environment):
     return "Claude Code-credentials" + suffix, environment.get(
         "USER"
     ) or getpass.getuser()
-
-
-def claude_credentials(environment):
-    """Keychain is authoritative on macOS; errors are never treated as a miss."""
-    if sys.platform == "darwin":
-        data = Keychain().read(*claude_service(environment))
-        if data is not None:
-            try:
-                value = json.loads(data)
-                if not isinstance(value, dict):
-                    raise ValueError()
-                return value
-            except ValueError:
-                raise KeychainError() from None
-    from .accounts import _read
-
-    return _read(
-        Path(environment.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
-        / ".credentials.json",
-        {},
-    )

@@ -97,7 +97,8 @@ class AccountRuntimeTests(unittest.TestCase):
             account["generation"],
         )
         limited = self.store.get_account(account["id"])
-        reset = datetime.fromisoformat(limited["quota"]["windows"][0]["reset_at"])
+        self.assertNotIn("reset_at", limited["quota"]["windows"][0])
+        reset = datetime.fromisoformat(limited["cooldown_until"])
         self.assertGreater(reset, observed)
         self.assertLess(reset, observed + timedelta(seconds=65))
         self.assertFalse(self.store._account_available(limited))

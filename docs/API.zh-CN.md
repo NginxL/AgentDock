@@ -101,7 +101,7 @@ MCP 请求使用独立的单次运行能力令牌。该凭据只能通过 `/mcp/
 | `quota`、`cooldown_until` | 标准化快照与已知重试时间。`quota` 含 `status`、可选 `fetched_at`、`windows`；窗口可含 `name`、`used_percent`、`remaining_percent`、`duration_minutes`／`window_minutes`、`resets_at`／`reset_at`，未知值缺省。 |
 | `usage`、时间戳 | 此账号保留的原生会话分支所产生的 `input_tokens`、`output_tokens`、`total_tokens` 只读总和；`created_at`、`updated_at`。删除会话也会移除对应统计记录。 |
 
-Codex 从账号专属 App Server 读取额度；托管 Claude 账号沿用现有 CLI 网络设置查询 OAuth 额度接口，不发送模型提示词、不自行续期令牌。查询失败保留最后成功样本并标记过期，更新 checked_at、error_code 与 retry_at。并发读取合并，正常刷新间隔为 10 分钟；失败退避和服务端 Retry-After 同样约束手动刷新。未知／过期不按满额处理，设备登录和人工账单记录保持独立。
+Codex 通过账号专属 App Server 读取额度，并合并并发查询、失败退避。Claude 托管账号和设备登录的额度刷新只返回已有运行采样，不调用 CLI、SSH 额度探测或服务商接口。Claude `quota.source` 对新 `rate_limit_event` 数据为 `cli_event`，对升级前保留的记录为 `legacy_snapshot`。`fetched_at` 是采样时间，不是页面刷新时间；没有采样时状态为 `unknown`，缺失的剩余百分比和恢复时间不填充。服务商额度、实测 Token 和人工账单记录分别保存。
 
 Agent 和会话可接受 `account_id`（可空）、`account_policy`（默认 `manual`，另有 `auto`、`failover`）以及 `account_ids`（有序、不重复的账号池，默认 `[]`，最多 100 项）。所有引用必须与服务／设备一致，已删除账号不可选。固定账号策略不能包含账号池；非空池必须包含所选默认账号。
 
@@ -140,7 +140,7 @@ Agent 和会话可接受 `account_id`（可空）、`account_policy`（默认 `m
 | `POST /api/proposals/{id}/approve` | `expected_version`。必须同时匹配提议中的预期版本和当前记忆版本。 |
 | `POST /api/proposals/{id}/reject` | 空对象。拒绝待处理的提议。 |
 | `POST /api/approvals/{id}` | `option_id`，必须为 AgentDock 返回的、仍待处理的审批选项之一。 |
-| `POST /api/quotas/refresh` | `provider`。Codex／Claude 使用已有读取器，其他已配置服务返回未知额度，不发起探测。点击“额度与订阅”时调用，必须启用执行；与服务定时刷新共用节流。 |
+| `POST /api/quotas/refresh` | `provider`、可选 `environment_id`。Codex 使用限频的原生读取；Claude 仅返回保存的 CLI 运行采样，不发起查询，没有记录时显示未知。 |
 | `POST /api/subscriptions` | `provider`；可选 `plan`、`renewal_date`（`YYYY-MM-DD` 或 null）、`monthly_cost`（非负有限数值或 null）、`currency`（三个字母，默认为 `USD`）。 |
 
 取消接口返回成功，表示已接收停止请求；最终状态通过 `runs` 确认。正在执行的任务会立即失去 MCP 权限，其原生进程组将被中断并终止。排队任务取消后不会启动。取消操作不会回滚命令行客户端已经产生的文件改动。
@@ -235,7 +235,7 @@ Agent 间委派必须等接收方的逻辑任务结算后，才向**确切的原
 | 协作 | 根任务深度为 0，委派深度最多为 3。每个根任务最多产生 16 次运行，包含根任务、委派任务和结果续接。新委派会预留结果回传所需容量，因此可能在实际运行次数未满 16 次时即被拒绝。 |
 | 超时 | 执行默认 15 分钟，可按 Agent/服务配置，最多 24 小时；审批等待不占执行时间，单独最多 2 分钟。到期不会授予权限。 |
 | 输出 | 进度显示达到 5,000 条或 8 MiB 后标注截断，最终回复及结算继续。单条大进度事件仅替换为标记，后续进度仍显示。单条协议消息最多 512 KiB。最终文本超限时保留尾部并明确标注截断；原文及 JSON 转义后的字符串内容均最多 120,000 UTF-8 字节，标记计入上限。自动结果回传最多包含 12,000 字符。 |
-| 设备登录额度 | 启用执行并配置额度组件后，每 600 秒自动刷新；点击额度页也会触发。同一提供商的刷新间隔至少为 60 秒，探测超时为 35 秒。超过 15 分钟的快照标记为过期；超过重置时间后，剩余额度改为未知。 |
+| 设备登录额度 | Codex 启用并配置后每 600 秒刷新，最小间隔 60 秒，探测超时 35 秒。Claude 由运行事件更新，刷新只读缓存。 |
 
 SQLite 采用增量迁移，保留已有项目、会话、历史与记忆。旧邮箱模型中没有可执行 `run_id` 的消息会变为 `legacy` 历史记录，永远不会自动派发。原生会话绑定在首次 0.2 执行时建立，不导入旧适配器会话。
 

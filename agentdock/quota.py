@@ -94,6 +94,8 @@ class QuotaService:
             for provider, environment_id in self.store.configured_connections():
                 if self._auto_stop.is_set():
                     return
+                if provider == "claude":
+                    continue
                 try:
                     if environment_id == "local":
                         self.refresh(provider)
@@ -122,6 +124,17 @@ class QuotaService:
             self._ensure_open()
             self._inflight += 1
         try:
+            if provider == "claude":
+                # CLI execution pushes observations into this cache. Reading the
+                # page never launches a quota helper or probes a remote device.
+                return self.store.get_quota(provider, environment_id) or {
+                    "provider": provider,
+                    "environment_id": environment_id,
+                    "status": "unknown",
+                    "windows": [],
+                    "fetched_at": None,
+                    "source": "cli_event",
+                }
             if provider not in ("codex", "claude"):
                 value = {
                     "provider": provider,
@@ -381,10 +394,7 @@ class QuotaService:
                 "status": "available"
                 if any(w["remaining_percent"] is not None for w in windows)
                 else "unknown",
-                "source": "claude-desktop-snapshot"
-                if provider == "claude"
-                and raw.get("source") == "claude-desktop-snapshot"
-                else self.source,
+                "source": self.source,
             }
         )
 

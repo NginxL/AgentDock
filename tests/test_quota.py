@@ -44,15 +44,15 @@ class QuotaTests(unittest.TestCase):
             called = threading.Event()
 
             def result(provider):
-                self.assertEqual(provider, "claude")
+                self.assertEqual(provider, "codex")
                 called.set()
                 return {"provider": provider, "windows": []}
 
             probe.side_effect = result
-            store.providers = ["claude"]
+            store.providers = ["codex"]
             self.assertTrue(called.wait(1))
             service.close()
-            self.assertEqual({c.args[0] for c in probe.call_args_list}, {"claude"})
+            self.assertEqual({c.args[0] for c in probe.call_args_list}, {"codex"})
 
     def test_helper_failures_are_whitelisted_and_authorization_is_explicit(self):
         service = QuotaService(QuotaStore(), ["helper"], True)
@@ -60,24 +60,24 @@ class QuotaTests(unittest.TestCase):
             service,
             "_probe",
             return_value={
-                "provider": "claude",
+                "provider": "codex",
                 "error_code": "authorization_required",
                 "error": "private token",
             },
         ) as probe:
-            result = service.refresh("claude")
+            result = service.refresh("codex")
             self.assertEqual(result["error_code"], "authorization_required")
             self.assertNotIn("private token", str(result))
-            probe.assert_called_once_with("claude")
+            probe.assert_called_once_with("codex")
         with patch.object(service, "_probe") as probe:
             with self.assertRaises(ValueError):
-                service.refresh("claude", authorize=True)
+                service.refresh("codex", authorize=True)
             probe.assert_not_called()
         with self.assertRaises(ValueError):
             service.refresh("codex", authorize=True)
         legacy = QuotaService(QuotaStore(), ["AgentMeter"], True, source="AgentMeter")
         with self.assertRaises(ValueError):
-            legacy.refresh("claude", authorize=True)
+            legacy.refresh("codex", authorize=True)
 
     def test_authorization_never_starts_in_review_mode(self):
         service = QuotaService(QuotaStore(), ["helper"], False)
@@ -253,7 +253,7 @@ class QuotaTests(unittest.TestCase):
         ):
             service._auto_refresh()
         self.assertEqual(service._auto_stop.wait.call_args_list, [call(600)] * 3)
-        self.assertEqual(refresh.call_args_list, [call("codex"), call("claude")] * 2)
+        self.assertEqual(refresh.call_args_list, [call("codex")] * 2)
 
     def test_timer_skips_missed_intervals_after_suspension(self):
         service = QuotaService(self.store, ["fixture"], True)
@@ -266,7 +266,7 @@ class QuotaTests(unittest.TestCase):
         ):
             service._auto_refresh()
         self.assertEqual(service._auto_stop.wait.call_args_list, [call(0), call(600)])
-        self.assertEqual(refresh.call_count, 2)
+        self.assertEqual(refresh.call_count, 1)
 
     def test_close_stops_automatic_probe_and_joins_timer(self):
         service = QuotaService(

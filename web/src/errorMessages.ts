@@ -1,4 +1,8 @@
 export const errorCopy: Record<string, readonly [string, string]> = {
+  native_claude_switching_removed: [
+    "请在 Claude 官方客户端中管理登录。",
+    "Manage Claude sign-in in the official client.",
+  ],
   account_busy: [
     "此账号正在使用中，请等待当前操作结束。",
     "This account is busy. Wait for its current operation to finish.",

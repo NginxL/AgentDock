@@ -30,7 +30,7 @@ flowchart LR
 | Dispatcher | `agentdock/runtime.py` | Explicit submission, automatic dispatch and result return, task settlement, approval deadlines and cancellation. |
 | Native transports | `providers.py`, `codex_protocol.py`, `claude_protocol.py`, `acp.py`, `native_io.py` | Provider protocols share native transport, initialization and bounded text/stream buffers. `turn.py` describes one turn; `executors.py` handles local/SSH execution. |
 | Agent tools | `agentdock/mcp.py` | Project collaboration, task context/history, questions, delivery, independent review and memory proposals. |
-| Quota bridge | `agentdock/quota.py` | Scheduled and page-entry Codex/Claude probes through the built-in macOS helper, sanitized snapshots and freshness rules. |
+| Quota observations | `agentdock/quota.py`, `quota_events.py` | Scheduled and page-entry Codex probes; passive Claude CLI events; sanitized snapshots and freshness rules. |
 
 The browser's `?demo=1` mode reads fictional fixtures and makes no API requests. It cannot execute agents, dispatch tasks or refresh quotas.
 
@@ -83,7 +83,7 @@ Agent names and optional roles are defined by the user, independently of the CLI
 
 The prompt contains the current task and a bounded reference block with the agent role and approved project memory. Private conversation history remains with the native CLI. Shared memories and teammate results are marked as reference data, not authority; this labeling does not guarantee resistance to prompt injection.
 
-Authentication and model selection follow the locally installed CLI's configuration. Execution uses the CLI’s authentication; the built-in quota helper reads a Claude Desktop quota snapshot or queries the Codex-owned App Server without reading credentials. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
+Authentication and model selection follow the locally installed CLI's configuration. Execution uses the CLI’s authentication; the quota helper queries the Codex-owned App Server, while Claude quota arrives in execution events. Compatibility depends on the installed CLI and its provider/account configuration. Existing desktop or terminal conversations cannot currently be attached.
 
 ## Queue and task settlement
 
@@ -150,7 +150,7 @@ The default run deadline is 15 minutes and is configurable per service/Agent up 
 
 Permission and MCP requests return to the local controller with a request ID. Responses return to the same remote worker; terminal replies are stored separately from progress. Short disconnections resume from an event cursor. A 90-second lease, explicit cancellation and process-group cleanup bound unattended execution. Controller restart does not replay unfinished work. Remote records currently have no automatic retention cleanup. See [SSH lifecycle and identity](SSH.md).
 
-The local history scanner excludes remote bindings. Remote token/TPS counters come from managed live events and use environment-prefixed identities. Remote Codex quota reads use its own App Server; remote Claude returns unknown. Remote readings never fall back to local accounts.
+The local history scanner excludes remote bindings. Remote token/TPS counters come from managed live events and use environment-prefixed identities. Remote Codex quota reads use its own App Server; remote Claude quota comes from execution events and stays unknown without them. Remote readings never fall back to local accounts.
 
 ## Shared memory
 
@@ -162,11 +162,11 @@ The UI presents versions, provenance and proposal review. Full revision browsing
 
 ## Quotas and subscriptions
 
-With execution enabled and a helper configured, the local service owns one 600-second refresh loop, starting 10 minutes after startup. For device-login cards, selecting Usage & billing also invokes `configured quota_command + --probe + codex|claude`; overlapping page requests are coalesced. Managed-account cards use `/api/accounts/{id}/refresh` and their own stored quota instead of the device snapshot. All paths share the 35-second probe timeout and 60-second per-provider throttle. Hidden windows and multiple tabs do not create extra timers. Missed ticks do not produce a catch-up burst, and shutdown stops the timer and drains owned probes. Import, cache reads, demo mode and review mode never launch probes. Automatic reads never request interactive Keychain authorization.
+With execution enabled and a helper configured, the local service owns one 600-second Codex refresh loop, starting 10 minutes after startup. For device-login cards, selecting Usage & billing also invokes `configured quota_command + --probe + codex`; overlapping page requests are coalesced. Managed-account cards use `/api/accounts/{id}/refresh` and their own stored quota instead of the device snapshot. Claude refresh returns saved execution observations only. Codex probes share the 35-second timeout and 60-second throttle. Hidden windows and multiple tabs do not create extra timers. Missed ticks do not produce a catch-up burst, and shutdown stops the timer and drains owned probes. Import, cache reads, demo mode and review mode never launch probes. Automatic reads never request interactive Keychain authorization.
 
 Snapshots retain provider, plan, remaining percentages, reset timestamps, source sample time and status. Unknown values stay null. Readings older than 15 minutes become stale. After a reset time passes, its percentage becomes unknown until refreshed. A failed refresh preserves old readings with an error/stale state. Account identifiers and raw stderr are discarded.
 
-Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. The bundled helper reads the Claude Desktop snapshot or queries the Codex-owned App Server; provider accounts are unchanged. Quota visibility grants no execution permission.
+Renewal dates and amounts are manual subscription records, distinct from quota resets and model-call costs. The bundled helper queries the Codex-owned App Server; Claude quota is observed during execution. Quota visibility grants no execution permission.
 
 ## Trust and persistence
 
@@ -184,7 +184,7 @@ Upgrading a 0.1 store preserves historical messages as `legacy` records without 
 
 An `NSStatusItem` and native `NSMenu` keep a menu-bar entry available while the main window is hidden. Closing the window does not stop tasks; explicit quit drains the owned backend. The menu reads the authenticated, cache-only `GET /api/quotas` endpoint without separate provider-refresh controls. The service owns the automatic refresh schedule. Its ephemeral HTTP client rejects redirects. A same-origin main-frame bridge shares the interface language with the native menus; only that preference is persisted.
 
-`quota_command` points to bundled `AgentDockUsage`; legacy `agentmeter_command` remains compatible. Codex queries its native App Server, which handles authentication. Claude reads only version 2 of `~/Library/Application Support/Claude/plan-usage-history.json`, bounded to 4 MiB, with no Keychain or network access. Ambiguous multi-organization snapshots are rejected. `fetchedAt` preserves the source sample time; missing reset times remain unknown.
+`quota_command` points to bundled `AgentDockUsage`; legacy `agentmeter_command` remains compatible for Codex. Codex queries its native App Server, which handles authentication. Claude quota comes only from `rate_limit_event` emitted by running Claude Code sessions. Local and SSH device-login observations are stored by environment; managed observations are stored by account and guarded by login generation. Refresh reads the existing sample without probing a helper, desktop snapshot, credential store or provider endpoint. Missing percentages and reset times remain unknown. Pre-upgrade samples retain their timestamp and a distinct legacy source.
 
 ## Independent agents, models and metering
 

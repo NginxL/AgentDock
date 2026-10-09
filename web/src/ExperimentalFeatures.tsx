@@ -3,10 +3,7 @@ import { createContext, useContext, useState } from "react";
 import type { Mutate, Translate } from "./types";
 
 export type Features = Partial<
-  Record<
-    "automatic_failover" | "native_switching" | "acp_agents" | "claude_quota",
-    boolean
-  >
+  Record<"automatic_failover" | "native_switching" | "acp_agents", boolean>
 >;
 // Undefined supports older servers and offline demos. New servers always send
 // explicit defaults, including false for every unaccepted experimental feature.
@@ -32,12 +29,6 @@ const descriptions = {
     "Additional agents",
     "启用 ACP 客户端。协议测试已覆盖，具体 CLI 版本和真实任务仍需验收。",
     "Enable ACP clients. Protocol tests are covered; verify your CLI version with real tasks.",
-  ],
-  claude_quota: [
-    "Claude 订阅额度查询",
-    "Claude subscription quota",
-    "使用非公开额度接口，可能随服务更新失效。沿用 Claude Code 自身的代理配置。",
-    "Uses an undocumented quota endpoint that may change. Inherits Claude Code’s proxy configuration.",
   ],
 } as const;
 

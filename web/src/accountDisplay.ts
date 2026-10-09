@@ -41,10 +41,6 @@ export function accountError(code: string | null | undefined, t: Translate) {
       "CLI 登录未成功，请重新登录。",
       "CLI sign-in failed. Sign in again.",
     ],
-    experimental_disabled: [
-      "请先在账号页启用实验额度查询",
-      "Enable experimental quota queries on the Accounts page",
-    ],
     quota_unavailable: [
       "当前无法读取订阅额度。",
       "Subscription quota is currently unavailable.",
@@ -115,4 +111,16 @@ export function quotaWindow(
     )[window.name ?? ""] ??
     t(...uiMessages.accountdisplay_usage_limit_e26f7d)
   );
+}
+
+export function quotaSource(
+  source: string | undefined,
+  sampledAt: string | undefined,
+  t: Translate,
+) {
+  if (source === "legacy_snapshot" || source === "claude-desktop-snapshot")
+    return t(...uiMessages.quota_source_legacy);
+  return sampledAt
+    ? t(...uiMessages.quota_source_last_run)
+    : t(...uiMessages.quota_source_waiting);
 }

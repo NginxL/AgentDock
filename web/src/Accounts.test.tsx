@@ -701,3 +701,49 @@ it("uses managed account quotas on Agent cards and never falls back to device qu
     ),
   ).toBeTruthy();
 });
+
+it("shows passive Claude quota provenance and does not offer an active quota refresh", () => {
+  setup({
+    accounts: [
+      {
+        ...claude,
+        quota: {
+          source: "cli_event",
+          status: "ok",
+          fetched_at: "2026-10-09T08:00:00Z",
+          windows: [{ name: "session", remaining_percent: 30 }],
+        },
+      },
+    ],
+  });
+  expect(screen.getByText("来源：上次运行")).toBeTruthy();
+  expect(screen.getByText(/30%/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "刷新额度" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "本机客户端" })).toBeNull();
+  expect(screen.getByRole("button", { name: "检查登录" })).toBeTruthy();
+});
+
+it("distinguishes unknown Claude quota from an unchanged pre-upgrade sample", () => {
+  setup({
+    accounts: [
+      claude,
+      {
+        ...claude,
+        id: "legacy",
+        label: "Legacy",
+        quota: {
+          source: "legacy_snapshot",
+          status: "stale",
+          fetched_at: "2026-10-01T08:00:00Z",
+          windows: [{ name: "weekly", remaining_percent: 25 }],
+        },
+      },
+    ],
+  });
+  expect(
+    screen.getByText("额度未知，等待运行中的 CLI 返回数据。"),
+  ).toBeTruthy();
+  expect(screen.getByText("来源：升级前记录")).toBeTruthy();
+  expect(screen.getByText(/25%/)).toBeTruthy();
+  expect(screen.queryByText("Claude 订阅额度查询")).toBeNull();
+});
