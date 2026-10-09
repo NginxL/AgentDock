@@ -621,10 +621,6 @@ class Store(
                 result["runs"] = self._all(
                     "SELECT * FROM runs WHERE id IN (SELECT id FROM runs ORDER BY created_at DESC,rowid DESC LIMIT 300) ORDER BY created_at,rowid"
                 )
-            if domains is None or "events" in domains:
-                result["events"] = self._all(
-                    "SELECT * FROM (SELECT * FROM events ORDER BY seq DESC LIMIT 300) ORDER BY seq"
-                )
             if domains is None or "approvals" in domains:
                 result["approvals"] = self._all(
                     "SELECT * FROM approvals WHERE status='pending' ORDER BY created_at"

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tempfile
 import threading
@@ -60,6 +61,31 @@ class StateSyncTests(unittest.TestCase):
                 reader.db.execute("DELETE FROM agents")
         writer.join(1)
         self.assertEqual(self.store.get_agent(agent["id"])["name"], "After")
+
+    def test_full_and_partial_state_exclude_conversation_event_payloads(self):
+        agent = self.store.add_agent(None, "Fixture", "codex")
+        session = self.store.add_session(agent["id"], "One")
+        for _ in range(300):
+            self.store.append_event(
+                None,
+                session["id"],
+                "tool_output",
+                {"text": "x" * 20000, "run_id": "fixture"},
+            )
+        initial = self.store.state()
+        self.assertNotIn("events", initial)
+        self.store.update_session_settings(
+            session["id"], {"model": None, "effort": None}
+        )
+        partial = self.store.state(initial["version"])
+        self.assertEqual(set(partial), {"sessions", "version", "partial"})
+        self.assertLess(len(json.dumps(partial).encode()), 10000)
+        # The dedicated history/SSE source still retains every event.
+        events = self.store.session_events(session["id"])
+        self.assertEqual(len(events), 300)
+        self.assertTrue(
+            all(event["payload"]["text"] == "x" * 20000 for event in events)
+        )
 
     def test_event_wakes_only_its_session_and_not_global_feed(self):
         agent = self.store.add_agent(None, "Fixture", "codex")

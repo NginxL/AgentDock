@@ -64,7 +64,7 @@ class StateSync:
         }
         if domains:
             self._revision += 1
-            for domain in domains | {"events"}:
+            for domain in domains:
                 self._domain_versions[domain] = self._revision
             self.changed.notify_all()
         for session_id in self._changed_sessions:

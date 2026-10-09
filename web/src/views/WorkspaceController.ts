@@ -254,7 +254,9 @@ export function useWorkspaceController({
     setEvents([]);
     setEventError("");
     if (demo) {
-      setEvents(state.events.filter((event) => event.session_id === sessionID));
+      setEvents(
+        (state.events ?? []).filter((event) => event.session_id === sessionID),
+      );
       setEventLoading(false);
       return;
     }

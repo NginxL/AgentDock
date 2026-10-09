@@ -262,7 +262,8 @@ export interface DockState {
   runs?: Run[];
   memories: Memory[];
   proposals: Proposal[];
-  events: AgentEvent[];
+  /** Demo fixtures only; live conversations load events through their own stream. */
+  events?: AgentEvent[];
   quotas: Quota[] | Record<string, Quota>;
   approvals: Approval[];
   subscriptions: Subscription[] | Record<string, Subscription>;

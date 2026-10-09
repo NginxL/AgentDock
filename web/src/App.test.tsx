@@ -52,7 +52,6 @@ const state: DockState = {
     },
   ],
   proposals: [],
-  events: [],
   quotas: [],
   approvals: [],
   subscriptions: [],

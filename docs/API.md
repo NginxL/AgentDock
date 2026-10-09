@@ -149,7 +149,7 @@ Names and roles are user-defined and independent of `provider`. Updates require 
 
 ## State and task records
 
-`GET /api/state` includes the most recent **300 runs** and **300 events**, in chronological order. `account_attempts` includes the latest 300 attempts, newest first. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
+`GET /api/state` includes the most recent **300 runs**, in chronological order. Full and incremental snapshots exclude conversation events; live history uses the session events endpoint and SSE, while demo events are local fixtures. Incremental snapshots include only changed domains. `account_attempts` includes the latest 300 attempts, newest first. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
 
 | Record | Relevant fields |
 | --- | --- |
