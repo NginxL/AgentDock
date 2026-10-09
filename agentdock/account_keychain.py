@@ -9,9 +9,12 @@ import unicodedata
 from pathlib import Path
 
 from . import credential_broker
+from .errors import Invalid
 
 
-class KeychainError(ValueError):
+class KeychainError(Invalid):
+    code = "keychain_unavailable"
+
     def __init__(self):
         super().__init__("Cannot access the macOS login Keychain.")
 

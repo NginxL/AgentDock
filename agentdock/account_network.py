@@ -19,6 +19,7 @@ from urllib.request import (
 )
 
 from . import __version__
+from .errors import Invalid
 
 NETWORK_ENV = frozenset(
     {
@@ -43,7 +44,7 @@ NETWORK_ENV = frozenset(
 )
 
 
-class NetworkError(ValueError):
+class NetworkError(Invalid):
     def __init__(self, code, retry_after=0):
         self.code, self.retry_after = code, retry_after
         super().__init__(code)

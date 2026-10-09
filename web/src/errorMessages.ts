@@ -1,4 +1,64 @@
 export const errorCopy: Record<string, readonly [string, string]> = {
+  account_busy: [
+    "此账号正在使用中，请等待当前操作结束。",
+    "This account is busy. Wait for its current operation to finish.",
+  ],
+  account_login_active: [
+    "请先取消正在进行的登录，再删除账号。",
+    "Cancel the active login before removing this account.",
+  ],
+  account_quota_busy: [
+    "额度正在刷新，请稍后重试。",
+    "Quota refresh is still running. Try again shortly.",
+  ],
+  native_credentials_desktop_required: [
+    "请打开 AgentDock 桌面版，以访问受保护的原生账号凭据。",
+    "Open AgentDock desktop to use protected native credentials.",
+  ],
+  native_account_busy: [
+    "正在保存或切换原生账号，请稍后重试。",
+    "Another native account operation is running. Try again shortly.",
+  ],
+  native_credentials_busy: [
+    "此设备的 Agent 正在使用登录信息，请稍后刷新模型列表。",
+    "An Agent on this device is using the native login. Refresh models when it finishes.",
+  ],
+  native_login_recovery_required: [
+    "请先恢复上一次未完成的原生账号切换。",
+    "Recover the previous native login operation first.",
+  ],
+  native_account_login_required: [
+    "请先登录此 AgentDock 账号，再保存原生客户端登录。",
+    "Sign in to this AgentDock account before saving a native login.",
+  ],
+  native_account_mismatch: [
+    "原生客户端登录的是其他账号，请选择对应的账号卡片。",
+    "Choose the account card matching the native client login.",
+  ],
+  keychain_unavailable: [
+    "无法访问 macOS 登录钥匙串，请检查 AgentDock 桌面版的授权。",
+    "Cannot access the macOS login Keychain. Check AgentDock desktop authorization.",
+  ],
+  network_configuration_unavailable: [
+    "无法确认 Claude Code 的网络配置，请检查原生 CLI 配置。",
+    "Cannot read Claude Code network settings. Check the native CLI configuration.",
+  ],
+  network_unavailable: [
+    "连接失败，请检查原生 CLI 的网络和代理配置。",
+    "Connection failed. Check the native CLI network and proxy settings.",
+  ],
+  quota_unavailable: [
+    "暂时无法读取账号额度，请稍后重试。",
+    "Account quota is unavailable. Try again later.",
+  ],
+  auth_expired: [
+    "账号登录已过期，请重新登录。",
+    "This account login has expired. Sign in again.",
+  ],
+  rate_limited: [
+    "请求暂时受限，请等待后重试。",
+    "Requests are temporarily limited. Wait before retrying.",
+  ],
   choose_an_agent_in_this_project: [
     "请选择当前项目中的 Agent。",
     "Choose an Agent in this project",

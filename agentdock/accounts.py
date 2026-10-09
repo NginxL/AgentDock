@@ -37,10 +37,13 @@ from .account_network import (
     claude_get,
     claude_network,
 )
+from .errors import Invalid
 
 
-class AccountError(ValueError):
+class AccountError(Invalid):
     """Public errors must not contain CLI output, paths, or credential material."""
+
+    code = "account_error"
 
 
 _TERMINAL = {"completed", "failed", "cancelled"}
@@ -277,7 +280,8 @@ class AccountManager:
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
                         raise AccountError(
-                            "This account is busy. Try again after its current operation."
+                            "This account is busy. Try again after its current operation.",
+                            code="account_busy",
                         )
                     stop.wait(min(0.05, max(0, deadline - time.monotonic())))
             if recover:
@@ -749,7 +753,8 @@ class AccountManager:
         with self.lease(account, timeout=0, recover=False):
             if self.status(account).get("status") not in _TERMINAL | {"idle"}:
                 raise AccountError(
-                    "Cancel the active login before removing this account."
+                    "Cancel the active login before removing this account.",
+                    code="account_login_active",
                 )
             # Every native command first creates its provider home. Only our
             # own untouched metadata proves native storage was never prepared;

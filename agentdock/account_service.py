@@ -268,7 +268,10 @@ class AccountService:
                 pending = self._refreshing[identifier] = threading.Event()
         if not owner:
             if not pending.wait(30):
-                raise AccountError("Quota refresh is still running. Try again shortly.")
+                raise AccountError(
+                    "Quota refresh is still running. Try again shortly.",
+                    code="account_quota_busy",
+                )
             return self.store.get_account(identifier)
         try:
             return self._refresh(identifier)

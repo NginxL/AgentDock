@@ -26,6 +26,7 @@ from . import credential_broker
 from .account_keychain import Keychain, KeychainError, claude_service
 from .account_network import NetworkError, claude_get, claude_network
 from .accounts import AccountError, _directory, _identity, _now
+from .diagnostics import failure
 from .registry import commands
 
 _AUTH_KEYS = ("oauth:tokenCache", "oauth:tokenCacheV2", "lastKnownAccountUuid")
@@ -512,7 +513,12 @@ class NativeAccounts:
         self.platform = platform or MacClients(manager.commands_config)
         self.vault = vault or credential_broker
         if self.vault.available():
-            self.protect_legacy()
+            try:
+                self.protect_legacy()
+            except (OSError, ValueError, credential_broker.BrokerUnavailable) as error:
+                # Another process may own a pending operation. Native actions
+                # remain guarded; unrelated work can still start normally.
+                failure(error, "accounts")
 
     def _client(self, account, client):
         if account.get("environment_id") != "local" or client not in _CLIENTS.get(
@@ -524,7 +530,8 @@ class NativeAccounts:
             raise AccountError("Native client switching is available on macOS.")
         if not self.vault.available():
             raise AccountError(
-                "Open AgentDock desktop to use protected native credentials."
+                "Open AgentDock desktop to use protected native credentials.",
+                code="native_credentials_desktop_required",
             )
         return client
 
@@ -539,7 +546,8 @@ class NativeAccounts:
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise AccountError(
-                    "Another native account operation is running."
+                    "Another native account operation is running.",
+                    code="native_account_busy",
                 ) from None
             yield
         finally:
@@ -586,13 +594,32 @@ class NativeAccounts:
                 self.root / "previous.json",
                 self.root / "pending.json",
             ):
-                raw = _bytes(path, 96 * 1024 * 1024)
-                if raw is not None and _json(raw).get("schema") != 2:
-                    self._load(path)
+                try:
+                    raw = _bytes(path, 96 * 1024 * 1024)
+                    if raw is not None and _json(raw).get("schema") != 2:
+                        self._load(path)
+                except (
+                    OSError,
+                    ValueError,
+                    credential_broker.BrokerUnavailable,
+                ) as error:
+                    # Keep the original for recovery; one invalid snapshot must
+                    # not stop migration of the others or server startup.
+                    failure(error, "accounts")
 
     def _public(self, path):
-        value = _json(_bytes(path, 96 * 1024 * 1024))
-        return value.get("public") if value.get("schema") == 2 else None
+        raw = _bytes(path, 96 * 1024 * 1024)
+        try:
+            value = _json(raw)
+            if value.get("schema") != 2:
+                return None
+            public = value.get("public")
+            if not isinstance(public, dict):
+                raise AccountError("Unsupported native login format.")
+            return public
+        except ValueError as error:
+            failure(error, "accounts")
+            return None
 
     def status(self, account):
         available = (
@@ -600,8 +627,6 @@ class NativeAccounts:
             and account["environment_id"] == "local"
             and self.vault.available()
         )
-        if available:
-            self.protect_legacy()
         clients = []
         for client in _CLIENTS.get(account["provider"], ()):
             saved = (
@@ -620,7 +645,7 @@ class NativeAccounts:
         return {
             "available": available,
             "clients": clients,
-            "recovery_needed": bool(pending),
+            "recovery_needed": bool(pending) or (self.root / "pending.json").exists(),
             "recovery_client": previous.get("client") if previous else None,
         }
 
@@ -629,18 +654,23 @@ class NativeAccounts:
         expected = (account.get("identity") or {}).get("email")
         if not expected:
             raise AccountError(
-                "Sign in to this AgentDock account before saving a native login."
+                "Sign in to this AgentDock account before saving a native login.",
+                code="native_account_login_required",
             )
         if expected.casefold() != identity["email"].casefold():
             raise AccountError(
-                "The native client is signed in to a different account. Choose its matching account card."
+                "The native client is signed in to a different account. Choose its matching account card.",
+                code="native_account_mismatch",
             )
 
     def capture(self, account, client):
         self._client(account, client)
         with self._lock():
             if (self.root / "pending.json").exists():
-                raise AccountError("Recover the previous native login operation first.")
+                raise AccountError(
+                    "Recover the previous native login operation first.",
+                    code="native_login_recovery_required",
+                )
             running = self.platform.stop(client)
             try:
                 snapshot = self.platform.read(client)
@@ -700,7 +730,10 @@ class NativeAccounts:
         with self._lock():
             journal_path = self.root / "pending.json"
             if journal_path.exists():
-                raise AccountError("Recover the previous native login operation first.")
+                raise AccountError(
+                    "Recover the previous native login operation first.",
+                    code="native_login_recovery_required",
+                )
             target = self._load(self._path(account["id"], client))
             if not target:
                 raise AccountError(

@@ -131,6 +131,68 @@ class NativeSwitchTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text())["schema"], 2)
             self.assertEqual(self.native._load(path)["snapshot"], self.client.current)
 
+    def test_status_reads_public_metadata_while_a_switch_owns_the_lock(self):
+        self.capture()
+        with (
+            self.native._lock(),
+            patch.object(
+                self.native,
+                "protect_legacy",
+                side_effect=AssertionError("migration in status"),
+            ),
+            patch.object(
+                self.native.vault,
+                "unseal",
+                side_effect=AssertionError("decrypt in status"),
+            ),
+            patch.object(
+                self.native.vault, "seal", side_effect=AssertionError("write in status")
+            ),
+        ):
+            status = self.native.status(self.account)
+            self.assertTrue(status["clients"][0]["saved"])
+            self.assertEqual(status["clients"][0]["identity"], self.identity)
+
+    def test_startup_skips_corrupt_snapshots_and_migrates_healthy_ones(self):
+        bad = self.native._path(self.account["id"], "codex")
+        bad.parent.mkdir(parents=True)
+        bad.write_text("private-token invalid json")
+        pending = self.native.root / "pending.json"
+        pending.write_text("[]")
+        healthy = self.native.root / "previous.json"
+        healthy.write_text(
+            json.dumps(
+                {
+                    "identity": self.identity,
+                    "snapshot": self.client.current,
+                    "client": "codex",
+                }
+            )
+        )
+        with patch("agentdock.native_accounts.failure") as log:
+            native = NativeAccounts(self.manager, self.client, self.native.vault)
+            status = native.status(self.account)
+            self.assertFalse(status["clients"][0]["saved"])
+            self.assertTrue(status["recovery_needed"])
+            self.assertEqual(status["recovery_client"], "codex")
+            self.assertGreaterEqual(log.call_count, 2)
+            self.assertTrue(
+                all(call.args[1] == "accounts" for call in log.call_args_list)
+            )
+        self.assertEqual(bad.read_text(), "private-token invalid json")
+        self.assertEqual(pending.read_text(), "[]")
+        self.assertEqual(json.loads(healthy.read_text())["schema"], 2)
+        with self.assertRaises(ValueError):
+            native._load(bad)
+        self.assertEqual(self.client.history, [])
+
+    def test_startup_can_defer_migration_while_another_process_owns_the_lock(self):
+        with self.native._lock(), patch("agentdock.native_accounts.failure") as log:
+            native = NativeAccounts(self.manager, self.client, self.native.vault)
+            self.assertTrue(native.status(self.account)["available"])
+            log.assert_called_once()
+        self.assertEqual(self.client.history, [])
+
     def test_cannot_switch_before_capture_or_use_wrong_provider_device_identity(self):
         with self.assertRaises(AccountError):
             self.native.switch(self.account, "codex")

@@ -18,6 +18,8 @@ _lock = threading.Lock()
 
 
 class BrokerUnavailable(Forbidden):
+    code = "native_credentials_desktop_required"
+
     def __init__(self):
         super().__init__("Open AgentDock desktop to use protected native credentials.")
 
