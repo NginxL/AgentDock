@@ -149,7 +149,7 @@ Names and roles are user-defined and independent of `provider`. Updates require 
 
 ## State and task records
 
-`GET /api/state` includes the most recent **300 runs**, in chronological order. Full and incremental snapshots exclude conversation events; live history uses the session events endpoint and SSE, while demo events are local fixtures. Incremental snapshots include only changed domains. `account_attempts` includes the latest 300 attempts, newest first. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
+`GET /api/state` includes the most recent **300 runs**, in chronological order. Full and incremental snapshots exclude conversation events; live history uses the session events endpoint and SSE, while demo events are local fixtures. Incremental snapshots include only changed domains, each with its entire current collection; they are not row-level deltas. `account_attempts` includes the latest 300 attempts, newest first. Other collections are not paginated. Run history has no separate pagination endpoint in this preview. The session events endpoint supports cursor pagination; use the last returned `seq` as the next `after` value.
 
 | Record | Relevant fields |
 | --- | --- |
@@ -234,7 +234,7 @@ Each native process executes one foreground turn and exits afterward. Claude's c
 | Concurrency | At most 4 active native processes. The same agent, the same managed account and identical or parent/child workspace paths cannot execute concurrently. |
 | Collaboration | Root depth is 0; delegation depth is at most 3. Each root task admits at most 16 runs, including the root, delegated tasks, and result continuations. New delegations reserve capacity for their replies and may therefore be rejected before 16 runs exist. |
 | Timeouts | Execution defaults to 15 minutes, configurable up to 24 hours per Agent/service. Approval waits are excluded, with a separate deadline of at most 2 minutes. Expiry never grants permission. |
-| Output | Progress display truncates after 5,000 events or 8 MiB; final reply and settlement continue. Protocol lines remain bounded to 512 KiB. Stored final text retains the last 120,000 UTF-8 bytes, including an explicit truncation marker when shortened; automatic result handoffs include at most 12,000 characters. |
+| Output | Progress display truncates after 5,000 events or 8 MiB; final reply and settlement continue. An oversized individual progress event is replaced by a marker without suppressing later progress. Protocol lines remain bounded to 512 KiB. Final text keeps the tail with an explicit truncation marker; both its UTF-8 content and JSON-escaped string content are limited to 120,000 bytes, including the marker. Automatic result handoffs include at most 12,000 characters. |
 | Device-login quotas | The service refreshes every 600 seconds when execution and a helper are enabled. Selecting Usage & billing also triggers refresh. A provider refresh is throttled to once per 60 seconds, with a 35-second probe timeout. Snapshots older than 15 minutes become stale; remaining quota becomes unknown once its reset time passes. |
 
 SQLite migration is additive: projects, sessions, history, and memory remain available. Messages from the earlier mailbox model without an executable `run_id` become `legacy` audit records and are never dispatched. Native bindings are created on the first 0.2 execution; older adapter sessions are not imported.

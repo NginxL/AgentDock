@@ -503,6 +503,49 @@ class RuntimeTests(unittest.TestCase):
                         len(reply.encode()) > TEXT_LIMIT,
                     )
 
+    def test_json_escaped_final_replies_still_complete_and_preserve_both_final_events(
+        self,
+    ):
+        from agentdock.text_buffer import TRUNCATED, bounded_text
+
+        for reply in (
+            '{"id": "a1", "name": "item", "tags": ["x", "y"]}\n' * 2400 + "CONCLUSION",
+            "\x01" * 119000 + "CONCLUSION",
+        ):
+            with self.subTest(prefix=repr(reply[:10])):
+
+                def executor(*args, **kwargs):
+                    args[8]("fake-session")
+                    args[7](
+                        "agent_message",
+                        {
+                            "provider": "codex",
+                            "item_id": "answer-1",
+                            "phase": "final_answer",
+                            "content": {"type": "text", "text": bounded_text(reply)},
+                        },
+                    )
+                    return reply
+
+                runtime = self.make_runtime(executor)
+                run = self.finished(runtime.start(self.sa["id"], "Escaped reply"))
+                runtime.close()
+                self.assertEqual(run["status"], "completed", run.get("error"))
+                self.assertEqual(run["result"], bounded_text(reply).strip())
+                self.assertTrue(run["result"].endswith("CONCLUSION"))
+                self.assertIn(TRUNCATED.strip(), run["result"])
+                finals = [
+                    e
+                    for e in self.store.session_events(self.sa["id"])
+                    if e["payload"].get("run_id") == run["id"]
+                    and e["kind"] in ("assistant_message", "agent_message")
+                ]
+                self.assertEqual(len(finals), 2)
+                self.assertEqual(finals[-1]["payload"]["text"], run["result"])
+                self.assertEqual(
+                    finals[0]["payload"]["content"]["text"].strip(), run["result"]
+                )
+
     def test_stop_parent_cancels_waiting_delegation(self):
         def executor(
             provider,

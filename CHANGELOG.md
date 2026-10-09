@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Progress and final reply regressions
+
+- Omit only an oversized individual progress event; keep later local and SSH tool/message progress visible until the cumulative display budget is reached.
+- Bound final text after JSON escaping as well as before encoding, preserving the conclusion and an explicit marker without failing completed tasks on quotes or control characters.
+
 ### Follow-up review
 
 - Remove credential-bearing self-hosted CI and refuse live model verification inside GitHub Actions; document removal of previously registered runners.

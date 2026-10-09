@@ -17,6 +17,21 @@ def send(value):
     print(json.dumps(value), flush=True)
 
 
+def final_suffix():
+    if scenario == "quoted_final":
+        return (
+            '{"id": "a1", "name": "item", "tags": ["x", "y"]}\n' * 2400
+            + "FINAL CONCLUSION"
+        )
+    if scenario == "control_final":
+        return "\x01" * 60000 + "FINAL CONCLUSION"
+    return (
+        os.environ.get("AGENTDOCK_CAPABILITY", "missing")
+        if scenario == "redact"
+        else "world"
+    )
+
+
 def read():
     value = json.loads(sys.stdin.readline())
     with open("fake-contract.jsonl", "a") as output:
@@ -360,11 +375,7 @@ if provider == "codex":
         }
     )
     send({"method": "item/agentMessage/delta", "params": params})
-    params["delta"] = (
-        os.environ.get("AGENTDOCK_CAPABILITY", "missing")
-        if scenario == "redact"
-        else "world"
-    )
+    params["delta"] = final_suffix()
     send({"method": "item/agentMessage/delta", "params": params})
     send(
         {
@@ -572,12 +583,7 @@ else:
                     },
                 }
             )
-    for text in (
-        "hello ",
-        os.environ.get("AGENTDOCK_CAPABILITY", "missing")
-        if scenario == "redact"
-        else "world",
-    ):
+    for text in ("hello ", final_suffix()):
         send(
             {
                 "type": "stream_event",

@@ -67,6 +67,36 @@ class NativeProvidersTest(unittest.TestCase):
                     "hello world",
                 )
 
+    def test_escaped_final_answers_fit_event_storage_after_native_protocol_parsing(
+        self,
+    ):
+        from agentdock.store import Store
+        from agentdock.text_buffer import TRUNCATED
+
+        store = Store(":memory:")
+        self.addCleanup(store.close)
+        for provider in ("codex", "claude"):
+            for scenario in ("quoted_final", "control_final"):
+                with self.subTest(provider=provider, scenario=scenario):
+                    self.events.clear()
+                    reply = self.run_provider(provider, scenario)
+                    self.assertTrue(reply.endswith("FINAL CONCLUSION"))
+                    self.assertEqual(reply.count(TRUNCATED), 1)
+                    final = [
+                        (kind, payload)
+                        for kind, payload in self.events
+                        if kind == "agent_message"
+                    ]
+                    self.assertTrue(final)
+                    for kind, payload in final:
+                        if provider == "codex":
+                            self.assertEqual(payload["phase"], "final_answer")
+                        self.assertEqual(payload["content"]["text"], reply)
+                        # Use the real JSON storage validation, including run metadata.
+                        store.append_event(
+                            None, None, kind, {**payload, "run_id": "r" * 36}
+                        )
+
     def test_full_access_is_explicit_and_can_be_revoked_on_native_resume(self):
         for provider in ("codex", "claude"):
             with self.subTest(provider=provider):

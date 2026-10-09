@@ -97,6 +97,29 @@ class ACPTests(unittest.TestCase):
         messages = [v for k, v in self.events if k == "agent_message"]
         self.assertEqual([m["phase"] for m in messages], ["commentary", "final_answer"])
 
+    def test_escaped_final_replies_fit_event_storage(self):
+        from agentdock.text_buffer import TRUNCATED
+
+        store = Store(":memory:")
+        self.addCleanup(store.close)
+        for scenario in ("quoted_final", "control_final"):
+            with self.subTest(scenario=scenario):
+                self.events.clear()
+                reply = self.run_agent(scenario=scenario)
+                self.assertTrue(reply.endswith("CONCLUSION"))
+                self.assertEqual(reply.count(TRUNCATED), 1)
+                final = [
+                    payload
+                    for kind, payload in self.events
+                    if kind == "agent_message"
+                    and payload.get("phase") == "final_answer"
+                ]
+                self.assertEqual(len(final), 1)
+                self.assertEqual(final[0]["content"]["text"], reply)
+                store.append_event(
+                    None, None, "agent_message", {**final[0], "run_id": "r" * 36}
+                )
+
     def test_discussion_negotiates_plan_mode_or_stops_before_prompt(self):
         with self.assertRaisesRegex(ProviderError, "read-only planning mode"):
             self.run_agent(permission="read_only")

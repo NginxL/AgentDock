@@ -165,7 +165,15 @@ for line in sys.stdin:
         )
         update("usage_update", used=50000, size=200000)
         update("agent_message_chunk", content={"type": "text", "text": "Final "})
-        update("agent_message_chunk", content={"type": "text", "text": "answer"})
+        answer = "answer"
+        if scenario == "quoted_final":
+            answer = (
+                '{"id": "a1", "name": "item", "tags": ["x", "y"]}\n' * 2400
+                + "CONCLUSION"
+            )
+        elif scenario == "control_final":
+            answer = "\x01" * 60000 + "CONCLUSION"
+        update("agent_message_chunk", content={"type": "text", "text": answer})
         result = {
             "stopReason": "max_tokens" if scenario == "incomplete" else "end_turn"
         }

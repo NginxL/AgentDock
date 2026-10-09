@@ -65,6 +65,6 @@ worktree 不是额外系统沙箱，目录不会自动合并、清理或发布�
 
 ## 实现与验证边界
 
-`task_store.py` 保存任务及审计记录，`task_runtime.py` 复用执行队列，`task_workspace.py` 管理可选 worktree，`execution_lease.py` 防止旧进程未退出时重新占用会话。上下文采用有界摘要，Agent 可通过 `task_history` 分页读取完整持久记录，通过 `task_result` 读取最终报告（每轮最终文本保留尾部，最多 120,000 UTF-8 字节，含超限时的明确截断标记）。
+`task_store.py` 保存任务及审计记录，`task_runtime.py` 复用执行队列，`task_workspace.py` 管理可选 worktree，`execution_lease.py` 防止旧进程未退出时重新占用会话。上下文采用有界摘要，Agent 可通过 `task_history` 分页读取完整持久记录，通过 `task_result` 读取最终报告。每轮最终文本超限时保留尾部并明确标注截断；原文及 JSON 转义后的字符串内容均最多 120,000 UTF-8 字节，标记计入上限。因此，大量引号或控制字符的回复会保留较少原始字符。
 
 自动验证覆盖任务生命周期、问题恢复、跨项目拒绝、幂等输入、原生 MCP 提问—审查—交付链路、Codex 调整回执、SSH 私有执行、进程锁和工作区保护，以及页面交互。新增任务流程的真实模型效果与长时间运行表现仍需实机验收；模拟测试不代表所有 CLI 版本均已实测。
