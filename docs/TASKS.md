@@ -65,6 +65,6 @@ Worktrees are not an additional OS sandbox. Files are never automatically merged
 
 ## Implementation and validation
 
-`task_store.py` persists work and audit records; `task_runtime.py` reuses the dispatcher; `task_workspace.py` manages optional worktrees; `execution_lease.py` prevents overlapping replacement of native sessions. Context uses bounded summaries. Agents can retrieve complete durable records through paginated `task_history` and final reports through `task_result` (stored final text is capped at 64,000 characters per run).
+`task_store.py` persists work and audit records; `task_runtime.py` reuses the dispatcher; `task_workspace.py` manages optional worktrees; `execution_lease.py` prevents overlapping replacement of native sessions. Context uses bounded summaries. Agents can retrieve complete durable records through paginated `task_history` and final reports through `task_result` (stored final text retains the last 120,000 UTF-8 bytes per run, including an explicit truncation marker when shortened).
 
 Automated checks cover lifecycle, decision recovery, project boundaries, input idempotency, the native MCP question—review—delivery chain, Codex steering receipts, private SSH execution, process leases, worktree protection and UI interactions. Real-model behavior and long-running operation of the new task workflow still require live acceptance; fixtures do not establish compatibility with every CLI version.

@@ -18,6 +18,7 @@ from .mcp import TOOLS
 from .providers import ProviderCancelled, ProviderError, execute
 from .registry import PROVIDERS, commands
 from .task_runtime import TaskRuntime
+from .text_buffer import bounded_text
 
 
 class RuntimeFailure(Conflict):
@@ -909,9 +910,9 @@ class Runtime(TaskRuntime):
                     raise
             if not isinstance(result, str):
                 raise RuntimeFailure("Native CLI did not return a valid result.")
-            result = result.replace(run.capability, "[redacted]").replace("\x00", "")[
-                :64000
-            ]
+            result = bounded_text(
+                result.replace(run.capability, "[redacted]").replace("\x00", "")
+            ).strip()
             self._event(run, "assistant_message", {"text": result})
             status = "completed"
         except ProviderCancelled:

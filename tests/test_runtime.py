@@ -462,6 +462,47 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn(self.token, json.dumps(self.store.state()))
         self.assertIn("[redacted]", json.dumps(self.store.state()))
 
+    def test_long_final_replies_keep_the_conclusion_and_settle_after_truncation(self):
+        from agentdock.text_buffer import TEXT_LIMIT, TRUNCATED, bounded_text
+
+        for reply in (
+            "A" * 60000 + "B" * 30000 + "CONCLUSION",
+            "A" * 150000 + "CONCLUSION",
+            "长回复" * 30000 + "CONCLUSION",
+        ):
+            for native_bounded in (False, True):
+                with self.subTest(size=len(reply), native_bounded=native_bounded):
+
+                    def executor(*args, **kwargs):
+                        args[8]("fake-session")
+                        # A single oversized progress event must not kill settlement.
+                        args[7]("tool_output", {"text": "x" * 140000})
+                        args[7]("model_info", {"model": "fixture-final"})
+                        return bounded_text(reply) if native_bounded else reply
+
+                    runtime = self.make_runtime(executor)
+                    run = self.finished(runtime.start(self.sa["id"], "Long reply"))
+                    runtime.close()
+                    self.assertEqual(run["status"], "completed", run.get("error"))
+                    self.assertEqual(run["result"], bounded_text(reply).strip())
+                    self.assertTrue(run["result"].endswith("CONCLUSION"))
+                    events = [
+                        e
+                        for e in self.store.session_events(self.sa["id"])
+                        if e["payload"].get("run_id") == run["id"]
+                    ]
+                    final = next(e for e in events if e["kind"] == "assistant_message")
+                    self.assertEqual(final["payload"]["text"], run["result"])
+                    self.assertEqual(
+                        sum(e["kind"] == "output_truncated" for e in events), 1
+                    )
+                    self.assertTrue(any(e["kind"] == "model_info" for e in events))
+                    self.assertLessEqual(len(run["result"].encode()), TEXT_LIMIT)
+                    self.assertEqual(
+                        TRUNCATED.strip() in run["result"],
+                        len(reply.encode()) > TEXT_LIMIT,
+                    )
+
     def test_stop_parent_cancels_waiting_delegation(self):
         def executor(
             provider,

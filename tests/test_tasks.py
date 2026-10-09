@@ -99,6 +99,23 @@ class TaskStoreTests(unittest.TestCase):
         self.assertFalse(self.store.state()["sessions"])
         self.assertEqual(self.store.get_task(self.task["id"])["status"], "draft")
 
+    def test_task_result_pagination_returns_the_bounded_final_conclusion(self):
+        from agentdock.text_buffer import bounded_text
+
+        first = self.start()
+        result = bounded_text("长回复" * 30000 + "FINAL CONCLUSION").strip()
+        self.store.finish_run(first["id"], "completed", result=result)
+        self.store.refresh_work_task(first["id"])
+        current = self.start(key="next")
+        offset, parts = 0, []
+        while offset is not None:
+            page = self.store.task_result(current, first["id"], offset)
+            parts.append(page["text"])
+            offset = page["next_offset"]
+        self.assertGreater(len(parts), 1)
+        self.assertEqual("".join(parts), result)
+        self.assertTrue(parts[-1].endswith("FINAL CONCLUSION"))
+
     def test_delivery_is_distinct_from_turn_completion(self):
         run = self.start()
         self.finish(run)

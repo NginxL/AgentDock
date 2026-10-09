@@ -10,6 +10,8 @@ TRUNCATED = (
 
 class TextBuffer:
     def __init__(self, limit: int = TEXT_LIMIT) -> None:
+        if limit <= len(TRUNCATED.encode()):
+            raise ValueError("Text limit must leave room for a truncation marker")
         self.limit = limit
         self.parts: deque[bytes] = deque()
         self.size = 0
@@ -19,15 +21,18 @@ class TextBuffer:
         part = value.encode()
         self.parts.append(part)
         self.size += len(part)
-        while self.size > self.limit:
+        self.truncated = self.truncated or self.size > self.limit
+        # Include the marker in the byte budget. Already bounded final text is
+        # unchanged when it crosses another adapter/runtime boundary.
+        budget = self.limit - (len(TRUNCATED.encode()) if self.truncated else 0)
+        while self.size > budget:
             oldest = self.parts.popleft()
-            excess = self.size - self.limit
+            excess = self.size - budget
             self.size -= len(oldest)
             if len(oldest) > excess:
                 remainder = oldest[excess:]
                 self.parts.appendleft(remainder)
                 self.size += len(remainder)
-            self.truncated = True
 
     def text(self) -> str:
         return (TRUNCATED if self.truncated else "") + b"".join(self.parts).decode(

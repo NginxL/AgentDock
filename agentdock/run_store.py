@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .errors import Conflict, Forbidden, Invalid, now, text
 from .registry import ACP_PROVIDERS
+from .text_buffer import TEXT_LIMIT
 
 
 class RunStore:
@@ -328,7 +329,7 @@ class RunStore:
         if error is not None:
             error = text(error, "error", 8000, True)
         if result is not None:
-            result = text(result, "result", 120000, True)
+            result = text(result, "result", TEXT_LIMIT, True)
         with self.transaction():
             run = self._one("runs", run_id)
             if run["status"] not in ("running", "queued"):
