@@ -29,6 +29,10 @@ If an external CLI changes the native login during a lease, later runs use that 
 
 租约期间原生 CLI 若更新登录，后续运行沿用当前原生登录。子进程未改变凭据时直接清理副本；两侧均改变时，将子进程的完整认证文件组保存在上述私有 `conflicts` 目录，避免混用账号或覆盖原生登录，也不自动恢复该副本。保存成功后清理活动恢复日志，旧版遗留的冲突日志按相同规则恢复。磁盘写入失败仍保留日志供重试，正常外部刷新不会永久锁住服务。
 
+Conflict archives have no automatic expiry or cleanup. They can contain refresh tokens and remain on disk until manually reconciled and removed; private filesystem permissions do not encrypt them. After confirming that the current native login works and a saved conflict is no longer needed, its digest directory can be removed manually. Do not include these archives in diagnostics or support attachments.
+
+冲突存档没有自动过期或清理策略，其中可能含 refresh token，会一直留在磁盘上，直到人工核对并移除；私有文件权限不等于加密。确认当前原生登录可用且某份冲突副本不再需要后，可手动删除对应的 digest 子目录。不要将这些目录放入诊断包或支持附件。
+
 ## Project delegation / 项目派工
 
 Each project can enable **Ask me before agents delegate work**. Delegated work remains queued after the sender finishes; native full access does not bypass this decision. Approval releases that one dispatch, rejection returns a cancelled result, cancellation invalidates pending decisions, and restart requires explicit recovery. Changing the project preference does not approve requests already pending.
