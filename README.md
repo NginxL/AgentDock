@@ -35,6 +35,8 @@ For a macOS source installation, run `.venv/bin/python scripts/install-macos.py`
 - [Review fixes and measurements](docs/REMEDIATION.md), [validation](docs/REVIEW.md), [changelog](CHANGELOG.md).
 - [Optional real CLI verification](docs/DISTRIBUTION.md#live-cli-verification): manual, on a trusted machine outside GitHub Actions.
 
+[Upgrade notes](docs/UPGRADING.md) · [Follow-up review and regression index](docs/REVIEW-FOLLOWUP.md)
+
 ## Development
 
 ```bash

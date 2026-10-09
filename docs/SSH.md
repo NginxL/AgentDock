@@ -6,6 +6,8 @@ AgentDock stores workbench state locally and calls installed agent CLIs over SSH
 
 ## Setup
 
+Python 3.11+ is required on the remote device as well as locally. Ubuntu 22.04 commonly provides 3.10 and RHEL 9 provides 3.9; select a separately installed compatible interpreter in **Advanced connection settings → Remote Python**. AgentDock does not replace system Python. See [upgrade notes](UPGRADING.md).
+
 1. Confirm that `ssh devbox` works without interaction and the host key is in `known_hosts`. Put custom ports, jump hosts and key paths in your system SSH configuration.
 2. Open **Workspace → Add agent**, choose a provider and enter a custom name. Under **Device**, select a saved connection or **New SSH / Devbox connection…**. For a new connection, enter an SSH Host alias or `user@host`; use **Advanced connection settings** if you need a different Python command.
 3. Choose **Connect and use** for a new connection or **Connect / check** for a saved one. The host needs Python 3.11+ and an installed, authenticated native CLI. The check installs the private runner and reads versions without submitting a model task.

@@ -35,6 +35,8 @@ macOS 源码安装运行 `.venv/bin/python scripts/install-macos.py`，需要 ma
 - [审查整改与测量](docs/REMEDIATION.md)、[验证记录](docs/REVIEW.zh-CN.md)、[变更记录](CHANGELOG.md)。
 - [可选真实 CLI 验证](docs/DISTRIBUTION.md#live-cli-verification)：在 GitHub Actions 之外的可信设备手动运行，公开仓库不接入真实账号 runner。
 
+[升级说明](docs/UPGRADING.md) · [二次审查逐条复验](docs/REVIEW-FOLLOWUP.md)
+
 ## 开发检查
 
 ```bash

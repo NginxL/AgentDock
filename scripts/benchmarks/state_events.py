@@ -2,8 +2,8 @@
 """Measure a settings-only delta with 300 large events; temporary data, no CLI."""
 
 import json
-import sys
 import statistics
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -42,9 +42,7 @@ def main():
                     {
                         "domains": sorted(set(delta) - {"version", "partial"}),
                         "bytes": len(data),
-                        "snapshot_and_json_ms": round(
-                            (time.perf_counter() - start) * 1000, 2
-                        ),
+                        "snapshot_and_json_ms": round(statistics.median(timings), 2),
                     }
                 )
             )
