@@ -124,6 +124,47 @@ class RuntimeTests(unittest.TestCase):
         )
         return self.store.get_run(run["id"])
 
+    def test_same_device_acp_login_queues_without_blocking_other_providers(self):
+        self.store.set_feature("acp_agents", True, acknowledged=True)
+        sessions = []
+        for name, provider in (
+            ("First", "trae"),
+            ("Second", "trae"),
+            ("Other", "gemini"),
+        ):
+            agent = self.store.add_agent(None, name, provider)
+            sessions.append(self.store.add_session(agent["id"], name))
+        first, second, independent = sessions
+        runtime = self.make_runtime(
+            commands={"trae": ["test-trae"], "gemini": ["test-gemini"]}
+        )
+        running = runtime.start(first["id"], "<block>")
+        self.wait_for(lambda: len(self.calls) == 1)
+        queued = runtime.start(second["id"], "Wait for the same native login")
+        other = runtime.start(independent["id"], "Independent login")
+        self.assertEqual(self.finished(other)["status"], "completed")
+        self.assertEqual(self.store.get_run(queued["id"])["status"], "queued")
+        self.assertFalse(any(c["run"]["id"] == queued["id"] for c in self.calls))
+        self.gate.set()
+        self.assertEqual(self.finished(running)["status"], "completed")
+        self.assertEqual(self.finished(queued)["status"], "completed")
+
+    def test_queued_acp_work_can_be_cancelled_without_acquiring_credentials(self):
+        self.store.set_feature("acp_agents", True, acknowledged=True)
+        first = self.store.add_agent(None, "Holding", "trae")
+        second = self.store.add_agent(None, "Queued", "trae")
+        a = self.store.add_session(first["id"], "Holding")
+        b = self.store.add_session(second["id"], "Queued")
+        runtime = self.make_runtime(commands={"trae": ["test-trae"]})
+        running = runtime.start(a["id"], "<block>")
+        self.wait_for(lambda: len(self.calls) == 1)
+        queued = runtime.start(b["id"], "Cancel while waiting")
+        runtime.cancel_run(queued["id"])
+        self.assertEqual(self.store.get_run(queued["id"])["status"], "cancelled")
+        self.assertEqual(len(self.calls), 1)
+        self.gate.set()
+        self.assertEqual(self.finished(running)["status"], "completed")
+
     def test_progress_is_persisted_while_running_and_result_only_completes_after_exit(
         self,
     ):

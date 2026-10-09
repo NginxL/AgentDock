@@ -29,6 +29,23 @@ class StoreTests(unittest.TestCase):
         r = self.store.begin_run(self.s["id"], "Discuss interface")
         return r, self.store.issue_capability(r["id"])
 
+    def test_acp_credential_queue_is_scoped_to_the_session_device(self):
+        device = self.store.add_environment("Fixture remote", "fixture")
+        queued = []
+        for name, environment in (
+            ("Local one", "local"),
+            ("Local two", "local"),
+            ("Remote", device["id"]),
+        ):
+            agent = self.store.add_agent(None, name, "trae", environment_id=environment)
+            session = self.store.add_session(agent["id"], name)
+            queued.append(self.store.enqueue_run(session["id"], name))
+        self.assertEqual(self.store.claim_next_run()["id"], queued[0]["id"])
+        self.assertEqual(self.store.claim_next_run()["id"], queued[2]["id"])
+        self.assertIsNone(self.store.claim_next_run())
+        self.store.finish_run(queued[0]["id"], "completed")
+        self.assertEqual(self.store.claim_next_run()["id"], queued[1]["id"])
+
     def test_existing_database_gets_cancellation_indexes(self):
         for name in ("runs_task", "runs_session", "messages_sender_run", "events_run"):
             self.store.db.execute("DROP INDEX " + name)

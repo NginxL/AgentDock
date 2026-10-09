@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .acp_home import SEEDS, _private, prepare, seed_origin
 from .errors import Conflict
+from .provider_common import ProviderCancelled
 
 AUTH_NAMES = {"auth.json", "oauth_creds.json", "google_accounts.json"}
 
@@ -103,24 +104,29 @@ def preserve_conflict(path, pending, cached_files):
 
 
 @contextmanager
-def credentials(provider, directory, environment, stop):
+def credentials(provider, directory, environment, stop, *, wait_timeout=None):
     """Serialize refreshes for the same source identity, retaining no idle copies."""
     path, seeds, origins = profile(provider, environment)
     lock_path, journal = path / "lease.lock", path / "pending.json"
     if lock_path.is_symlink() or journal.is_symlink():
         raise Conflict("Invalid credential lease storage")
     descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-    deadline = time.monotonic() + 30
+    deadline = None if wait_timeout is None else time.monotonic() + wait_timeout
     try:
         while True:
+            if stop.is_set():
+                raise ProviderCancelled()
             try:
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if stop.wait(0.05) or time.monotonic() > deadline:
+                if deadline is not None and time.monotonic() >= deadline:
                     raise Conflict(
-                        "Another native run is refreshing this login; retry after it finishes"
+                        "This CLI login is in use. Refresh models after the run finishes.",
+                        code="native_credentials_busy",
                     )
+                if stop.wait(0.05):
+                    raise ProviderCancelled()
 
         def finish(pending):
             target = Path(pending["target"])

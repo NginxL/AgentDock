@@ -1,11 +1,14 @@
 import tempfile
 import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from itertools import count
 from pathlib import Path
 from unittest.mock import patch
 
 from agentdock.credential_lease import catalog_home, credentials
 from agentdock.errors import Conflict
+from agentdock.provider_common import ProviderCancelled
 
 
 class CredentialLeaseTests(unittest.TestCase):
@@ -26,6 +29,54 @@ class CredentialLeaseTests(unittest.TestCase):
 
     def lease(self):
         return credentials("gemini", self.target, self.env, threading.Event())
+
+    def test_another_controller_waits_past_old_deadline_then_uses_fresh_credentials(
+        self,
+    ):
+        waiting, stop = threading.Event(), threading.Event()
+        original_wait = stop.wait
+
+        def wait(timeout):
+            waiting.set()
+            return original_wait(timeout)
+
+        def second():
+            with credentials("gemini", self.root / "second", self.env, stop):
+                return (self.root / "second/.gemini/oauth_creds.json").read_text()
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            try:
+                with self.lease():
+                    (self.target / ".gemini/oauth_creds.json").write_text("refreshed")
+                    with (
+                        patch.object(stop, "wait", side_effect=wait),
+                        patch(
+                            "agentdock.credential_lease.time.monotonic",
+                            side_effect=count(0, 100),
+                        ),
+                    ):
+                        future = pool.submit(second)
+                        self.assertTrue(waiting.wait(1))
+                        with self.assertRaises(TimeoutError):
+                            future.result(timeout=0.12)
+                self.assertEqual(future.result(timeout=1), "refreshed")
+            finally:
+                stop.set()
+
+    def test_lease_wait_is_cancellable_and_discovery_can_fail_fast(self):
+        stop = threading.Event()
+        with self.lease():
+            with self.assertRaises(Conflict) as busy:
+                with credentials(
+                    "gemini", self.root / "second", self.env, stop, wait_timeout=0
+                ):
+                    self.fail("Model discovery must not acquire the active lease")
+            self.assertEqual(busy.exception.code, "native_credentials_busy")
+            with patch.object(stop, "wait", side_effect=lambda _: stop.set() or True):
+                with self.assertRaises(ProviderCancelled):
+                    with credentials("gemini", self.root / "second", self.env, stop):
+                        self.fail("Cancelled lease must not prepare a CLI")
+            self.assertFalse((self.root / "second").exists())
 
     def test_refresh_copied_back_settings_unchanged_and_idle_seeds_removed(self):
         with self.lease() as environment:

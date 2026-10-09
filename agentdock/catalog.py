@@ -171,7 +171,13 @@ class Catalog:
             )
             source = os.environ if environment is None else environment
             env = stack.enter_context(
-                credentials(provider, catalog_home(provider, source), source, self.stop)
+                credentials(
+                    provider,
+                    catalog_home(provider, source),
+                    source,
+                    self.stop,
+                    wait_timeout=0,
+                )
             )
             cwd = Path(directory) / "workspace"
             cwd.mkdir()

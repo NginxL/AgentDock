@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .errors import Conflict, Forbidden, Invalid, now, text
+from .registry import ACP_PROVIDERS
 
 
 class RunStore:
@@ -223,13 +224,17 @@ class RunStore:
         ):
             return False
         session = self._one("sessions", run["session_id"])
+        provider = self._one("agents", run["agent_id"])["provider"]
         chosen = Path(session["workspace"])
         active = self.db.execute(
-            "SELECT runs.agent_id,sessions.workspace AS path FROM runs JOIN sessions ON runs.session_id=sessions.id WHERE runs.status='running' AND sessions.environment_id=?",
+            "SELECT runs.agent_id,agents.provider,sessions.workspace AS path FROM runs JOIN sessions ON runs.session_id=sessions.id JOIN agents ON agents.id=runs.agent_id WHERE runs.status='running' AND sessions.environment_id=?",
             (session["environment_id"],),
         ).fetchall()
         return not any(
             row["agent_id"] == run["agent_id"]
+            # ACP agents on one device inherit the same provider login. Reserve
+            # that resource before starting a worker or consuming its deadline.
+            or (provider in ACP_PROVIDERS and row["provider"] == provider)
             or chosen == Path(row["path"])
             or chosen in Path(row["path"]).parents
             or Path(row["path"]) in chosen.parents
