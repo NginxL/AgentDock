@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 
 from .errors import Conflict
+from .event_policy import essential
 from .loopback_server import LoopbackServer
 from .providers import ProviderCancelled, ProviderError, execute
 from .session_storage import remove_session_directory, session_directory
@@ -420,13 +421,11 @@ def work(path):
                 token, "[redacted]"
             )
             size = len(encoded.encode())
-            essential = (
-                kind.startswith("remote_")
-                or kind in ("usage", "input_receipt")
-                or (kind == "agent_message" and payload.get("phase") == "final_answer")
-            )
-            if not essential and (
-                size > 300000 or total + size > 8 * 1024 * 1024 or sequence >= 5000
+            if not essential(kind, payload) and (
+                truncated
+                or size > 300000
+                or total + size > 8 * 1024 * 1024
+                or sequence >= 5000
             ):
                 if truncated:
                     return

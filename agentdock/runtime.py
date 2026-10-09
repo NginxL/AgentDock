@@ -12,6 +12,7 @@ from typing import Optional
 
 from .diagnostics import failure
 from .errors import Conflict, Forbidden, Invalid
+from .event_policy import essential
 from .input_control import InputControl
 from .mcp import TOOLS
 from .providers import ProviderCancelled, ProviderError, execute
@@ -454,9 +455,11 @@ class Runtime(TaskRuntime):
         size = len(serialized.encode("utf-8"))
         run.event_count += 1
         run.output_bytes += size
-        final = kind == "assistant_message"
-        if not final and (
-            size > 131072 or run.output_bytes > 8388608 or run.event_count > 5000
+        if not essential(kind, payload) and (
+            run.output_truncated
+            or size > 131072
+            or run.output_bytes > 8388608
+            or run.event_count > 5000
         ):
             if not run.output_truncated:
                 run.output_truncated = True
